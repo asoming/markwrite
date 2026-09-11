@@ -813,7 +813,7 @@ input::placeholder {
 .insert-dock {
   position: absolute;
   bottom: 47px;
-  left: calc(var(--sidebar-width) + (100% - var(--sidebar-width)) / 2);
+  left: min(calc(var(--sidebar-width) + (100% - var(--sidebar-width)) / 2), calc(100% - 286px));
   transform: translateX(-50%);
   display: flex;
   gap: 4px;
@@ -1381,9 +1381,6 @@ input::placeholder {
   .status-right > span:nth-of-type(4),
   .status-right > i {
     display: none;
-  }
-  .insert-dock {
-    left: 50%;
   }
   .modal-backdrop {
     padding: 15px;
