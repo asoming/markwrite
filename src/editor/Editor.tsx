@@ -46,6 +46,15 @@ const sessions = new Map<string, { state: EditorState; scroll: number }>();
 export function releaseEditor(id: string) {
   sessions.delete(id);
 }
+export function updateStoredEditor(id: string, content: string) {
+  const session = sessions.get(id);
+  if (session && session.state.doc.toString() !== content) {
+    session.state = session.state.update({
+      changes: { from: 0, to: session.state.doc.length, insert: content },
+      userEvent: 'input.references',
+    }).state;
+  }
+}
 const modeCompartment = new Compartment();
 const pathCompartment = new Compartment();
 const parsingCompartment = new Compartment();
@@ -262,6 +271,9 @@ export default function Editor({
     const followLink = (event: Event) =>
       callbacks.current.onLink?.((event as CustomEvent<string>).detail);
     editor.dom.addEventListener('markwrite:follow-link', followLink);
+    const widgetComposition = (event: Event) =>
+      callbacks.current.onComposition((event as CustomEvent<boolean>).detail);
+    editor.dom.addEventListener('markwrite:widget-composition', widgetComposition);
     const refreshSyntax = () => editor.dispatch({ effects: syntaxChanged.of(null) });
     window.addEventListener('markwrite-syntax-configured', refreshSyntax);
     view.current = editor;
@@ -278,6 +290,7 @@ export default function Editor({
       callbacks.current.onReady(null);
       editor.dom.removeEventListener('markwrite:edit-table', editTable);
       editor.dom.removeEventListener('markwrite:follow-link', followLink);
+      editor.dom.removeEventListener('markwrite:widget-composition', widgetComposition);
       window.removeEventListener('markwrite-syntax-configured', refreshSyntax);
       editor.destroy();
       view.current = null;

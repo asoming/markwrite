@@ -11,6 +11,8 @@ export type EditingAction =
   | 'app:import'
   | 'app:folder'
   | 'app:rename'
+  | 'app:move'
+  | 'app:print'
   | 'app:reference'
   | 'app:save'
   | 'app:saveAs'
@@ -73,10 +75,12 @@ const menus: { label: string; items: Item[] }[] = [
       { label: '保存', action: 'app:save', shortcut: 'Ctrl S' },
       { label: '另存为…', action: 'app:saveAs', shortcut: 'Ctrl Shift S' },
       { label: '重命名', action: 'app:rename' },
+      { label: '移动到…', action: 'app:move' },
       'separator',
       { label: '导出 HTML…', action: 'app:exportHtml' },
       { label: '导出 PDF…', action: 'app:exportPdf' },
       { label: '导出 Word 文档…', action: 'app:exportDocx' },
+      { label: '打印…', action: 'app:print' },
       'separator',
       { label: '关闭当前文档', action: 'app:close', shortcut: 'Ctrl W' },
       { label: '退出 Markwrite', action: 'app:quit' },

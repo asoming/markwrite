@@ -1,0 +1,173 @@
+.backup-heading,
+.backup-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.backup-heading h4 {
+  margin-bottom: 0;
+}
+.backup-icon-button {
+  display: grid;
+  place-items: center;
+  padding: 7px;
+  color: var(--muted);
+}
+.backup-icon-button:hover {
+  background: var(--hover);
+  border-radius: 4px;
+}
+.backup-path-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 15px 0;
+  font-size: 13px;
+}
+.backup-path-row > span {
+  min-width: 100px;
+  color: var(--muted);
+}
+.backup-path-row code {
+  flex: 1;
+  min-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.backup-panel .preference-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.backup-create {
+  margin: 4px 0 16px;
+}
+.backup-interval {
+  margin: 15px 0;
+}
+.backup-timing {
+  margin: 14px 0;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.backup-timing > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.backup-timing dt {
+  min-width: 145px;
+  color: var(--muted);
+}
+.backup-timing dd {
+  margin: 0;
+}
+.backup-error,
+.backup-last-error {
+  color: var(--danger, #bc3737);
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.backup-success {
+  color: var(--accent);
+  font-size: 13px;
+}
+.backup-restored-path {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.backup-list-heading {
+  margin-top: 25px;
+  font-size: 12px;
+}
+.backup-list-heading h5 {
+  font-size: 14px;
+  margin: 0;
+}
+.backup-list-heading button {
+  color: var(--accent);
+  font-size: 12px;
+}
+.backup-list {
+  margin-top: 10px;
+}
+.backup-snapshot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--border);
+}
+.backup-snapshot > div {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.backup-snapshot strong {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.backup-snapshot time,
+.backup-snapshot small {
+  font-size: 11px;
+  color: var(--muted);
+}
+.backup-snapshot .preference-button {
+  white-space: nowrap;
+  font-size: 12px;
+}
+.backup-restore-preview {
+  margin-top: 22px;
+  padding: 17px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 13px;
+}
+.backup-restore-preview h5 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+.backup-restore-preview summary {
+  cursor: pointer;
+  color: var(--muted);
+  margin: 15px 0;
+}
+.backup-restore-preview ul {
+  max-height: 170px;
+  overflow: auto;
+  padding: 0;
+  list-style: none;
+}
+.backup-restore-preview li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  font-size: 11px;
+}
+.backup-restore-preview li code {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.backup-restore-preview li span {
+  white-space: nowrap;
+  color: var(--muted);
+}
+.backup-restore-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 15px;
+}

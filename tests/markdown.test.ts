@@ -55,6 +55,9 @@ describe('Markdown fidelity and rendering', () => {
   });
   it('counts mixed Chinese and English text', () => {
     expect(wordCount('今天 write a note 123')).toBe(6);
+    expect(
+      wordCount('今天 ![image](data:image/png;base64,' + 'abcd/efgh+'.repeat(1000) + ')'),
+    ).toBe(3);
   });
 });
 describe('recovery', () => {

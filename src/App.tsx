@@ -1,3 +1,12 @@
+import BackupPanel, { BackupScheduler } from './components/BackupPanel';
+import RenameReferencesDialog from './components/RenameReferencesDialog';
+import { prepareMove, selectedMoveChanges, type PreparedMove } from './lib/referenceMove';
+import { movedReferencePath } from './lib/referenceMaintenance';
+import { captureBackupSettings, restoreBackupSettings } from './lib/settingsBackup';
+import { DocumentThemeStyles } from './components/ThemeManager';
+import ExportOptionsPanel from './components/ExportOptionsPanel';
+import type { ExportOptions } from './lib/export';
+import { invalidateWorkspaceIndex } from './lib/workspaceCache';
 import { t, useI18n, setLanguage } from './lib/i18n';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react';
 import {
@@ -36,7 +45,7 @@ import { EditorView } from '@codemirror/view';
 import { undo, redo, selectAll } from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
 import { invoke } from '@tauri-apps/api/core';
-import Editor, { releaseEditor } from './editor/Editor';
+import Editor, { releaseEditor, updateStoredEditor } from './editor/Editor';
 import Reader from './Reader';
 import { configureInlineSyntax } from './lib/markdown';
 import { useDocumentStats } from './lib/useDocumentStats';
@@ -270,6 +279,14 @@ export default function App() {
     to: number;
   }>();
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab | null>(null);
+  const [referenceMove, setReferenceMove] = useState<PreparedMove>();
+  const [referenceMoveBusy, setReferenceMoveBusy] = useState(false);
+  const [referenceMoveError, setReferenceMoveError] = useState('');
+  const preparingMove = useRef(false);
+  const moveLocks = useRef<string[]>([]);
+  const moveCompletion = useRef<
+    { resolve: (path: string) => void; reject: (error: unknown) => void } | undefined
+  >(undefined);
   const [compareId, setCompareId] = useState<string | null>(null);
   const [recents, setRecents] = useState(readRecents);
   const [insertDialog, setInsertDialog] = useState<{
@@ -290,7 +307,7 @@ export default function App() {
     selection: string;
   } | null>(null);
   const [exportFormat, setExportFormat] = useState<'html' | 'pdf' | 'docx'>('html');
-  const [exportOptions, setExportOptions] = useState({
+  const [exportOptions, setExportOptions] = useState<ExportOptions & { theme: string }>({
     toc: true,
     theme: 'light',
     template: 'standard' as 'standard' | 'academic' | 'compact',
@@ -750,23 +767,32 @@ export default function App() {
       notify(t('无法打开链接：{0}', undefined, [errorText(e)]));
     }
   }
-  async function doExport(format: 'html' | 'pdf' | 'docx' | 'publish' = 'html') {
-    if (!current || exporting) return;
-    setExporting(true);
+  async function prepareExportArticle() {
     const node = document.createElement('article');
     node.className = 'markdown-body';
     node.innerHTML = renderMarkdown(current.content);
+    await hydrateDiagrams(node);
+    for (const img of node.querySelectorAll<HTMLImageElement>('img[data-asset]')) {
+      if (!current.path) throw new Error(t('图片路径无法解析，请先保存文档或打开所在文件夹。'));
+      img.src = await platform.assetData(current.path, img.dataset.asset!);
+      img.removeAttribute('data-asset');
+      img.classList.remove('pending-image');
+    }
+    return node;
+  }
+  async function doExport(format: 'html' | 'pdf' | 'docx' | 'publish' = 'html') {
+    if (!current || exporting) return;
+    setExporting(true);
     try {
-      await hydrateDiagrams(node);
-      for (const img of node.querySelectorAll<HTMLImageElement>('img[data-asset]')) {
-        if (!current.path) throw new Error(t('图片路径无法解析，请先保存文档或打开所在文件夹。'));
-        img.src = await platform.assetData(current.path, img.dataset.asset!);
-        img.removeAttribute('data-asset');
-        img.classList.remove('pending-image');
-      }
+      const node = await prepareExportArticle();
       if (format !== 'html' && format !== 'publish') {
         const { exportDocument } = await import('./lib/export');
-        if (await exportDocument(format, node, current.name, { template: exportOptions.template }))
+        if (
+          await exportDocument(format, node, current.name, {
+            ...exportOptions,
+            language: settings.language,
+          })
+        )
           notify(t('{0} 已导出', undefined, [format.toUpperCase()]));
         return;
       }
@@ -838,8 +864,8 @@ export default function App() {
     }
     try {
       if (namePrompt.type === 'rename' && current.path) {
-        const newPath = await renameGuarded(current.path, namePrompt.value);
-        patch(current.id, { path: newPath, name: basename(newPath) });
+        setNamePrompt(null);
+        await renameGuarded(current.path, namePrompt.value);
       } else if (namePrompt.type === 'rename')
         patch(current.id, {
           name: namePrompt.value.endsWith('.md') ? namePrompt.value : `${namePrompt.value}.md`,
@@ -855,7 +881,7 @@ export default function App() {
       setNamePrompt(null);
       await refresh();
     } catch (e) {
-      notify(errorText(e));
+      if(!canceled(e)) notify(errorText(e));
     }
   }
   useEffect(() => {
@@ -921,6 +947,7 @@ export default function App() {
           listen<DiskFile[]>('open-documents', (event) => event.payload.forEach(addDisk)),
           listen<string>('document-open-error', (event) => notify(event.payload)),
           listen('workspace-changed', () => {
+            invalidateWorkspaceIndex();
             void refresh();
             window.dispatchEvent(new Event('focus'));
           }),
@@ -1081,7 +1108,7 @@ export default function App() {
   };
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.isComposing || dialog || insertDialog || namePrompt) return;
+      if (e.isComposing || dialog || insertDialog || namePrompt || referenceMove) return;
       if (e.key === 'Escape') {
         if (!dialog) setFocus(false);
       }
@@ -1134,7 +1161,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [dialog, mode, insertDialog, namePrompt]);
+  }, [dialog, mode, insertDialog, namePrompt, referenceMove]);
   const commands = [
     { label: t('新建文档'), hint: 'Ctrl N', icon: <FilePlus2 size={18} />, run: newDocument },
     {
@@ -1341,32 +1368,159 @@ export default function App() {
     notify(t('已作为草稿打开，按 Ctrl S 选择保存位置。'));
   }
   async function renameGuarded(path: string, name: string) {
-    const affected = docsRef.current
-      .filter(
-        (d) =>
-          d.path &&
-          (pathKey(d.path) === pathKey(path) || pathKey(d.path).startsWith(pathKey(path) + '/')),
-      )
-      .map((d) => d.id);
-    if (affected.some((id) => saving.current.has(id)))
-      throw new Error(t('文档正在保存，请稍后再重命名。'));
-    affected.forEach((id) => saving.current.add(id));
+    if (!name.trim() || /[/\\\0]/.test(name) || name === '.' || name === '..')
+      throw new Error(t('名称不能包含路径分隔符。', 'The name cannot contain path separators.'));
+    const separator = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+    return reviewMove(path, path.slice(0, separator + 1) + name.trim());
+  }
+  async function reviewMove(from: string, to: string) {
+    if (!platform.desktop)
+      throw new Error(t('请在桌面版移动文件。', 'Move files in the desktop application.'));
+    if (from === to) return from;
+    if (moveCompletion.current || preparingMove.current)
+      throw new Error(t('请先完成当前文件操作。', 'Finish the current file operation first.'));
+    if (saving.current.size) throw new Error(t('文档正在保存，请稍后再重命名。'));
+    setReferenceMoveError('');
+    notify(t('正在后台检查受影响的链接…', 'Checking affected links in the background…'));
+    preparingMove.current = true;
+    let plan: PreparedMove;
     try {
-      const next = await platform.renameFile(path, name);
-      handleRenamed(path, next);
-      return next;
+      const documents = root
+        ? await invoke<{ path: string; content: string; name?: string }[]>('workspace_documents', {
+            path: root,
+          })
+        : [];
+      plan = await prepareMove(from, to, documents, docsRef.current, platform.readFile);
+      if (saving.current.size) throw new Error(t('文档正在保存，请稍后再重命名。'));
+      selectedMoveChanges(
+        plan,
+        plan.changes.map((change) => change.path),
+        docsRef.current,
+      );
+      moveLocks.current = docsRef.current
+        .filter(
+          (doc) =>
+            doc.path &&
+            (movedReferencePath(doc.path, from, to) !== doc.path ||
+              plan.changes.some((change) => pathKey(change.path) === pathKey(doc.path!))),
+        )
+        .map((doc) => doc.id);
+      moveLocks.current.forEach((id) => saving.current.add(id));
     } finally {
-      affected.forEach((id) => saving.current.delete(id));
+      preparingMove.current = false;
+    }
+    return new Promise<string>((resolve, reject) => {
+      moveCompletion.current = { resolve, reject };
+      setReferenceMove(plan);
+    });
+  }
+  function cancelMove() {
+    if (referenceMoveBusy) return;
+    const completion = moveCompletion.current;
+    moveCompletion.current = undefined;
+    moveLocks.current.forEach((id) => saving.current.delete(id));
+    moveLocks.current = [];
+    setReferenceMove(undefined);
+    completion?.reject(new DOMException('Canceled', 'AbortError'));
+  }
+  async function confirmMove(selected: string[]) {
+    if (!referenceMove || referenceMoveBusy) return;
+    const plan = referenceMove;
+    const affected = docsRef.current.filter(
+      (doc) =>
+        doc.path &&
+        (movedReferencePath(doc.path, plan.from, plan.to) !== doc.path ||
+          selected.some((path) => pathKey(path) === pathKey(doc.path!))),
+    );
+    if (affected.some((doc) => saving.current.has(doc.id) && !moveLocks.current.includes(doc.id))) {
+      setReferenceMoveError(t('文档正在保存，请稍后再重命名。'));
+      return;
+    }
+    setReferenceMoveBusy(true);
+    setReferenceMoveError('');
+    affected.forEach((doc) => saving.current.add(doc.id));
+    try {
+      const changes = selectedMoveChanges(plan, selected, docsRef.current);
+      const result = await invoke<{ path: string; files: DiskFile[]; warnings: string[] }>(
+        'apply_reference_changes',
+        { root: root || null, from: plan.from, to: plan.to, changes },
+      );
+      for (const file of result.files) {
+        const doc = docsRef.current.find(
+          (item) =>
+            item.path &&
+            pathKey(movedReferencePath(item.path, plan.from, plan.to)) === pathKey(file.path),
+        );
+        if (!doc) continue;
+        if (doc.id === currentRef.current.id && editor.current) {
+          const view = editor.current;
+          if (view.state.doc.toString() !== file.content)
+            view.dispatch({
+              changes: { from: 0, to: view.state.doc.length, insert: file.content },
+              userEvent: 'input.references',
+            });
+        } else updateStoredEditor(doc.id, file.content);
+        patch(doc.id, {
+          ...file,
+          name: basename(file.path),
+          saved: file.content,
+          status: 'clean',
+          error: undefined,
+          updated: Date.now(),
+        });
+      }
+      handleRenamed(plan.from, result.path);
+      invalidateWorkspaceIndex();
+      const nextRoot = root && movedReferencePath(root, plan.from, plan.to);
+      if (nextRoot && nextRoot !== root) {
+        const request = ++folderRequest.current;
+        setRoot(nextRoot);
+        void platform
+          .listFolder(nextRoot)
+          .then(entries=>{if(request===folderRequest.current)setEntries(entries);})
+          .catch((error) => {if(request===folderRequest.current)setFolderError(errorText(error));});
+      } else void refresh();
+      const completion = moveCompletion.current;
+      moveCompletion.current = undefined;
+      moveLocks.current.forEach((id) => saving.current.delete(id));
+      moveLocks.current = [];
+      setReferenceMove(undefined);
+      completion?.resolve(result.path);
+      notify(
+        result.warnings.length
+          ? result.warnings.join('\n')
+          : t('文件已移动，已保存 {0} 份引用文档。', 'File moved; saved {0} reference documents.', [
+              result.files.length,
+            ]),
+      );
+    } catch (error) {
+      setReferenceMoveError(errorText(error));
+    } finally {
+      affected.forEach((doc) => {
+        if (!moveLocks.current.includes(doc.id)) saving.current.delete(doc.id);
+      });
+      setReferenceMoveBusy(false);
+    }
+  }
+  async function moveCurrent() {
+    const path = currentRef.current.path;
+    if (!path) {
+      notify(t('请先保存文档。', 'Save the document first.'));
+      return;
+    }
+    try {
+      const to = await invoke<string | null>('choose_move_destination', { path });
+      if (to) await reviewMove(path, to);
+    } catch (error) {
+      if (!canceled(error)) notify(errorText(error));
     }
   }
   function handleRenamed(from: string, to: string) {
     updateDocs((items) =>
       items.map((d) => {
         if (!d.path) return d;
-        const old = d.path.replace(/\\/g, '/'),
-          base = from.replace(/\\/g, '/');
-        if (pathKey(old) === pathKey(base) || pathKey(old).startsWith(pathKey(base) + '/')) {
-          const next = to + old.slice(base.length);
+        const next = movedReferencePath(d.path,from,to);
+        if (next !== d.path) {
           return { ...d, path: next, name: basename(next) };
         }
         return d;
@@ -1433,6 +1587,12 @@ export default function App() {
         break;
       case 'app:rename':
         setNamePrompt({ type: 'rename', value: current.name });
+        break;
+      case 'app:move':
+        void moveCurrent();
+        break;
+      case 'app:print':
+        openExport('pdf');
         break;
       case 'app:reference': {
         const existing = docsRef.current.find((item) => item.name === 'Markdown 语法手册.md');
@@ -1603,6 +1763,13 @@ export default function App() {
         } as CSSProperties
       }
     >
+      <DocumentThemeStyles />
+      <BackupScheduler
+        root={root}
+        language={settings.language}
+        getBundle={() => captureBackupSettings(settingsRef.current)}
+        onNotify={(message) => notify(message)}
+      />
       {sidebar && !focus && (
         <aside className="sidebar">
           <div className="sidebar-header">
@@ -1848,7 +2015,7 @@ export default function App() {
           </div>
         )}
         <div className="document-workspace">
-          <div className="document-surface">
+          <div className="document-surface" data-custom-document-theme="">
             <Editor
               id={current.id}
               content={current.content}
@@ -2193,54 +2360,23 @@ export default function App() {
       )}
       {dialog === 'export' && (
         <Modal
+          wide
           title={t('导出 {0}', undefined, [
             exportFormat === 'docx' ? t('Word 文档') : exportFormat.toUpperCase(),
           ])}
           subtitle={t('使用当前编辑内容，无需先覆盖原文档')}
           onClose={() => setDialog(null)}
         >
-          <div className="settings-extra">
-            <label>
-              {t('排版模板')}{' '}
-              <select
-                value={exportOptions.template}
-                onChange={(e) =>
-                  setExportOptions((v) => ({ ...v, template: e.target.value as typeof v.template }))
-                }
-              >
-                <option value="standard">{t('标准文档')}</option>
-                <option value="academic">{t('学术阅读')}</option>
-                <option value="compact">{t('紧凑笔记')}</option>
-              </select>
-            </label>
-            {exportFormat === 'html' && (
-              <>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={exportOptions.toc}
-                    onChange={(e) => setExportOptions((v) => ({ ...v, toc: e.target.checked }))}
-                  />{' '}
-                  {t('包含文档目录')}
-                </label>
-                <label>
-                  {t('外观')}{' '}
-                  <select
-                    value={exportOptions.theme}
-                    onChange={(e) => setExportOptions((v) => ({ ...v, theme: e.target.value }))}
-                  >
-                    <option value="light">{t('浅色')}</option>
-                    <option value="dark">{t('深色')}</option>
-                  </select>
-                </label>
-              </>
-            )}
-            <p className="panel-note">
-              {t(
-                '本地图片、公式和图表会嵌入导出文件。未加载的网络图片或语法错误会提示处理，不会悄悄丢弃。',
-              )}
-            </p>
-          </div>
+          <ExportOptionsPanel
+            format={exportFormat}
+            value={exportOptions}
+            onChange={(next) => setExportOptions({ ...next, theme: next.theme || 'light' })}
+            title={current.name}
+            language={settings.language}
+            prepareArticle={prepareExportArticle}
+            sourceKey={`${current.id}:${current.updated}`}
+            busy={exporting}
+          />
           <div className="modal-actions">
             <button onClick={() => setDialog(null)}>{t('取消')}</button>
             <button
@@ -2349,6 +2485,38 @@ export default function App() {
           settings={settings}
           onChange={setSettings}
           onClose={() => setDialog(null)}
+          filesExtra={
+            <BackupPanel
+              language={settings.language}
+              root={root}
+              getBundle={() => captureBackupSettings(settingsRef.current)}
+              onRestored={async (result) => {
+                const restoredEntries = await platform.listFolder(result.path);
+                const preferences = result.settingsBundle
+                  ? restoreBackupSettings(result.settingsBundle)
+                  : settingsRef.current;
+                folderRequest.current++;
+                setSettings({ ...preferences, followFileParent: false });
+                setRoot(result.path);
+                setEntries(restoredEntries);
+                setFolderError('');
+                setFolderLoading(false);
+                setWorkspaces((old) => {
+                  const next = [result.path, ...old.filter((path) => path !== result.path)].slice(
+                    0,
+                    10,
+                  );
+                  try {
+                    localStorage.setItem('markwrite.workspaces.v1', JSON.stringify(next));
+                  } catch {
+                    /* restored folder remains open */
+                  }
+                  return next;
+                });
+                invalidateWorkspaceIndex();
+              }}
+            />
+          }
           defaultAppAvailable={platform.desktop}
           onCheckDefaultApp={async () => (await defaultMarkdownStatus()).isDefault}
           onDefaultApp={async () => {
@@ -2499,6 +2667,15 @@ export default function App() {
           </div>
         </Modal>
       )}
+      {referenceMove && (
+        <RenameReferencesDialog
+          {...referenceMove}
+          busy={referenceMoveBusy}
+          error={referenceMoveError}
+          onConfirm={(paths) => void confirmMove(paths)}
+          onCancel={cancelMove}
+        />
+      )}
       {namePrompt && (
         <Modal
           title={
@@ -2510,7 +2687,7 @@ export default function App() {
           }
           subtitle={
             namePrompt.type === 'rename'
-              ? t('其他文档中的相对链接不会自动修改。')
+              ? t('下一步可预览并选择需要更新的引用。','Next, review and select the references to update.')
               : t('创建于 {0}', undefined, [root || t('当前工作区')])
           }
           onClose={() => setNamePrompt(null)}

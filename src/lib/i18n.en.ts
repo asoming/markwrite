@@ -1,4 +1,6 @@
 const english: Record<string, string> = {
+  '移动到…': 'Move to…',
+  '打印…': 'Print…',
   '导入文件…': 'Import files…',
   关闭对话框: 'Close dialog',
   '最近文件列表暂时无法保存。': 'Recent files could not be saved.',

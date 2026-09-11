@@ -12,6 +12,21 @@ import { md, renderMarkdown, hydrateDiagrams } from '../lib/markdown';
 import { assetData } from '../lib/platform';
 import katex from 'katex';
 import { inlineSyntaxRules, inlineMatch, syntaxInk } from '../lib/syntax';
+import { parseImageMarkup } from '../lib/imageMarkup';
+import { attachDirectTable, type DirectBlockController } from './directTable';
+import { attachDirectImage } from './directImage';
+import './directEditing.css';
+
+const directBlocks = new WeakMap<
+  HTMLElement,
+  {
+    position: number;
+    path: string;
+    raw: string;
+    language: string;
+    controller: DirectBlockController | null;
+  }
+>();
 
 export const liveMode = Facet.define<boolean, boolean>({ combine: (values) => values[0] ?? true });
 export const documentPath = Facet.define<string, string>({ combine: (values) => values[0] || '' });
@@ -180,6 +195,14 @@ class RenderedBlock extends WidgetType {
     element.className = 'live-block markdown-body';
     element.innerHTML = renderMarkdown(this.raw);
     element.title = t('点击编辑 Markdown 源码');
+    const record = {
+      position: this.position,
+      path: this.path,
+      raw: this.raw,
+      language: this.language,
+      controller: null as DirectBlockController | null,
+    };
+    directBlocks.set(element, record);
     if (element.querySelector('table')) {
       const tools = document.createElement('div');
       tools.className = 'live-block-tools';
@@ -191,18 +214,21 @@ class RenderedBlock extends WidgetType {
       button.addEventListener('click', () =>
         view.dom.dispatchEvent(
           new CustomEvent('markwrite:edit-table', {
-            detail: { from: this.position, to: this.position + this.raw.length },
+            detail: { from: record.position, to: record.position + record.raw.length },
             bubbles: true,
           }),
         ),
       );
       tools.appendChild(button);
       element.prepend(tools);
+      record.controller = attachDirectTable(view, element, this.raw, this.position);
+    } else if (parseImageMarkup(this.raw)) {
+      record.controller = attachDirectImage(view, element, this.raw, this.position);
     }
     element.addEventListener('mousedown', (e) => {
       if ((e.target as HTMLElement).closest('a,button')) return;
       e.preventDefault();
-      view.dispatch({ selection: { anchor: this.position }, scrollIntoView: true });
+      view.dispatch({ selection: { anchor: record.position }, scrollIntoView: true });
       view.focus();
     });
     element.addEventListener('click', (event) => {
@@ -261,6 +287,18 @@ class RenderedBlock extends WidgetType {
     }
     return element;
   }
+  updateDOM(element: HTMLElement) {
+    const record = directBlocks.get(element);
+    if (!record || record.path !== this.path || record.language !== this.language) return false;
+    if (!record.controller?.update(this.raw, this.path, this.position)) return false;
+    record.position = this.position;
+    record.raw = this.raw;
+    return true;
+  }
+  destroy(element: HTMLElement) {
+    directBlocks.get(element)?.controller?.destroy();
+    directBlocks.delete(element);
+  }
   ignoreEvent() {
     return true;
   }
@@ -291,7 +329,7 @@ function build(state: EditorState): DecorationSet {
       t.type === 'hr' ||
       t.type === 'blockMath' ||
       (t.type === 'code' && t.lang === 'mermaid') ||
-      (t.type === 'paragraph' && /^!\[[^\]]*\]\([^\n]+\)$/.test(raw));
+      ((t.type === 'paragraph' || t.type === 'html') && !!parseImageMarkup(raw));
     if (render && to > from && !active(from, to)) {
       add(
         from,

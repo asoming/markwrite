@@ -1,6 +1,6 @@
 # [下载 / Download Markwrite — Linux & Windows](https://github.com/asoming/markwrite/releases)
 
-**当前版本 / Current release: 0.3.2（预览版 / Preview）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
+**当前版本 / Current release: 0.4.0（预览版 / Preview）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
 
 Choose the Linux `.deb`, Linux portable archive, or Windows x64 installer from the release page above. Features, installation, and conversion limits are described below.
 
@@ -45,13 +45,33 @@ The sidebar displays the bilingual brand; the application, installer, and deskto
 | 文档工具 / Document tools         | 大纲、全文搜索、内部链接、反向链接、标签与附件管理。 / Outline, full-text search, internal links, backlinks, tags, and attachment management.  |
 | 格式转换 / Conversion             | 导入 TXT/HTML/DOCX；导出 HTML/PDF/DOCX。 / Import TXT, HTML, and DOCX; export HTML, PDF, and DOCX.                                             |
 
-**English: conversion and service limits.** Complex HTML and Word layouts may lose formatting during import. Exported math and diagrams in DOCX are graphics, not editable Office objects; PDF uses A4 pagination and has font/character limits. Review conversion messages and the exported result.
+**English: conversion and service limits.** Complex HTML and Word layouts may lose formatting during import. Exported math and diagrams in DOCX are graphics, not editable Office objects. PDF supports A4, A5, and Letter pagination with font/character limits. Review conversion messages and the exported result.
 
 The native single-file limit is 32 MiB, and live Markdown rendering is reduced for very large documents. There is no real-time collaboration, mobile app, or cloud synchronization. The browser preview has fewer filesystem capabilities than the desktop application.
 
 Git integration requires a local Git installation. AI assistance, image upload, and HTML publishing are optional connections to services you configure; no cloud account, hosting, or API credits are included.
 
-## 0.3 新增功能
+## 0.4 新增功能 / What's new in 0.4
+
+- **面板响应：**反向链接、标签和关联视图共用后台 Worker 索引；切换面板复用文件快照，编辑只重新解析改变的文档。标签默认折叠，大量结果分批显示，减少阻塞。
+- **直接编辑：**即时渲染中点击表格单元格输入，支持 Tab 切换、Enter/Escape 结束和撤销。选择独立成段的图片可输入宽高、保持比例、拖动缩放或打开预览；设置尺寸后使用带宽高的 HTML `<img>` 保存在 Markdown 中。
+- **主题导入：**「设置 → 外观」导入 `.css`，支持主题库切换、重命名、导出和移除。适配 Typora 常见正文选择器；只作用于正文，源码和设置保留原样。外部资源、相对字体文件、页面定位等不支持的规则会过滤并提示；带配套字体目录的主题可能需要自行安装字体，不能保证所有主题完全一致。
+- **独立备份：**「设置 → 文件」选择备份目录，手动备份或启用按小时间隔备份。快照包含当前工作文件夹中已保存的 Markdown、支持的图片、应用设置、自定义主题和声明式扩展，不包含未保存草稿及密钥字段。自动备份仅在应用运行时执行，重新启动后补执行已到期的计划。恢复前显示摘要、校验文件，恢复到新的 `Markwrite-restored-*` 文件夹，可选择是否恢复设置。没有云端上传。
+- **应用更新：**「设置 → 通用」检查 GitHub 发布，选择是否包含预览版本，下载当前系统安装包并校验 SHA-256。保存工作、退出应用后手动安装。私有仓库可输入有该仓库 Contents 读取权限的令牌，或使用已登录的浏览器发布页；令牌只在当前面板内存中使用，不写入设置和备份。
+- **改名与移动：**「文件 → 重命名 / 移动到…」以及文件管理中的改名，会预览当前工作文件夹和已打开文档的引用变化。选择要更新的文档后保存（包含其未保存编辑），并检查磁盘版本。支持常见相对链接、图片、Wiki 链接与目录移动；同名歧义保留并提示。未勾选引用、其他工作区和无法确认的语法需自行维护。跨文件系统移动不支持，会报错并保留原文件。
+- **导出排版：**PDF/DOCX 可选 A4、A5、Letter、12–40mm 页边距、页眉页脚、页码、封面与目录。PDF 面板显示实际生成文件的分页预览，支持保存同一份 PDF 后用系统阅读器打印。PDF 目录有实际页码；DOCX 目录为可点击的标题列表，不承诺与 Word/WPS 重排后的页码一致。
+
+**English**
+
+- **Responsive document tools:** backlinks, tags, and the related-document view share a worker index and cached workspace reads. Only changed documents are reparsed; tag contents are collapsed and long lists load in batches.
+- **Direct editing:** edit table cells in place, navigate with Tab, and undo changes. Resize standalone images with width/height controls or a drag handle, preserve aspect ratio, and preview images. Explicit dimensions are stored as HTML `<img>` attributes in the Markdown file.
+- **Imported CSS themes:** manage document themes in **Settings → Appearance**. Common Typora selectors are adapted and scoped to the document. Unsupported layout rules and external/relative resources are filtered with notices; arbitrary themes are not guaranteed to match Typora exactly.
+- **Independent backups:** choose a destination in **Settings → Files**, then back up manually or on an hourly interval. Snapshots include saved workspace Markdown and supported images, preferences, imported themes, and declarative extensions. Unsaved drafts and secret fields are excluded. Scheduling runs while the app is open and catches up after restart. Restore verifies the snapshot into a new folder and optionally restores preferences. Files are not uploaded.
+- **Application updates:** **Settings → General** checks GitHub, downloads the platform installer, and verifies SHA-256. Save your work, quit, and install manually. A private repository needs a repository Contents read token or a signed-in browser. Tokens remain in the current panel's memory only.
+- **Reference-aware rename/move:** review affected links and select the documents to save, including unsaved edits. Disk version checks prevent applying a stale preview. Relative document/image links, common Wiki links, and moved directories are supported within the current workspace and open documents. Ambiguous references are left for manual review. Cross-filesystem moves are rejected without deleting the original.
+- **Export layout:** A4/A5/Letter paper, 12–40mm margins, headers, footers, page numbers, a cover, and a table of contents for PDF/DOCX. The PDF preview shows the generated pages; save that PDF to print with a system reader. PDF contents include page numbers; DOCX contents link to headings without promising page numbers after Office reflow.
+
+## 界面与日常使用 / Interface and daily use
 
 ### 界面与文件树
 
@@ -74,11 +94,11 @@ The floating controls sit **at the bottom right, just above the status bar**. Ho
 
 | 分类   | 可设置内容                                                                          |
 | ------ | ----------------------------------------------------------------------------------- |
-| 文件   | 文件树跟随当前文件、自动保存、Markdown 默认打开方式；查看搜索排除规则               |
+| 文件   | 文件树跟随当前文件、自动保存、默认打开方式、独立备份和恢复；查看搜索排除规则        |
 | 编辑器 | 默认打开模式、字号、行高、正文宽度、衬线/无衬线、自定义正文和代码字体、阅读排版预设 |
 | 图像   | 保存到文档旁的 `assets` 文件夹，或内嵌到 Markdown                                   |
-| 外观   | 主题、自定义背景/正文/强调色、恢复主题原色、浮动工具条透明度                        |
-| 通用   | 简体中文或 English 界面、恢复默认设置                                               |
+| 外观   | 内置和导入主题、自定义背景/正文/强调色、恢复主题原色、浮动工具条透明度              |
+| 通用   | 简体中文或 English 界面、应用更新、恢复默认设置                                     |
 
 默认打开模式为**阅读**，也可改为即时渲染编辑或 Markdown 源码。当前文档仍可通过右下角浮动工具条或「视图」随时切换。切换界面语言不翻译或修改文档内容。旧设置会补齐新增字段，保留已有排版和保存偏好。
 
@@ -141,7 +161,7 @@ HTML 的本地相对图片在授权来源目录内尝试内嵌；无法读取的
 ## 文件、搜索与文档关联
 
 - 文件树默认跟随当前 Markdown 的父目录，也可手动打开文件夹并固定；支持多文档标签、独立草稿区域、折叠的最近文件列表、中文与空格路径、原生拖入、第二次启动时向已有窗口转交文件。
-- 创建文档/文件夹、重命名、批量移到系统回收站。未保存修改会阻止相关删除；重命名不会自动重写其他文档的引用。
+- 创建文档/文件夹、重命名、批量移到系统回收站。未保存修改会阻止相关删除；重命名和移动会预览受影响的引用，确认后保存所选文档。
 - 切换文件夹会更换当前文件树和搜索范围；不提供跨工作区同步或聚合搜索。
 - 文件名筛选与全文搜索分开。全文搜索返回文件、行号和片段，优先考虑打开文档的未保存内容，结果分批显示，可取消；过期任务不能覆盖新查询。
 - 原生目录监听用于发现外部变化；大纲和字数由 Web Worker 计算，丢弃过期响应，等待期间显示最近完成的结果。
@@ -151,6 +171,14 @@ HTML 的本地相对图片在授权来源目录内尝试内嵌；无法读取的
 扫描仅针对手动选择的工作目录，或跟随已打开 Markdown 所获得的父目录，排除隐藏目录、`.git`、`node_modules`、`target` 和符号链接；全文搜索最多显示 500 条匹配。浏览器预览仍受文件选择器授权限制，无法自动取得父目录时需要手动打开文件夹。
 
 ## 保存、恢复与附件
+
+独立备份仅包括当前工作目录中的 Markdown 和支持的图片，单文件最多 32MiB、快照最多 1GiB、最多 10,000 个文件；排除隐藏目录、`node_modules`、`target` 和符号链接。不包含未保存草稿、目录外附件或历史记录，不会自动清理旧快照。
+
+Independent backups include workspace Markdown and supported images, up to 32MiB per file, 1GiB per snapshot, and 10,000 files. Hidden folders, `node_modules`, `target`, and symlinks are excluded. Unsaved drafts, external attachments, and version history are not included; old snapshots are not automatically deleted.
+
+引用批量更新在普通错误时会尝试回退，并保留恢复副本；多文件写入与移动不构成断电原子事务。崩溃或断电可能留下部分完成状态，原始副本记录在应用数据目录 `recovery/reference-transaction-*` 中，需要手动检查和恢复，尚无启动时自动重放。
+
+Reference updates attempt rollback on ordinary errors and retain recovery copies. Multiple file writes and a move are not power-loss atomic: interruption can leave a partially completed operation. Original copies in the app data directory under `recovery/reference-transaction-*` require manual review and recovery; startup does not automatically replay these transactions.
 
 ### 保存和冲突
 
@@ -177,7 +205,7 @@ HTML 的本地相对图片在授权来源目录内尝试内嵌；无法读取的
 | 格式 | 输出内容                                                                                    |
 | ---- | ------------------------------------------------------------------------------------------- |
 | HTML | UTF-8 单文件页面，可选目录及浅色/深色；内嵌本地图片、公式资源与静态图表，支持离线查看       |
-| PDF  | 本地生成 A4 分页文件，可选择的正文文本、页码；随应用内置中文常规/粗体字体，并按使用字形嵌入 |
+| PDF  | 本地生成 A4/A5/Letter 分页文件和真实页面预览；可选择的文字、页码及封面目录；内置中文字体    |
 | DOCX | 真实 OOXML 文档，标题、段落、表格、链接和文字格式可继续编辑；公式与图表含 SVG 和 PNG 后备图 |
 
 ### 实际排版边界

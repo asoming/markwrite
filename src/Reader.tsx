@@ -3,6 +3,9 @@ import { useEffect, useRef, useMemo } from 'react';
 import { renderMarkdown, hydrateDiagrams } from './lib/markdown';
 import type { Theme } from './lib/types';
 import { assetData } from './lib/platform';
+import { applyImageDimensions } from './lib/imageMarkup';
+import { openImagePreview } from './components/imagePreview';
+import './editor/directEditing.css';
 export default function Reader({
   content,
   path,
@@ -18,11 +21,24 @@ export default function Reader({
 }) {
   const { language } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
+  const closePreview = useRef<(() => void) | null>(null);
   const html = useMemo(() => renderMarkdown(content), [content, revision, language]);
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
     root.innerHTML = html;
+    for (const img of root.querySelectorAll<HTMLImageElement>('img')) {
+      applyImageDimensions(img);
+      img.addEventListener('load', () => applyImageDimensions(img));
+      img.tabIndex = 0;
+      img.title = t('点击预览大图', 'Click to preview full image');
+      img.addEventListener('keydown', (event) => {
+        if (!['Enter', ' '].includes(event.key)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        closePreview.current = openImagePreview(img);
+      });
+    }
     let cancelled = false;
     void hydrateDiagrams(root);
     for (const img of root.querySelectorAll<HTMLImageElement>('img[data-asset]')) {
@@ -69,6 +85,8 @@ export default function Reader({
     }
     return () => {
       cancelled = true;
+      closePreview.current?.();
+      closePreview.current = null;
     };
   }, [html, path, theme, language]);
   return (
@@ -78,6 +96,12 @@ export default function Reader({
         ref={ref}
         dangerouslySetInnerHTML={{ __html: html }}
         onClick={(e) => {
+          const image = (e.target as HTMLElement).closest('img');
+          if (image && !image.closest('a')) {
+            e.preventDefault();
+            closePreview.current = openImagePreview(image);
+            return;
+          }
           const anchor = (e.target as HTMLElement).closest('a');
           if (!anchor) return;
           e.preventDefault();

@@ -2,9 +2,76 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import type { Content, ContentText, TDocumentDefinitions } from 'pdfmake/interfaces';
 import type { ParagraphChild, FileChild } from 'docx';
 import fontCoverage from './export-font-coverage.json';
+import { imageDimension } from './imageMarkup';
 
 export type ExportFormat = 'pdf' | 'docx';
-export type ExportOptions = { template?: 'standard' | 'academic' | 'compact' };
+export type ExportOptions = {
+  template?: 'standard' | 'academic' | 'compact';
+  paper?: 'A4' | 'LETTER' | 'A5';
+  /** Page margins in millimetres. Omitted values follow the selected template. */
+  margins?: { top: number; right: number; bottom: number; left: number };
+  header?: string;
+  footer?: string;
+  pageNumbers?: boolean;
+  cover?: boolean;
+  coverSubtitle?: string;
+  toc?: boolean;
+  language?: 'zh-CN' | 'en';
+};
+const paperSizes = {
+  A4: { width: 595.28, height: 841.89 },
+  LETTER: { width: 612, height: 792 },
+  A5: { width: 419.53, height: 595.28 },
+};
+const pointsPerMm = 72 / 25.4;
+export function exportPageLayout(options: ExportOptions = {}) {
+  const paper = options.paper && options.paper in paperSizes ? options.paper : 'A4';
+  const defaultMargin = profile(options).margin / pointsPerMm;
+  const margins = options.margins || {
+    top: defaultMargin,
+    right: defaultMargin,
+    bottom: defaultMargin,
+    left: defaultMargin,
+  };
+  if (
+    Object.values(margins).length !== 4 ||
+    Object.values(margins).some((value) => !Number.isFinite(value) || value < 12 || value > 40)
+  )
+    throw new Error(
+      options.language === 'en'
+        ? 'Page margins must be between 12 and 40 mm.'
+        : '页边距须在 12–40 毫米之间。',
+    );
+  for (const value of [options.header, options.footer])
+    if (value && (value.length > 40 || /[\r\n]/.test(value)))
+      throw new Error(
+        options.language === 'en'
+          ? 'Headers and footers must be a single line of up to 40 characters.'
+          : '页眉、页脚须为单行文字，且不超过 40 个字符。',
+      );
+  const pt = Object.fromEntries(
+    Object.entries(margins).map(([key, value]) => [key, value * pointsPerMm]),
+  ) as typeof margins;
+  return {
+    paper,
+    ...paperSizes[paper],
+    margins,
+    pt,
+    contentWidth: paperSizes[paper].width - pt.left - pt.right,
+    contentHeight: paperSizes[paper].height - pt.top - pt.bottom,
+  };
+}
+function plainHeading(block: ExportBlock) {
+  return block.kind === 'paragraph' && block.heading
+    ? block.runs
+        .map((run) => (run.kind === 'text' ? run.text : ''))
+        .join('')
+        .trim()
+    : '';
+}
+function documentTitle(title: string) {
+  return title.replace(/\.(md|markdown)$/i, '') || 'Markwrite';
+}
 type TextStyle = {
   bold?: boolean;
   italic?: boolean;
@@ -142,6 +209,14 @@ async function rasterImage(node: HTMLImageElement): Promise<ExportImage> {
     height = image.naturalHeight;
   }
   if (!width || !height) throw new Error(`图片“${node.alt}”尺寸无效。`);
+  const displayWidth = imageDimension(node.getAttribute('width'));
+  const displayHeight = imageDimension(node.getAttribute('height'));
+  const naturalWidth = width,
+    naturalHeight = height;
+  if (displayWidth) width = displayWidth;
+  else if (displayHeight) width = (naturalWidth * displayHeight) / naturalHeight;
+  if (displayHeight) height = displayHeight;
+  else if (displayWidth) height = (naturalHeight * displayWidth) / naturalWidth;
   // Both output libraries reliably support PNG and JPEG. Decode other accepted
   // browser formats to PNG rather than silently embedding unsupported bytes.
   return {
@@ -304,7 +379,7 @@ function pdfText(run: Extract<ExportRun, { kind: 'text' }>): ContentText {
     link: run.link?.startsWith('#') ? undefined : run.link,
   };
 }
-function pdfRuns(runs: ExportRun[], maxWidth: number): Content[] {
+function pdfRuns(runs: ExportRun[], maxWidth: number, maxHeight: number): Content[] {
   const content: Content[] = [];
   let text: ContentText[] = [];
   const flush = () => {
@@ -315,8 +390,8 @@ function pdfRuns(runs: ExportRun[], maxWidth: number): Content[] {
     if (run.kind === 'text') text.push(pdfText(run));
     else {
       flush();
-      const width = Math.min(run.width * 0.75, maxWidth);
-      const height = Math.min((run.height * width) / run.width, 650);
+      const width = Math.min(run.width * 0.75, Math.max(8, maxWidth));
+      const height = Math.min((run.height * width) / run.width, maxHeight);
       const actualWidth = (height * run.width) / run.height;
       content.push(
         run.svg
@@ -370,13 +445,21 @@ export function pdfDefinition(
     else if (block.kind === 'table')
       for (const row of block.rows) for (const cell of row) validate(cell);
   }
+  validate([
+    { kind: 'text', text: options.header || '' },
+    { kind: 'text', text: options.footer || '' },
+    { kind: 'text', text: options.cover ? documentTitle(title) : '' },
+    { kind: 'text', text: options.cover ? options.coverSubtitle || '' : '' },
+  ]);
   if (missing.size)
     throw new Error(
       `PDF 内置字体暂不支持这些字符：${[...missing].slice(0, 8).join(' ')}。请使用 DOCX / HTML 导出，或替换这些字符。`,
     );
   const p = profile(options),
-    width = 595.28 - p.margin * 2;
-  const content: Content[] = blocks.map((block): Content => {
+    page = exportPageLayout(options),
+    width = page.contentWidth;
+  const maxImageHeight = Math.max(50, page.contentHeight - p.gap * 4 - 20);
+  const content: Content[] = blocks.map((block, index): Content => {
     if (block.kind === 'rule')
       return {
         canvas: [
@@ -391,7 +474,7 @@ export function pdfDefinition(
           widths: block.rows[0].map(() => '*'),
           body: block.rows.map((row, ri) =>
             row.map((cell) => ({
-              stack: pdfRuns(cell, width / row.length - 18),
+              stack: pdfRuns(cell, width / row.length - 18, maxImageHeight - 20),
               fillColor: ri === 0 && block.header ? '#f3f4f7' : undefined,
               margin: [4, 5, 4, 5],
             })),
@@ -400,8 +483,20 @@ export function pdfDefinition(
         layout: 'lightHorizontalLines',
         margin: [0, 4, 0, p.gap],
       };
+    const paragraph = pdfRuns(block.runs, width - (block.indent || 0) * 14, maxImageHeight);
+    if (options.toc && plainHeading(block)) {
+      const text = paragraph.find((item) => typeof item === 'object' && 'text' in item);
+      if (text)
+        Object.assign(text, {
+          id: `heading-${index}`,
+          tocItem: true,
+          tocMargin: [(block.heading! - 1) * 12, 4, 0, 4],
+          tocStyle: { fontSize: p.size, bold: false, color: '#24272e' },
+          tocNumberStyle: { fontSize: p.size, bold: false, color: '#737b89' },
+        });
+    }
     return {
-      stack: pdfRuns(block.runs, width - (block.indent || 0) * 14),
+      stack: paragraph,
       margin: [(block.indent || 0) * 14, block.heading ? p.gap * 1.7 : 0, 0, p.gap],
       color: block.quote ? '#657080' : undefined,
       fontSize: block.heading
@@ -414,19 +509,68 @@ export function pdfDefinition(
       unbreakable: Boolean(block.heading),
     };
   });
+  const front: Content[] = [];
+  if (options.cover)
+    front.push({
+      stack: [
+        {
+          text: documentTitle(title),
+          bold: true,
+          fontSize: 28,
+          lineHeight: 1.2,
+          margin: [0, Math.min(100, page.contentHeight / 5), 0, 24],
+        },
+        { text: options.coverSubtitle || '', fontSize: 14, color: '#657080' },
+      ],
+      alignment: 'center',
+      pageBreak: 'after',
+    });
+  if (options.toc && blocks.some(plainHeading))
+    front.push({
+      toc: {
+        title: {
+          text: options.language === 'en' ? 'Contents' : '目录',
+          fontSize: 22,
+          bold: true,
+          margin: [0, 0, 0, 20],
+        },
+      },
+      pageBreak: 'after',
+    });
   return {
-    pageSize: 'A4',
-    pageMargins: [p.margin, p.margin, p.margin, p.margin],
+    pageSize: page.paper,
+    pageMargins: [page.pt.left, page.pt.top, page.pt.right, page.pt.bottom],
     info: { title, creator: 'Markwrite' },
     defaultStyle: { font: 'Noto', fontSize: p.size, lineHeight: p.lineHeight, color: '#24272e' },
-    content: content.length ? content : [{ text: ' ' }],
-    footer: (page, total) => ({
-      text: `${page} / ${total}`,
-      alignment: 'center',
-      fontSize: 9,
-      color: '#737b89',
-      margin: [0, 15, 0, 0],
-    }),
+    content: [...front, ...(content.length ? content : [{ text: ' ' }])],
+    header: options.header
+      ? (current) =>
+          options.cover && current === 1
+            ? { text: '' }
+            : {
+                text: options.header!,
+                fontSize: 8,
+                color: '#737b89',
+                margin: [page.pt.left, 8, page.pt.right, 0],
+              }
+      : undefined,
+    footer:
+      options.footer || options.pageNumbers !== false
+        ? (current, total) => {
+            if (options.cover && current === 1) return { text: '' };
+            return {
+              columns: [
+                { text: options.footer || '', width: '*', alignment: 'left' },
+                ...(options.pageNumbers !== false
+                  ? [{ text: `${current} / ${total}`, width: 55, alignment: 'right' as const }]
+                  : []),
+              ],
+              fontSize: 8,
+              color: '#737b89',
+              margin: [page.pt.left, 5, page.pt.right, 0],
+            };
+          }
+        : undefined,
   };
 }
 let fonts: Promise<Record<string, string>> | undefined;
@@ -525,8 +669,10 @@ export async function buildDocx(
   renderImage = rasterize,
 ): Promise<Uint8Array> {
   const d = await import('docx');
-  const p = profile(options);
-  const maxWidth = (595.28 - p.margin * 2) / 0.75;
+  const p = profile(options),
+    page = exportPageLayout(options);
+  const maxWidth = page.contentWidth / 0.75;
+  const maxHeight = Math.max(50, page.contentHeight - p.gap * 4 - 20) / 0.75;
   async function runs(input: ExportRun[], width = maxWidth): Promise<ParagraphChild[]> {
     return Promise.all(
       input.map(async (run): Promise<ParagraphChild> => {
@@ -545,7 +691,7 @@ export async function buildDocx(
             ? new d.ExternalHyperlink({ children: [text], link: run.link })
             : text;
         }
-        const ratio = Math.min(1, width / run.width, 850 / run.height);
+        const ratio = Math.min(1, Math.max(8, width) / run.width, maxHeight / run.height);
         const transformation = { width: run.width * ratio, height: run.height * ratio };
         const altText = { title: run.alt, description: run.alt, name: run.alt };
         if (run.svg)
@@ -566,7 +712,56 @@ export async function buildDocx(
     );
   }
   const children: FileChild[] = [];
-  for (const block of blocks) {
+  if (options.cover) {
+    children.push(
+      new d.Paragraph({
+        alignment: d.AlignmentType.CENTER,
+        spacing: { before: Math.min(100, page.contentHeight / 5) * 20, after: 480 },
+        children: [new d.TextRun({ text: documentTitle(title), bold: true, size: 56 })],
+      }),
+    );
+    if (options.coverSubtitle)
+      children.push(
+        new d.Paragraph({
+          alignment: d.AlignmentType.CENTER,
+          children: [new d.TextRun({ text: options.coverSubtitle, size: 28, color: '657080' })],
+        }),
+      );
+    children.push(new d.Paragraph({ children: [new d.PageBreak()] }));
+  }
+  if (options.toc && blocks.some(plainHeading)) {
+    children.push(
+      new d.Paragraph({
+        children: [
+          new d.TextRun({
+            text: options.language === 'en' ? 'Contents' : '目录',
+            size: 44,
+            bold: true,
+          }),
+        ],
+        spacing: { after: 400 },
+        keepNext: true,
+      }),
+    );
+    blocks.forEach((block, index) => {
+      const text = plainHeading(block);
+      if (!text || block.kind !== 'paragraph') return;
+      children.push(
+        new d.Paragraph({
+          indent: { left: (block.heading! - 1) * 240 },
+          spacing: { after: 120 },
+          children: [
+            new d.InternalHyperlink({
+              anchor: `heading_${index}`,
+              children: [new d.TextRun({ text, color: '4361D9' })],
+            }),
+          ],
+        }),
+      );
+    });
+    children.push(new d.Paragraph({ children: [new d.PageBreak()] }));
+  }
+  for (const [index, block] of blocks.entries()) {
     if (block.kind === 'rule')
       children.push(
         new d.Paragraph({
@@ -597,7 +792,15 @@ export async function buildDocx(
     } else
       children.push(
         new d.Paragraph({
-          children: await runs(block.runs, maxWidth - (block.indent || 0) * 20),
+          children:
+            options.toc && plainHeading(block)
+              ? [
+                  new d.Bookmark({
+                    id: `heading_${index}`,
+                    children: await runs(block.runs, maxWidth - (block.indent || 0) * 20),
+                  }),
+                ]
+              : await runs(block.runs, maxWidth - (block.indent || 0) * 20),
           heading: block.heading
             ? [
                 d.HeadingLevel.HEADING_1,
@@ -627,6 +830,7 @@ export async function buildDocx(
     title,
     creator: 'Markwrite',
     description: 'Exported by Markwrite',
+    features: { updateFields: true },
     styles: {
       default: {
         document: {
@@ -641,32 +845,65 @@ export async function buildDocx(
     sections: [
       {
         properties: {
+          titlePage: options.cover,
           page: {
-            size: { width: 11906, height: 16838 },
+            size: { width: Math.round(page.width * 20), height: Math.round(page.height * 20) },
             margin: {
-              top: p.margin * 20,
-              right: p.margin * 20,
-              bottom: p.margin * 20,
-              left: p.margin * 20,
+              top: Math.round(page.pt.top * 20),
+              right: Math.round(page.pt.right * 20),
+              bottom: Math.round(page.pt.bottom * 20),
+              left: Math.round(page.pt.left * 20),
+              header: 160,
+              footer: 100,
             },
           },
         },
-        footers: {
-          default: new d.Footer({
-            children: [
-              new d.Paragraph({
-                alignment: d.AlignmentType.CENTER,
+        headers: options.header
+          ? {
+              default: new d.Header({
                 children: [
-                  new d.TextRun({
-                    children: [d.PageNumber.CURRENT, ' / ', d.PageNumber.TOTAL_PAGES],
-                    size: 18,
-                    color: '737B89',
+                  new d.Paragraph({
+                    children: [new d.TextRun({ text: options.header, size: 16, color: '737B89' })],
                   }),
                 ],
               }),
-            ],
-          }),
-        },
+              ...(options.cover
+                ? { first: new d.Header({ children: [new d.Paragraph('')] }) }
+                : {}),
+            }
+          : undefined,
+        footers:
+          options.footer || options.pageNumbers !== false
+            ? {
+                default: new d.Footer({
+                  children: [
+                    new d.Paragraph({
+                      alignment: d.AlignmentType.CENTER,
+                      children: [
+                        new d.TextRun({
+                          children: [
+                            ...(options.footer
+                              ? [
+                                  options.footer,
+                                  ...(options.pageNumbers !== false ? ['   ·   '] : []),
+                                ]
+                              : []),
+                            ...(options.pageNumbers !== false
+                              ? [d.PageNumber.CURRENT, ' / ', d.PageNumber.TOTAL_PAGES]
+                              : []),
+                          ],
+                          size: 16,
+                          color: '737B89',
+                        }),
+                      ],
+                    }),
+                  ],
+                }),
+                ...(options.cover
+                  ? { first: new d.Footer({ children: [new d.Paragraph('')] }) }
+                  : {}),
+              }
+            : undefined,
         children,
       },
     ],
@@ -685,6 +922,15 @@ export async function exportDocument(
     format === 'pdf'
       ? await buildPdf(blocks, title, options)
       : await buildDocx(blocks, title, options);
+  return saveExportBytes(format, bytes, title);
+}
+
+/** Save the exact bytes shown by the PDF preview, without rendering a second document. */
+export async function saveExportBytes(
+  format: ExportFormat,
+  bytes: Uint8Array,
+  title: string,
+): Promise<boolean> {
   const name = `${title.replace(/\.(md|markdown)$/i, '').replace(/[<>:"/\\|?*\x00-\x1F]/g, '_') || '未命名'}.${format}`;
   if (isTauri()) return invoke('save_export', { name, extension: format, bytes: [...bytes] });
   const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], {

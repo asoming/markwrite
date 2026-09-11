@@ -1,11 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod ai;
+mod backup;
 mod history;
 mod imports;
 mod native_settings;
+mod reference_changes;
 mod session;
 mod storage;
 mod transfer;
+mod updates;
 mod workspace;
 use base64::Engine;
 use notify::Watcher;
@@ -693,6 +696,19 @@ fn main() {
             rename_document,
             workspace::search_folder,
             workspace::cancel_search,
+            backup::backup_config,
+            backup::backup_pick_destination,
+            backup::backup_update_schedule,
+            backup::backup_create,
+            backup::backup_list,
+            backup::backup_pick_snapshot,
+            backup::backup_inspect,
+            backup::backup_restore,
+            updates::check_app_update,
+            updates::download_app_update,
+            updates::open_update_folder,
+            reference_changes::apply_reference_changes,
+            reference_changes::choose_move_destination,
             workspace::workspace_documents,
             workspace::history_list,
             workspace::history_read,

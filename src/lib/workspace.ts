@@ -1,7 +1,12 @@
 import type { Token } from 'marked';
 import { md } from './markdown';
 
-export type IndexedDocument = { path: string; content: string; name?: string };
+export type IndexedDocument = {
+  path: string;
+  content: string;
+  name?: string;
+  references?: ReturnType<typeof documentReferences>;
+};
 type LocalPath = { root: string; parts: string[]; windows: boolean; extended: boolean };
 function parsePath(path: string): LocalPath {
   let normalized = path.replace(/\\/g, '/');
@@ -186,12 +191,11 @@ export function documentReferences(content: string) {
   return { links, tags: [...tags] };
 }
 export function backlinks(target: string, documents: IndexedDocument[]) {
+  const resolveWiki = wikiResolver(documents);
   return documents.filter((doc) =>
-    documentReferences(doc.content).links.some((link) => {
+    (doc.references || documentReferences(doc.content)).links.some((link) => {
       if (link.wiki)
-        return wikiTargets(link.target, doc.path, documents).some(
-          (d) => pathKey(d.path) === pathKey(target),
-        );
+        return resolveWiki(link.target, doc.path).some((d) => pathKey(d.path) === pathKey(target));
       try {
         return pathKey(resolveDocumentLink(doc.path, link.target).path) === pathKey(target);
       } catch {
@@ -199,6 +203,41 @@ export function backlinks(target: string, documents: IndexedDocument[]) {
       }
     }),
   );
+}
+
+/** Build title/path maps once per snapshot, rather than scanning every file per link. */
+export function wikiResolver(documents: IndexedDocument[]) {
+  const names = new Map<string, IndexedDocument[]>();
+  const windowsNames = new Map<string, IndexedDocument[]>();
+  const paths = new Map<string, IndexedDocument[]>();
+  const add = (map: Map<string, IndexedDocument[]>, key: string, doc: IndexedDocument) => {
+    const bucket = map.get(key);
+    if (bucket) bucket.push(doc);
+    else map.set(key, [doc]);
+  };
+  for (const doc of documents) {
+    const name = withoutExtension(doc.name || fileName(doc.path));
+    add(
+      parsePath(keyPath(doc.path)).windows ? windowsNames : names,
+      parsePath(keyPath(doc.path)).windows ? name.toLowerCase() : name,
+      doc,
+    );
+    add(paths, withoutExtension(pathKey(doc.path)), doc);
+  }
+  return (target: string, from?: string): IndexedDocument[] => {
+    const title = target.split('#')[0].trim();
+    if (!title && from) return paths.get(withoutExtension(pathKey(from))) || [];
+    if (title.includes('/') || title.includes('\\')) {
+      try {
+        const escaped = title.replace(/[%#?]/g, (c) => encodeURIComponent(c));
+        return paths.get(withoutExtension(pathKey(resolveDocumentLink(from, escaped).path))) || [];
+      } catch {
+        return [];
+      }
+    }
+    const name = withoutExtension(title);
+    return [...(names.get(name) || []), ...(windowsNames.get(name.toLowerCase()) || [])];
+  };
 }
 
 export type RecentFile = { path: string; name: string; opened: number };

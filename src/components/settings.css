@@ -199,6 +199,28 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+.update-panel > details,
+.update-panel > .preference-preset-buttons {
+  margin-top: 16px;
+}
+.update-panel summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 13px;
+}
+.update-panel input[type='password'] {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.update-panel progress {
+  width: min(100%, 320px);
+  margin-top: 14px;
+  accent-color: var(--accent);
+}
 .preference-range {
   display: grid;
   grid-template-columns: 95px minmax(0, 1fr) 60px;

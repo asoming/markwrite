@@ -1,10 +1,12 @@
 import { t, useI18n } from '../lib/i18n';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { X, RefreshCw, FolderOpen, FileText, Trash2 } from 'lucide-react';
 import type { DiskFile, Document, FileEntry } from '../lib/types';
 import { desktop } from '../lib/platform';
-import { backlinks, documentReferences, fileName, type IndexedDocument } from '../lib/workspace';
+import { fileName, type IndexedDocument } from '../lib/workspace';
+import { useReferenceIndex } from '../lib/useReferenceIndex';
+import { workspaceDocuments, invalidateWorkspaceIndex } from '../lib/workspaceCache';
 import DiffView from './DiffView';
 import LinkGraph from './LinkGraph';
 import './workspace.css';
@@ -60,8 +62,25 @@ export default function WorkspacePanel(p: Props) {
     [confirmTrash, setConfirmTrash] = useState(false);
   const [filter, setFilter] = useState(''),
     [rename, setRename] = useState<{ path: string; name: string }>();
+  const scope = `${p.tab}\0${p.root || ''}\0${p.current.id}\0${p.current.path || ''}\0${revision}`;
+  const latestScope = useRef(scope);
+  latestScope.current = scope;
+  const actionSequence = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(() => {
     let disposed = false;
+    actionSequence.current++;
+    setHistory([]);
+    setGit(undefined);
+    setGitDiff('');
+    setAttachments([]);
+    setRename(undefined);
     setSelected([]);
     setSelectedHistory(undefined);
     setConfirmTrash(false);
@@ -83,18 +102,6 @@ export default function WorkspacePanel(p: Props) {
           const result = await invoke<Attachment[]>('attachment_inventory', { path: p.root });
           if (!disposed) setAttachments(result);
         } else setAttachments([]);
-      } else if (p.tab === 'backlinks' || p.tab === 'tags' || p.tab === 'graph') {
-        const disk =
-          desktop && p.root
-            ? await invoke<DiskFile[]>('workspace_documents', { path: p.root })
-            : [];
-        const buffers = p.docs.map((d) => ({
-          path: d.path || d.id,
-          content: d.content,
-          name: d.name,
-        }));
-        if (!disposed)
-          setIndex([...buffers, ...disk.filter((d) => !buffers.some((b) => b.path === d.path))]);
       }
     };
     void fetchData()
@@ -109,32 +116,77 @@ export default function WorkspacePanel(p: Props) {
       entries.flatMap((e) => [e, ...(e.children ? walk(e.children) : [])]);
     return walk(p.entries);
   }, [p.entries]);
-  const liveIndex = useMemo(() => {
-    const buffers = p.docs.map((d) => ({ path: d.path || d.id, content: d.content, name: d.name }));
-    return [...buffers, ...index.filter((d) => !buffers.some((b) => b.path === d.path))];
-  }, [index, p.docs]);
-  const tags = useMemo(() => {
-    const map = new Map<string, IndexedDocument[]>();
-    for (const d of liveIndex)
-      for (const tag of documentReferences(d.content).tags)
-        map.set(tag, [...(map.get(tag) || []), d]);
-    return [...map].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [liveIndex]);
-  const incoming = useMemo(
-    () => backlinks(p.current.path || p.current.id, liveIndex),
-    [liveIndex, p.current.path, p.current.id],
+  const indexTab = p.tab === 'backlinks' || p.tab === 'tags' || p.tab === 'graph';
+  const [indexEpoch, setIndexEpoch] = useState(0);
+  const [indexLoading, setIndexLoading] = useState(false);
+  const [indexError, setIndexError] = useState('');
+  const [limit, setLimit] = useState(100);
+  const [openTags, setOpenTags] = useState<Set<string>>(new Set());
+  const [tagLimits, setTagLimits] = useState<Record<string, number>>({});
+  useEffect(() => {
+    setLimit(100);
+  }, [p.tab, filter, p.root]);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const invalidated = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => setIndexEpoch((v) => v + 1), 250);
+    };
+    window.addEventListener('markwrite-index-invalidated', invalidated);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('markwrite-index-invalidated', invalidated);
+    };
+  }, []);
+  useEffect(() => {
+    if (!indexTab) return;
+    let cancelled = false;
+    setIndexLoading(true);
+    setIndexError('');
+    const request = desktop && p.root ? workspaceDocuments(p.root) : Promise.resolve([]);
+    void request
+      .then((files) => {
+        if (!cancelled) setIndex(files);
+      })
+      .catch((e) => {
+        if (!cancelled) setIndexError(error(e));
+      })
+      .finally(() => {
+        if (!cancelled) setIndexLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [indexTab, p.root, revision, indexEpoch]);
+  useEffect(() => {
+    setIndex([]);
+    setOpenTags(new Set());
+    setTagLimits({});
+    setMessage('');
+  }, [p.root]);
+  const buffers = useMemo(
+    () => p.docs.map((d) => ({ path: d.path || d.id, content: d.content, name: d.name })),
+    [p.docs],
   );
+  const indexed = useReferenceIndex(index, buffers, p.current.path || p.current.id, indexTab);
+  const tags = indexed.result.tags;
+  const incoming = indexed.result.incoming;
+  const waiting = loading || (indexTab && (indexLoading || indexed.pending));
   const toggle = (path: string) =>
     setSelected((old) => (old.includes(path) ? old.filter((x) => x !== path) : [...old, path]));
-  async function run(action: () => Promise<void>) {
+  async function run(action: (isCurrent: () => boolean) => Promise<void>) {
+    const request = ++actionSequence.current;
+    const isCurrent = () =>
+      mounted.current && latestScope.current === scope && request === actionSequence.current;
     setProblem('');
     setLoading(true);
     try {
-      await action();
+      await action(isCurrent);
     } catch (e) {
-      setProblem(error(e));
+      if (isCurrent() && !(e instanceof DOMException && e.name === 'AbortError'))
+        setProblem(error(e));
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }
   const isReferenced = (asset: Attachment) =>
@@ -169,7 +221,7 @@ export default function WorkspacePanel(p: Props) {
       setConfirmTrash(false);
       return;
     }
-    await run(async () => {
+    await run(async (isCurrent) => {
       if (p.tab === 'attachments' && p.root) {
         const fresh = await invoke<Attachment[]>('attachment_inventory', { path: p.root });
         if (fresh.some((a) => selected.includes(a.path) && isReferenced(a)))
@@ -180,22 +232,30 @@ export default function WorkspacePanel(p: Props) {
         { paths: selected },
       );
       p.onTrashed(result.moved);
-      p.onRefresh();
-      setRevision((v) => v + 1);
-      if (result.failures.length)
-        setProblem(result.failures.map((f) => `${fileName(f.path)}：${f.error}`).join('\n'));
+      if (isCurrent()) {
+        p.onRefresh();
+        setRevision((v) => v + 1);
+        setConfirmTrash(false);
+        if (result.failures.length)
+          setProblem(result.failures.map((f) => `${fileName(f.path)}：${f.error}`).join('\n'));
+      }
       if (result.moved.length)
         p.onNotify(
           t('已将 {0} 项移到系统回收站，可从回收站恢复。', undefined, [result.moved.length]),
         );
     });
-    setConfirmTrash(false);
   }
   return (
     <aside className="workspace-panel" aria-label={t('文档工具面板')}>
       <div className="workspace-title">
         <strong>{t(labels[p.tab])}</strong>
-        <button aria-label={t('刷新面板')} onClick={() => setRevision((v) => v + 1)}>
+        <button
+          aria-label={t('刷新面板')}
+          onClick={() => {
+            invalidateWorkspaceIndex();
+            setRevision((v) => v + 1);
+          }}
+        >
           <RefreshCw size={15} />
         </button>
         <button aria-label={t('关闭工具面板')} onClick={p.onClose}>
@@ -210,7 +270,18 @@ export default function WorkspacePanel(p: Props) {
         ))}
       </div>
       <div className="workspace-body">
-        {loading && <p role="status">{t('正在读取…')}</p>}
+        {waiting && (
+          <p role="status">
+            {indexTab
+              ? t('正在后台更新索引…', 'Updating index in the background…')
+              : t('正在读取…')}
+          </p>
+        )}
+        {indexTab && (indexError || indexed.error) && (
+          <p className="panel-error" role="alert">
+            {indexError || indexed.error}
+          </p>
+        )}
         {problem && (
           <p className="panel-error" role="alert">
             {problem}
@@ -237,11 +308,13 @@ export default function WorkspacePanel(p: Props) {
                 className="panel-list-item"
                 key={h.id}
                 onClick={() =>
-                  void run(async () =>
-                    setSelectedHistory(
-                      await invoke<DiskFile>('history_read', { path: p.current.path, id: h.id }),
-                    ),
-                  )
+                  void run(async (isCurrent) => {
+                    const version = await invoke<DiskFile>('history_read', {
+                      path: p.current.path,
+                      id: h.id,
+                    });
+                    if (isCurrent()) setSelectedHistory(version);
+                  })
                 }
               >
                 <span>{new Date(h.createdAt).toLocaleString(language)}</span>
@@ -265,19 +338,24 @@ export default function WorkspacePanel(p: Props) {
         {p.tab === 'backlinks' && (
           <>
             <p className="panel-note">{t('引用当前文档的页面。工作区未保存的文字也参与索引。')}</p>
-            {!loading && !incoming.length && (
+            {!waiting && !incoming.length && (
               <p>
                 {t('还没有其他文档链接到这里。可通过“插入链接”选择工作区文档，或输入 [[文档名]]。')}
               </p>
             )}
-            {incoming.map((d) => (
+            {incoming.slice(0, limit).map((d) => (
               <button className="panel-list-item" key={d.path} onClick={() => p.onOpen(d.path)}>
                 <FileText size={15} />
                 <span>{d.name || fileName(d.path)}</span>
               </button>
             ))}
+            {incoming.length > limit && (
+              <button className="panel-wide" onClick={() => setLimit((v) => v + 100)}>
+                {t('显示更多', 'Show more')} ({incoming.length - limit})
+              </button>
+            )}
             <h4>{t('本文链接')}</h4>
-            {documentReferences(p.current.content).links.map((l, i) => (
+            {indexed.result.outgoing.slice(0, limit).map((l, i) => (
               <p className="panel-note" key={i}>
                 {l.wiki ? t('双链') : t('链接')} · {l.target}
               </p>
@@ -286,7 +364,8 @@ export default function WorkspacePanel(p: Props) {
         )}
         {p.tab === 'graph' && (
           <LinkGraph
-            documents={liveIndex}
+            documents={[]}
+            preparedGraph={indexed.result.graph}
             currentPath={p.current.path || p.current.id}
             onOpen={p.onOpen}
           />
@@ -301,23 +380,51 @@ export default function WorkspacePanel(p: Props) {
             />
             {tags
               .filter(([tag]) => tag.includes(filter))
+              .slice(0, limit)
               .map(([tag, documents]) => (
-                <details key={tag} open>
+                <details
+                  key={tag}
+                  open={openTags.has(tag)}
+                  onToggle={(e) => {
+                    const open = e.currentTarget.open;
+                    setOpenTags((old) => {
+                      if (old.has(tag) === open) return old;
+                      const next = new Set(old);
+                      if (open) next.add(tag);
+                      else next.delete(tag);
+                      return next;
+                    });
+                  }}
+                >
                   <summary>
                     #{tag} <small>{documents.length}</small>
                   </summary>
-                  {documents.map((d) => (
+                  {openTags.has(tag) &&
+                    documents.slice(0, tagLimits[tag] || 100).map((d) => (
+                      <button
+                        key={d.path}
+                        className="panel-list-item"
+                        onClick={() => p.onOpen(d.path)}
+                      >
+                        {d.name || fileName(d.path)}
+                      </button>
+                    ))}
+                  {openTags.has(tag) && documents.length > (tagLimits[tag] || 100) && (
                     <button
-                      key={d.path}
-                      className="panel-list-item"
-                      onClick={() => p.onOpen(d.path)}
+                      className="panel-wide"
+                      onClick={() => setTagLimits((v) => ({ ...v, [tag]: (v[tag] || 100) + 100 }))}
                     >
-                      {d.name || fileName(d.path)}
+                      {t('显示更多', 'Show more')}
                     </button>
-                  ))}
+                  )}
                 </details>
               ))}
-            {!loading && !tags.length && (
+            {tags.filter(([tag]) => tag.includes(filter)).length > limit && (
+              <button className="panel-wide" onClick={() => setLimit((v) => v + 100)}>
+                {t('显示更多标签', 'Show more tags')}
+              </button>
+            )}
+            {!waiting && !tags.length && (
               <p>{t('在正文中写下 #标签 即可归类。代码中的 # 不会被算作标签。')}</p>
             )}
           </>
@@ -361,7 +468,8 @@ export default function WorkspacePanel(p: Props) {
           <>
             <p className="panel-note">
               {t(
-                '可批量移到回收站。文件夹重命名会更新打开文档的路径，不会自动改写其他文档中的链接。',
+                '可批量移到回收站。重命名或移动前，可预览并选择需要更新的文档引用。',
+                'Move files to the trash in batches. Before renaming or moving, preview and select the document references to update.',
               )}
             </p>
             <input
@@ -372,6 +480,7 @@ export default function WorkspacePanel(p: Props) {
             />
             {allFiles
               .filter((f) => f.name.includes(filter))
+              .slice(0, limit)
               .map((f) => (
                 <div className="managed-file" key={f.path}>
                   <label>
@@ -384,22 +493,29 @@ export default function WorkspacePanel(p: Props) {
                     <span>{f.name}</span>
                   </label>
                   <button
-                    disabled={!desktop}
+                    disabled={!desktop || loading}
                     onClick={() => setRename({ path: f.path, name: f.name })}
                   >
                     {t('重命名')}
                   </button>
                 </div>
               ))}
+            {allFiles.filter((f) => f.name.includes(filter)).length > limit && (
+              <button className="panel-wide" onClick={() => setLimit((v) => v + 100)}>
+                {t('显示更多文件', 'Show more files')}
+              </button>
+            )}
             {rename && (
               <form
                 className="panel-form"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  void run(async () => {
+                  void run(async (isCurrent) => {
                     await p.onRename(rename.path, rename.name);
-                    p.onRefresh();
-                    setRename(undefined);
+                    if (isCurrent()) {
+                      p.onRefresh();
+                      setRename(undefined);
+                    }
                   });
                 }}
               >
@@ -408,7 +524,9 @@ export default function WorkspacePanel(p: Props) {
                   value={rename.name}
                   onChange={(e) => setRename({ ...rename, name: e.target.value })}
                 />
-                <button type="submit">{t('确定')}</button>
+                <button type="submit" disabled={loading}>
+                  {t('确定')}
+                </button>
                 <button type="button" onClick={() => setRename(undefined)}>
                   {t('取消')}
                 </button>
@@ -435,9 +553,9 @@ export default function WorkspacePanel(p: Props) {
                 <p>{t('这个文件夹还没有 Git 仓库。')}</p>
                 <button
                   onClick={() =>
-                    void run(async () => {
+                    void run(async (isCurrent) => {
                       await invoke('git_init', { path: p.root });
-                      setRevision((v) => v + 1);
+                      if (isCurrent()) setRevision((v) => v + 1);
                     })
                   }
                 >
@@ -464,11 +582,13 @@ export default function WorkspacePanel(p: Props) {
                     />
                     <button
                       onClick={() =>
-                        void run(async () =>
-                          setGitDiff(
-                            await invoke<string>('git_diff', { path: p.root, file: entry.path }),
-                          ),
-                        )
+                        void run(async (isCurrent) => {
+                          const diff = await invoke<string>('git_diff', {
+                            path: p.root,
+                            file: entry.path,
+                          });
+                          if (isCurrent()) setGitDiff(diff);
+                        })
                       }
                     >
                       <code>
@@ -495,16 +615,18 @@ export default function WorkspacePanel(p: Props) {
                   className="primary panel-wide"
                   disabled={!selected.length || !message.trim() || loading}
                   onClick={() =>
-                    void run(async () => {
+                    void run(async (isCurrent) => {
                       const id = await invoke<string>('git_commit', {
                         path: p.root,
                         paths: selected,
                         message,
                       });
                       p.onNotify(t('已创建本地提交 {0}', undefined, [id.slice(0, 8)]));
-                      setMessage('');
-                      setGitDiff('');
-                      setRevision((v) => v + 1);
+                      if (isCurrent()) {
+                        setMessage('');
+                        setGitDiff('');
+                        setRevision((v) => v + 1);
+                      }
                     })
                   }
                 >

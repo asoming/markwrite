@@ -1,4 +1,14 @@
-import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
+import ThemeManager from './ThemeManager';
+import UpdatePanel from './UpdatePanel';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ReactNode,
+  type CSSProperties,
+  type KeyboardEvent,
+} from 'react';
 import { Check, FileText, Globe, Image, Palette, Type, X } from 'lucide-react';
 import { defaultSettings } from '../lib/recovery';
 import { resolveTheme, themeOptions, themeDefaults } from '../lib/themes';
@@ -13,6 +23,7 @@ export type SettingsPanelProps = {
   onDefaultApp: () => Promise<DefaultAppResult>;
   onCheckDefaultApp?: () => Promise<boolean | null>;
   defaultAppAvailable?: boolean;
+  filesExtra?: ReactNode;
 };
 type Category = 'files' | 'editor' | 'images' | 'appearance' | 'general';
 
@@ -23,6 +34,7 @@ export default function SettingsPanel({
   onDefaultApp,
   onCheckDefaultApp,
   defaultAppAvailable = true,
+  filesExtra,
 }: SettingsPanelProps) {
   const [category, setCategory] = useState<Category>('general');
   const [association, setAssociation] = useState<boolean | null>(null);
@@ -275,6 +287,7 @@ export default function SettingsPanel({
                 </section>
               </>
             )}
+            {category === 'general' && <UpdatePanel language={settings.language} />}
             {category === 'files' && (
               <>
                 <section className="preferences-section">
@@ -409,6 +422,7 @@ export default function SettingsPanel({
                 </section>
               </>
             )}
+            {category === 'files' && filesExtra}
             {category === 'editor' && (
               <>
                 <section className="preferences-section">
@@ -587,6 +601,7 @@ export default function SettingsPanel({
                 </p>
               </section>
             )}
+            {category === 'appearance' && <ThemeManager language={settings.language} />}
             {category === 'appearance' && (
               <>
                 <section className="preferences-section">

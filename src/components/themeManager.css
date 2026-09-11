@@ -1,0 +1,148 @@
+.theme-manager-heading,
+.theme-preview-heading,
+.theme-manager-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.theme-manager-heading h4 {
+  margin-right: auto;
+  margin-bottom: 0;
+}
+.theme-manager-heading .preference-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.theme-file-input {
+  display: none;
+}
+.theme-manager-list {
+  display: grid;
+  gap: 5px;
+  margin: 15px 0;
+}
+.theme-manager-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.theme-manager-item > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.theme-manager-item small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+}
+.theme-manager-item button {
+  display: grid;
+  place-items: center;
+  padding: 6px;
+  border-radius: 4px;
+}
+.theme-manager-item button:hover {
+  background: var(--hover);
+}
+.theme-manager-item button:disabled {
+  opacity: 0.45;
+}
+.theme-manager-error {
+  color: var(--danger, #bd342e);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.theme-manager-status {
+  color: var(--accent);
+  font-size: 13px;
+}
+.theme-manager-preview {
+  margin: 18px 0;
+}
+.theme-preview-heading {
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-size: 12px;
+}
+.theme-preview-heading button,
+.theme-clear {
+  color: var(--muted);
+  font-size: 12px;
+}
+.theme-name-field {
+  margin-bottom: 16px;
+}
+.theme-import-notices {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  padding-left: 18px;
+}
+.theme-preview-frame {
+  height: 340px;
+  overflow: auto;
+  contain: paint;
+  isolation: isolate;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--paper);
+}
+.theme-preview-document {
+  font-family: var(--body-font);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.7;
+  padding: 24px;
+  min-height: 100%;
+  overflow-wrap: anywhere;
+}
+.theme-preview-document h1 {
+  font-size: 26px;
+  margin: 0 0 20px;
+}
+.theme-preview-document h2 {
+  font-size: 20px;
+  margin: 24px 0 12px;
+}
+.theme-preview-document p {
+  margin: 12px 0;
+}
+.theme-preview-document blockquote {
+  margin: 15px 0;
+  padding-left: 14px;
+  border-left: 3px solid var(--border);
+}
+.theme-preview-document pre {
+  padding: 12px;
+  overflow: auto;
+  background: var(--code);
+}
+.theme-preview-document code {
+  font-family: var(--code-font);
+}
+.theme-preview-document table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.theme-preview-document th,
+.theme-preview-document td {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.theme-install {
+  margin-top: 12px;
+}
+.theme-manager-actions {
+  margin-top: 16px;
+  font-size: 12px;
+}

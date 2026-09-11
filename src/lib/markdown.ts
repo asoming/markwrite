@@ -230,8 +230,9 @@ export function getHeadings(content: string): Heading[] {
   return headings;
 }
 export function wordCount(content: string) {
+  const text = content.replace(/data:image\/[a-z\d.+-]+;base64,[a-z\d+/=]+/gi, '');
   return (
-    content.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]|[\p{L}\p{N}]+/gu) || []
+    text.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]|[\p{L}\p{N}]+/gu) || []
   ).length;
 }
 export function normalizeContent(text: string) {

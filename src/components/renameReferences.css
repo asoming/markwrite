@@ -1,0 +1,223 @@
+.reference-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 145;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--overlay);
+}
+.reference-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(1060px, 100%);
+  max-height: calc(100dvh - 48px);
+  overflow: hidden;
+  padding: 22px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.reference-dialog-heading {
+  display: flex;
+  gap: 15px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.reference-dialog-heading > div {
+  min-width: 0;
+}
+.reference-dialog-heading h2 {
+  font-size: 18px;
+  margin: 0 0 9px;
+}
+.reference-dialog-heading p {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.reference-dialog-heading p span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reference-dialog-heading > button {
+  padding: 4px;
+}
+.reference-dialog-intro {
+  margin: 14px 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.reference-review-body {
+  display: grid;
+  grid-template-columns: 265px minmax(0, 1fr);
+  min-height: 220px;
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.reference-files {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+}
+.reference-select-all {
+  padding: 10px;
+  display: flex;
+  gap: 7px;
+  border-bottom: 1px solid var(--border);
+}
+.reference-files input {
+  accent-color: var(--accent);
+}
+.reference-files-list {
+  overflow: auto;
+  flex: 1;
+}
+.reference-file {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding-left: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.reference-file.is-active {
+  background: var(--accent-bg);
+}
+.reference-file > button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px 8px;
+  text-align: left;
+}
+.reference-file > button > span {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reference-file small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.reference-file i {
+  font-size: 11px;
+  font-style: normal;
+  color: var(--muted);
+}
+.reference-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  padding: 8px;
+  font-size: 11px;
+}
+.reference-pagination button {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+}
+.reference-diff {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: auto;
+  max-height: 55dvh;
+}
+.reference-diff-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.reference-diff-heading span {
+  color: var(--muted);
+  font-size: 11px;
+}
+.reference-diff > .diff-view {
+  margin: 0;
+  flex: 1;
+  padding: 12px;
+  font-size: 12px;
+}
+.reference-warnings {
+  margin: 0 0 12px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  max-height: 25dvh;
+  overflow: auto;
+  color: var(--muted);
+}
+.reference-warnings summary {
+  cursor: pointer;
+}
+.reference-warnings ul {
+  margin: 10px 0;
+  padding-left: 18px;
+}
+.reference-warnings li {
+  margin: 8px 0;
+  line-height: 1.6;
+}
+.reference-warnings code {
+  margin: 0 8px;
+  overflow-wrap: anywhere;
+}
+.reference-dialog-error {
+  color: #b64f3d;
+  line-height: 1.5;
+}
+.reference-empty {
+  padding: 25px 0;
+  color: var(--muted);
+}
+.reference-dialog-footer {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-top: 18px;
+}
+.reference-dialog-footer > span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+.reference-dialog-footer > button {
+  padding: 8px 13px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.reference-dialog-footer > .primary-button {
+  color: var(--paper);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+@media (max-width: 800px) {
+  .reference-dialog {
+    padding: 16px;
+  }
+  .reference-review-body {
+    grid-template-columns: 205px minmax(0, 1fr);
+  }
+  .reference-dialog-footer > span {
+    max-width: 220px;
+    line-height: 1.5;
+  }
+}

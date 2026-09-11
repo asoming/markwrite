@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { inflateRawSync } from 'node:zlib';
 import { resolve } from 'node:path';
-import { buildDocx, buildPdf, collectExportBlocks, pdfDefinition } from '../src/lib/export';
+import {
+  buildDocx,
+  buildPdf,
+  collectExportBlocks,
+  pdfDefinition,
+  exportPageLayout,
+} from '../src/lib/export';
 import { renderMarkdown } from '../src/lib/markdown';
 import { formulaSvg } from '../src/lib/exportMath';
 
@@ -110,6 +116,89 @@ describe('offline document exports', () => {
       pdfDefinition([{ kind: 'paragraph', runs: [{ kind: 'text', text: '你好😀' }] }], '测试'),
     ).toThrow('😀');
   });
+
+  it('preserves explicit image dimensions and derives the missing side from its aspect ratio', async () => {
+    const explicit = await collectExportBlocks(
+      article(`<p><img src="${png}" width="320" height="160"></p>`),
+    );
+    expect(explicit).toMatchObject([{ kind: 'paragraph', runs: [{ width: 320, height: 160 }] }]);
+    const widthOnly = await collectExportBlocks(article(`<p><img src="${png}" width="240"></p>`));
+    expect(widthOnly).toMatchObject([{ kind: 'paragraph', runs: [{ width: 240, height: 240 }] }]);
+    const heightOnly = await collectExportBlocks(article(`<p><img src="${png}" height="120"></p>`));
+    expect(heightOnly).toMatchObject([{ kind: 'paragraph', runs: [{ width: 120, height: 120 }] }]);
+  });
+
+  it('uses requested paper and margins, rejects impossible layouts, and checks added PDF text', () => {
+    expect(exportPageLayout({ paper: 'LETTER' })).toMatchObject({ width: 612, height: 792 });
+    expect(exportPageLayout({ paper: 'A5' }).width).toBeCloseTo(419.53);
+    const margins = { top: 20, right: 18, bottom: 22, left: 24 };
+    const definition = pdfDefinition([], 'Title.md', { paper: 'A5', margins, pageNumbers: false });
+    expect(definition.pageSize).toBe('A5');
+    [24, 20, 18, 22].forEach((value, index) =>
+      expect((definition.pageMargins as number[])[index]).toBeCloseTo((value * 72) / 25.4),
+    );
+    expect(definition.footer).toBeUndefined();
+    expect(() => exportPageLayout({ margins: { ...margins, left: 100 } })).toThrow('12–40');
+    expect(() => exportPageLayout({ margins: { ...margins, left: NaN } })).toThrow('12–40');
+    expect(() => pdfDefinition([], 'Title', { header: '😀' })).toThrow('😀');
+    expect(() => pdfDefinition([], 'Title', { cover: true, coverSubtitle: '😀' })).toThrow('😀');
+  });
+
+  it('generates real A5 pages with a cover, page-numbered PDF contents and linked DOCX contents', async () => {
+    const blocks = await collectExportBlocks(
+      article(renderMarkdown('# 第一章\n\n文档正文。\n\n## 第二节\n\n更多正文。')),
+    );
+    const options = {
+      paper: 'A5' as const,
+      margins: { top: 20, right: 18, bottom: 22, left: 24 },
+      header: '页眉 / Header',
+      footer: '页脚 / Footer',
+      cover: true,
+      coverSubtitle: '封面副标题',
+      toc: true,
+      language: 'en' as const,
+    };
+    const fonts = Object.fromEntries(
+      ['Regular', 'Bold'].map((weight) => [
+        `NotoSansCJKsc-${weight}.otf`,
+        readFileSync(resolve(`public/fonts/NotoSansCJKsc-${weight}.otf`)).toString('base64'),
+      ]),
+    );
+    const pdf = await buildPdf(blocks, 'Layout.md', options, fonts);
+    const pdfText = Buffer.from(pdf).toString('latin1');
+    expect(pdfText).toContain('/MediaBox [0 0 419.53 595.28]');
+    expect((pdfText.match(/\/Type \/Page\b/g) || []).length).toBe(3);
+    const files = unzip(await buildDocx(blocks, 'Layout.md', options));
+    const xml = files.get('word/document.xml')!;
+    expect(xml).toContain('封面副标题');
+    expect(xml).toContain('Contents');
+    expect(xml).toContain('w:anchor="heading_0"');
+    expect(xml).toContain('w:name="heading_0"');
+    expect(xml).toContain('w:w="8391"');
+    expect(xml).toContain('w:h="11906"');
+    expect(xml).toContain('w:left="1361"');
+    expect(xml).toContain('<w:titlePg');
+    expect(
+      [...files]
+        .filter(([name]) => /^word\/header/.test(name))
+        .some(([, xml]) => xml.includes('页眉 / Header')),
+    ).toBe(true);
+    expect(
+      [...files]
+        .filter(([name]) => /^word\/footer/.test(name))
+        .some(([, xml]) => xml.includes('页脚 / Footer') && xml.includes('NUMPAGES')),
+    ).toBe(true);
+    const noFooter = unzip(await buildDocx(blocks, 'Plain.md', { pageNumbers: false }));
+    expect([...noFooter.keys()].some((name) => /^word\/footer\d/.test(name))).toBe(false);
+    if (process.env.MARKWRITE_EXPORT_FIXTURES) {
+      mkdirSync(process.env.MARKWRITE_EXPORT_FIXTURES, { recursive: true });
+      writeFileSync(resolve(process.env.MARKWRITE_EXPORT_FIXTURES, 'layout-a5.pdf'), pdf);
+      writeFileSync(
+        resolve(process.env.MARKWRITE_EXPORT_FIXTURES, 'layout-a5.docx'),
+        await buildDocx(blocks, 'Layout.md', options),
+      );
+    }
+  }, 30000);
 
   it('creates actual paginated Chinese PDF and editable OOXML DOCX with vector diagrams', async () => {
     const source =

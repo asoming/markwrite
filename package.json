@@ -1,7 +1,7 @@
 {
   "name": "markwrite",
   "private": true,
-  "version": "0.3.2",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -31,7 +31,11 @@
     "mammoth": "^1.12.2",
     "marked": "^15.0.0",
     "mermaid": "^11.4.0",
+    "pdfjs-dist": "^5.7.284",
     "pdfmake": "^0.2.20",
+    "postcss": "^8.5.28",
+    "postcss-selector-parser": "^7.1.6",
+    "postcss-value-parser": "^4.2.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "turndown": "^7.2.4",
