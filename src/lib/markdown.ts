@@ -3,36 +3,96 @@ import DOMPurify from 'dompurify';
 import katex from 'katex';
 import type { Heading } from './types';
 
-export const escapeHtml = (value: string) => value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
-export const slug = (text: string) => text.toLowerCase().replace(/<[^>]*>/g, '').replace(/[^\p{L}\p{N}\s_-]/gu, '').trim().replace(/\s+/g, '-') || 'section';
+export const escapeHtml = (value: string) =>
+  value.replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
+  );
+export const slug = (text: string) =>
+  text
+    .toLowerCase()
+    .replace(/<[^>]*>/g, '')
+    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
+    .trim()
+    .replace(/\s+/g, '-') || 'section';
 export const md = new Marked({ gfm: true, breaks: false });
-md.use({ extensions: [
-  { name: 'blockMath', level: 'block', start: s => s.indexOf('$$'),
-    tokenizer(s) { const m = /^\$\$[ \t]*\n?([\s\S]+?)\n?\$\$[ \t]*(?:\n|$)/.exec(s); if (m) return { type: 'blockMath', raw: m[0], text: m[1] }; },
-    renderer(t) { return math(t.text, true); } },
-  { name: 'inlineMath', level: 'inline', start: s => s.indexOf('$'),
-    tokenizer(s) { const m = /^\$(?!\s|\$)((?:\\.|[^$\n])+?)(?<!\s)\$(?!\d)/.exec(s); if (m) return { type: 'inlineMath', raw: m[0], text: m[1] }; },
-    renderer(t) { return math(t.text, false); } },
-] });
+md.use({
+  extensions: [
+    {
+      name: 'blockMath',
+      level: 'block',
+      start: (s) => s.indexOf('$$'),
+      tokenizer(s) {
+        const m = /^\$\$[ \t]*\n?([\s\S]+?)\n?\$\$[ \t]*(?:\n|$)/.exec(s);
+        if (m) return { type: 'blockMath', raw: m[0], text: m[1] };
+      },
+      renderer(t) {
+        return math(t.text, true);
+      },
+    },
+    {
+      name: 'inlineMath',
+      level: 'inline',
+      start: (s) => s.indexOf('$'),
+      tokenizer(s) {
+        const m = /^\$(?!\s|\$)((?:\\.|[^$\n])+?)(?<!\s)\$(?!\d)/.exec(s);
+        if (m) return { type: 'inlineMath', raw: m[0], text: m[1] };
+      },
+      renderer(t) {
+        return math(t.text, false);
+      },
+    },
+  ],
+});
 function math(text: string, displayMode: boolean) {
-  try { return katex.renderToString(text, { displayMode, throwOnError: true, trust: false, strict: 'ignore', output: 'html' }); }
-  catch { return `<code class="math-error" title="公式语法有误">${escapeHtml(text)}</code>`; }
+  try {
+    return katex.renderToString(text, {
+      displayMode,
+      throwOnError: true,
+      trust: false,
+      strict: 'ignore',
+      output: 'html',
+    });
+  } catch {
+    return `<code class="math-error" title="公式语法有误">${escapeHtml(text)}</code>`;
+  }
 }
-md.use({ renderer: {
-  code(token) {
-    if (token.lang === 'mermaid') return `<div class="diagram" data-diagram="${escapeHtml(token.text)}"><pre>${escapeHtml(token.text)}</pre></div>`;
-    return `<pre><code class="language-${escapeHtml(token.lang || 'text')}">${escapeHtml(token.text)}</code></pre>`;
+md.use({
+  renderer: {
+    html(token) {
+      return DOMPurify.sanitize(token.text, {
+        USE_PROFILES: { html: true },
+        FORBID_TAGS: ['style', 'form', 'input', 'iframe', 'object', 'embed'],
+        FORBID_ATTR: ['style', 'srcset'],
+      });
+    },
+    checkbox(token) {
+      return `<span class="task-check ${token.checked ? 'checked' : ''}" aria-label="${token.checked ? '已完成' : '未完成'}">${token.checked ? '✓' : ''}</span>`;
+    },
+    code(token) {
+      if (token.lang === 'mermaid')
+        return `<div class="diagram" data-diagram="${encodeURIComponent(token.text)}"><pre>${escapeHtml(token.text)}</pre></div>`;
+      return `<pre><code class="language-${escapeHtml(token.lang || 'text')}">${escapeHtml(token.text)}</code></pre>`;
+    },
   },
-} });
+});
 export function renderMarkdown(source: string): string {
   const html = md.parse(source.replace(/^\uFEFF/, '')) as string;
-  const safe = DOMPurify.sanitize(html, { ADD_ATTR: ['data-diagram'], FORBID_TAGS: ['style', 'form', 'input', 'iframe', 'object', 'embed', 'video', 'audio'], FORBID_ATTR: ['srcset'] });
-  const template = document.createElement('template'); template.innerHTML = safe;
-  const counts = new Map<string, number>();
-  template.content.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h => {
-    const base = slug(h.textContent || ''); const n = counts.get(base) || 0; counts.set(base, n + 1); h.id = n ? `${base}-${n}` : base;
+  const safe = DOMPurify.sanitize(html, {
+    ADD_ATTR: ['data-diagram'],
+    FORBID_TAGS: ['style', 'form', 'input', 'iframe', 'object', 'embed', 'video', 'audio'],
+    FORBID_ATTR: ['srcset'],
   });
-  template.content.querySelectorAll('img').forEach(img => {
+  const template = document.createElement('template');
+  template.innerHTML = safe;
+  const counts = new Map<string, number>();
+  template.content.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((h) => {
+    const base = slug(h.textContent || '');
+    const n = counts.get(base) || 0;
+    counts.set(base, n + 1);
+    h.id = n ? `${base}-${n}` : base;
+  });
+  template.content.querySelectorAll('img').forEach((img) => {
     const src = img.getAttribute('src') || '';
     if (!/^data:image\/(png|jpe?g|gif|webp|avif|bmp);base64,/i.test(src)) {
       img.removeAttribute('src');
@@ -41,7 +101,9 @@ export function renderMarkdown(source: string): string {
       img.classList.add('pending-image');
     }
   });
-  template.content.querySelectorAll('a').forEach(a => { a.rel = 'noreferrer noopener'; });
+  template.content.querySelectorAll('a').forEach((a) => {
+    a.rel = 'noreferrer noopener';
+  });
   return template.innerHTML;
 }
 let diagramCounter = 0;
@@ -49,33 +111,69 @@ export async function hydrateDiagrams(root: HTMLElement) {
   const nodes = [...root.querySelectorAll<HTMLElement>('[data-diagram]')];
   if (!nodes.length) return;
   const { default: mermaid } = await import('mermaid');
-  mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'neutral', fontFamily: 'sans-serif', suppressErrorRendering: true });
+  mermaid.initialize({
+    startOnLoad: false,
+    securityLevel: 'strict',
+    htmlLabels: false,
+    flowchart: { htmlLabels: false },
+    theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'neutral',
+    fontFamily: 'sans-serif',
+    suppressErrorRendering: true,
+  });
   for (const node of nodes) {
     if (node.dataset.rendered) continue;
     node.dataset.rendered = 'true';
     try {
-      const { svg } = await mermaid.render(`diagram-${++diagramCounter}`, node.dataset.diagram || '');
-      if (root.contains(node)) node.innerHTML = DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true, svgFilters: true }, ADD_TAGS: ['foreignObject'], ADD_ATTR: ['dominant-baseline'] });
+      const { svg } = await mermaid.render(
+        `diagram-${++diagramCounter}`,
+        decodeURIComponent(node.dataset.diagram || ''),
+      );
+      if (root.contains(node))
+        node.innerHTML = DOMPurify.sanitize(svg, {
+          USE_PROFILES: { svg: true, svgFilters: true, html: true },
+          ADD_TAGS: ['foreignObject'],
+          ADD_ATTR: ['dominant-baseline'],
+        });
     } catch {
-      if (root.contains(node)) { node.classList.add('diagram-error'); node.title = '图表语法有误，请检查源码'; }
+      if (root.contains(node)) {
+        node.classList.add('diagram-error');
+        node.title = '图表语法有误，请检查源码';
+      }
     }
   }
 }
 export function getHeadings(content: string): Heading[] {
-  const headings: Heading[] = []; let offset = 0;
+  const headings: Heading[] = [];
+  let offset = 0;
   const counts = new Map<string, number>();
   for (const token of md.lexer(content)) {
     if (token.type === 'heading') {
-      const text = token.text.replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').replace(/[*_`~]/g, '');
-      const base = slug(text); const n = counts.get(base) || 0; counts.set(base, n + 1);
-      headings.push({ level: token.depth, text, line: content.slice(0, offset).split('\n').length, id: n ? `${base}-${n}` : base });
+      const text = token.text
+        .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+        .replace(/[*_`~]/g, '');
+      const base = slug(text);
+      const n = counts.get(base) || 0;
+      counts.set(base, n + 1);
+      headings.push({
+        level: token.depth,
+        text,
+        line: content.slice(0, offset).split('\n').length,
+        id: n ? `${base}-${n}` : base,
+      });
     }
     offset += token.raw.length;
   }
   return headings;
 }
 export function wordCount(content: string) {
-  return (content.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]|[\p{L}\p{N}]+/gu) || []).length;
+  return (
+    content.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]|[\p{L}\p{N}]+/gu) || []
+  ).length;
 }
-export function normalizeContent(text: string) { return text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n'); }
-export function serializeContent(text: string, bom: boolean, crlf: boolean) { return (bom ? '\uFEFF' : '') + (crlf ? text.replace(/\r?\n/g, '\r\n') : text); }
+export function normalizeContent(text: string) {
+  return text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n');
+}
+export function serializeContent(text: string, bom: boolean, crlf: boolean) {
+  return (bom ? '\uFEFF' : '') + (crlf ? text.replace(/\r?\n/g, '\r\n') : text);
+}

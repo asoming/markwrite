@@ -1,0 +1,9 @@
+node_modules
+dist
+bin
+src-tauri/target
+src-tauri/gen
+src-tauri/icons
+.playwright-cli
+package-lock.json
+docs/PRD.md

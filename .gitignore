@@ -4,3 +4,8 @@ src-tauri/target/
 .vite/
 *.log
 output/playwright/
+
+.playwright-cli/
+*.tsbuildinfo
+src-tauri/gen/
+bin/

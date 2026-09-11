@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=墨页 Markwrite
+Comment=本地优先的 Markdown 编辑器
+Exec=markwrite %F
+Icon=markwrite
+Terminal=false
+Categories=Office;Utility;TextEditor;
+MimeType=text/markdown;text/x-markdown;
+StartupNotify=true
+StartupWMClass=markwrite

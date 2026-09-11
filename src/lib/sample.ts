@@ -10,7 +10,7 @@ export const welcome = `# 好的想法，值得写下来。
 
 - **打开文件**，继续你正在写的故事
 - **打开文件夹**，把整个项目放在手边
-- 按下 `Ctrl + K`，找到你需要的操作
+- 按下 \`Ctrl + K\`，找到你需要的操作
 
 ## 写作，也可以井井有条
 
@@ -30,12 +30,12 @@ export const welcome = `# 好的想法，值得写下来。
 
 支持代码、公式与图表。内容保存在普通 Markdown 文件里，随时可以用其他工具打开。
 
-```typescript
+\`\`\`typescript
 const idea = {
   title: '把想法变成文字',
   progress: '每天前进一点',
 };
-```
+\`\`\`
 
 $$
 E = mc^2
