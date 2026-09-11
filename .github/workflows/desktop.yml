@@ -74,6 +74,19 @@ jobs:
             $install = Start-Process -FilePath $installer -ArgumentList '/silent', '/install' -Wait -PassThru
             if (-not (Test-WebViewRuntime)) { throw "WebView2 runtime installation failed (exit $($install.ExitCode))" }
           }
+      - name: Install Windows package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem 'src-tauri/target/release/bundle/nsis/*-setup.exe' | Select-Object -First 1
+          if (-not $setup) { throw 'NSIS installer was not generated' }
+          $installDir = Join-Path $env:RUNNER_TEMP 'markwrite-install-smoke'
+          $install = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$installDir" -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "NSIS installation failed: $($install.ExitCode)" }
+          $installedExe = Join-Path $installDir 'markwrite.exe'
+          if (-not (Test-Path $installedExe)) { throw 'Installed application is missing' }
+          "MARKWRITE_SMOKE_EXE=$installedExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "MARKWRITE_SMOKE_DIR=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Windows launch and close smoke test
         if: runner.os == 'Windows'
         shell: pwsh
@@ -85,7 +98,7 @@ jobs:
             [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
           }
           '@
-          $app = Start-Process -FilePath "src-tauri/target/release/markwrite.exe" -PassThru
+          $app = Start-Process -FilePath $env:MARKWRITE_SMOKE_EXE -PassThru
           try {
             for ($attempt = 0; $attempt -lt 30; $attempt++) {
               Start-Sleep -Seconds 1
@@ -101,6 +114,14 @@ jobs:
           } finally {
             if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
           }
+      - name: Uninstall Windows test package
+        if: always() && runner.os == 'Windows' && env.MARKWRITE_SMOKE_DIR != ''
+        shell: pwsh
+        run: |
+          $uninstaller = Join-Path $env:MARKWRITE_SMOKE_DIR 'uninstall.exe'
+          if (-not (Test-Path $uninstaller)) { throw 'Uninstaller is missing' }
+          $remove = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
+          if ($remove.ExitCode -ne 0) { throw "NSIS removal failed: $($remove.ExitCode)" }
       - name: Keep installer
         uses: actions/upload-artifact@v4
         with:
