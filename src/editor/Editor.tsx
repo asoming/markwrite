@@ -19,7 +19,13 @@ import {
 } from '@codemirror/search';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
-import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
+import {
+  syntaxHighlighting,
+  defaultHighlightStyle,
+  bracketMatching,
+  HighlightStyle,
+} from '@codemirror/language';
+import { tags } from '@lezer/highlight';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
 import {
   documentPath,
@@ -75,6 +81,7 @@ function interfaceExtensions(language: 'zh-CN' | 'en') {
 }
 const syntaxExtensions = () => [
   syntaxHighlighting(defaultHighlightStyle),
+  syntaxHighlighting(HighlightStyle.define([{ tag: tags.heading, class: 'cm-syntax-heading' }])),
   markdown({ base: markdownLanguage, codeLanguages: languages }),
 ];
 export type EditorHandle = EditorView;

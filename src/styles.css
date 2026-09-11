@@ -540,6 +540,9 @@ input::placeholder {
   letter-spacing: -0.6px;
   line-height: 1.5;
 }
+.editor-host:not(.source-mode) .cm-syntax-heading:not(.cm-rich-strongemphasis) {
+  font-weight: inherit;
+}
 .cm-h1 {
   font-size: calc(var(--editor-size) * 1.92);
   padding-top: 0 !important;
