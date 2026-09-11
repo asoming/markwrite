@@ -1,0 +1,3 @@
+Copyright 2010-2012, Google Corporation
+Copyright 2014-2021, Adobe (http://www.adobe.com/).
+

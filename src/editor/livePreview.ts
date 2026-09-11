@@ -9,10 +9,13 @@ import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemir
 import { syntaxTree } from '@codemirror/language';
 import { md, renderMarkdown, hydrateDiagrams } from '../lib/markdown';
 import { assetData } from '../lib/platform';
+import katex from 'katex';
+import { inlineSyntaxRules, inlineMatch, syntaxInk } from '../lib/syntax';
 
 export const liveMode = Facet.define<boolean, boolean>({ combine: (values) => values[0] ?? true });
 export const documentPath = Facet.define<string, string>({ combine: (values) => values[0] || '' });
 export const compositionState = StateEffect.define<boolean>();
+export const syntaxChanged = StateEffect.define<null>();
 const composing = StateField.define({
   create: () => false,
   update: (v, tr) => {
@@ -63,6 +66,45 @@ class Bullet extends WidgetType {
     return span;
   }
 }
+class InlineMath extends WidgetType {
+  constructor(
+    readonly formula: string,
+    readonly position: number,
+  ) {
+    super();
+  }
+  eq(other: InlineMath) {
+    return this.formula === other.formula && this.position === other.position;
+  }
+  toDOM(view: EditorView) {
+    const span = document.createElement('span');
+    span.className = 'cm-inline-math';
+    span.title = '点击编辑公式';
+    span.setAttribute('aria-label', `公式 ${this.formula}`);
+    try {
+      span.innerHTML = katex.renderToString(this.formula, {
+        displayMode: false,
+        throwOnError: true,
+        trust: false,
+        strict: 'ignore',
+        output: 'html',
+      });
+    } catch {
+      span.classList.add('math-error');
+      span.textContent = this.formula;
+      span.title = '公式语法有误，点击修改';
+    }
+    span.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      view.dispatch({ selection: { anchor: this.position + 1 }, scrollIntoView: true });
+      view.focus();
+    });
+    return span;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
 class RenderedBlock extends WidgetType {
   constructor(
     readonly raw: string,
@@ -79,14 +121,74 @@ class RenderedBlock extends WidgetType {
     element.className = 'live-block markdown-body';
     element.innerHTML = renderMarkdown(this.raw);
     element.title = '点击编辑 Markdown 源码';
+    if (element.querySelector('table')) {
+      const tools = document.createElement('div');
+      tools.className = 'live-block-tools';
+      const button = document.createElement('button');
+      button.textContent = '编辑表格';
+      button.type = 'button';
+      button.title = '在表格窗口直接编辑单元格';
+      button.addEventListener('mousedown', (event) => event.preventDefault());
+      button.addEventListener('click', () =>
+        view.dom.dispatchEvent(
+          new CustomEvent('markwrite:edit-table', {
+            detail: { from: this.position, to: this.position + this.raw.length },
+            bubbles: true,
+          }),
+        ),
+      );
+      tools.appendChild(button);
+      element.prepend(tools);
+    }
     element.addEventListener('mousedown', (e) => {
-      if ((e.target as HTMLElement).closest('a')) return;
+      if ((e.target as HTMLElement).closest('a,button')) return;
       e.preventDefault();
       view.dispatch({ selection: { anchor: this.position }, scrollIntoView: true });
       view.focus();
     });
+    element.addEventListener('click', (event) => {
+      const anchor = (event.target as HTMLElement).closest('a');
+      if (!anchor) return;
+      event.preventDefault();
+      event.stopPropagation();
+      view.dom.dispatchEvent(
+        new CustomEvent('markwrite:follow-link', {
+          detail: anchor.getAttribute('href') || '',
+          bubbles: true,
+        }),
+      );
+    });
     void hydrateDiagrams(element).then(() => view.requestMeasure());
     for (const image of element.querySelectorAll<HTMLImageElement>('img[data-asset]')) {
+      const source = image.dataset.asset || '';
+      if (/^https?:\/\//i.test(source)) {
+        let url: URL;
+        try {
+          url = new URL(source);
+        } catch {
+          image.title = '网络图片地址无效，点击正文检查链接';
+          continue;
+        }
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'remote-image-load';
+        button.textContent = `加载网络图片（将访问 ${url.hostname}）`;
+        button.addEventListener('click', () => {
+          image.referrerPolicy = 'no-referrer';
+          image.onload = () => {
+            image.classList.remove('pending-image');
+            button.remove();
+            view.requestMeasure();
+          };
+          image.onerror = () => {
+            button.textContent = '图片加载失败，点击重试';
+            view.requestMeasure();
+          };
+          image.src = url.href;
+        });
+        image.after(button);
+        continue;
+      }
       if (!this.path) continue;
       void assetData(this.path, image.dataset.asset!)
         .then((src) => {
@@ -114,6 +216,7 @@ function build(state: EditorState): DecorationSet {
   const active = (from: number, to: number) => selected.some((r) => from <= r.to && to >= r.from);
   const entries: { from: number; to: number; deco: Decoration }[] = [];
   const blocks: { from: number; to: number }[] = [];
+  const mathExcluded: { from: number; to: number }[] = [];
   const add = (from: number, to: number, deco: Decoration) => {
     if (from <= to) entries.push({ from, to, deco });
   };
@@ -123,6 +226,7 @@ function build(state: EditorState): DecorationSet {
     offset += t.raw.length;
     const raw = t.raw.replace(/\n+$/, '');
     const to = from + raw.length;
+    if (['code', 'blockMath', 'html'].includes(t.type)) mathExcluded.push({ from, to });
     const render =
       t.type === 'table' ||
       t.type === 'hr' ||
@@ -144,6 +248,7 @@ function build(state: EditorState): DecorationSet {
   syntaxTree(state).iterate({
     enter(node) {
       const { from, to, name } = node;
+      if (['InlineCode', 'Link', 'Image', 'Escape'].includes(name)) mathExcluded.push({ from, to });
       if (blocks.some((b) => from >= b.from && from < b.to)) return false;
       const line = state.doc.lineAt(from);
       if (name === 'TaskMarker') {
@@ -192,6 +297,54 @@ function build(state: EditorState): DecorationSet {
       }
     },
   });
+  const source = state.doc.toString();
+  const customRanges: { from: number; to: number }[] = [];
+  for (const rule of inlineSyntaxRules()) {
+    let from = source.indexOf(rule.open);
+    while (from >= 0) {
+      let escaping = 0;
+      for (let n = from - 1; n >= 0 && source[n] === '\\'; n--) escaping++;
+      const match = escaping % 2 === 0 ? inlineMatch(source.slice(from), rule) : null;
+      if (match) {
+        const to = from + match.raw.length;
+        if (
+          !active(from, to) &&
+          ![...blocks, ...mathExcluded, ...customRanges].some(
+            (range) => from < range.to && to > range.from,
+          )
+        ) {
+          add(from, from + rule.open.length, Decoration.replace({}));
+          add(
+            from + rule.open.length,
+            to - rule.close.length,
+            Decoration.mark({
+              class: 'cm-custom-syntax',
+              attributes: {
+                style: `background-color:${rule.color};color:${syntaxInk(rule.color)}`,
+                title: rule.name,
+              },
+            }),
+          );
+          add(to - rule.close.length, to, Decoration.replace({}));
+          customRanges.push({ from, to });
+        }
+        from = source.indexOf(rule.open, to);
+      } else from = source.indexOf(rule.open, from + rule.open.length);
+    }
+  }
+  const mathPattern = /(?<![\\$])\$(?!\s|\$)((?:\\.|[^$\n])+?)(?<!\s)\$(?![\d$])/g;
+  for (const match of source.matchAll(mathPattern)) {
+    const from = match.index,
+      to = from + match[0].length;
+    if (
+      !active(from, to) &&
+      ![...blocks, ...mathExcluded, ...customRanges].some(
+        (range) => from < range.to && to > range.from,
+      )
+    ) {
+      add(from, to, Decoration.replace({ widget: new InlineMath(match[1], from) }));
+    }
+  }
   const builder = new RangeSetBuilder<Decoration>();
   entries.sort((a, b) => a.from - b.from || a.deco.startSide - b.deco.startSide || a.to - b.to);
   for (const e of entries) builder.add(e.from, e.to, e.deco);
@@ -203,7 +356,7 @@ const decorations = StateField.define<DecorationSet>({
     tr.docChanged ||
     tr.selection ||
     tr.reconfigured ||
-    tr.effects.some((e) => e.is(compositionState))
+    tr.effects.some((e) => e.is(compositionState) || e.is(syntaxChanged))
       ? build(tr.state)
       : old,
   provide: (f) => EditorView.decorations.from(f),

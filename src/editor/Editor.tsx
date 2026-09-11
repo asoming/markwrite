@@ -13,8 +13,20 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
 import { closeBrackets, closeBracketsKeymap } from '@codemirror/autocomplete';
-import { documentPath, liveMode, livePreview, compositionState } from './livePreview';
+import {
+  documentPath,
+  liveMode,
+  livePreview,
+  compositionState,
+  syntaxChanged,
+} from './livePreview';
 import type { Mode } from '../lib/types';
+import {
+  applyFormatting,
+  clipboardMarkdown,
+  insertMarkdownTransaction,
+  type FormatAction,
+} from './formatting';
 
 const sessions = new Map<string, { state: EditorState; scroll: number }>();
 export function releaseEditor(id: string) {
@@ -22,6 +34,11 @@ export function releaseEditor(id: string) {
 }
 const modeCompartment = new Compartment();
 const pathCompartment = new Compartment();
+const parsingCompartment = new Compartment();
+const syntaxExtensions = () => [
+  syntaxHighlighting(defaultHighlightStyle),
+  markdown({ base: markdownLanguage, codeLanguages: languages }),
+];
 export type EditorHandle = EditorView;
 export default function Editor({
   id,
@@ -33,6 +50,9 @@ export default function Editor({
   onSelection,
   onImage,
   onComposition,
+  onMarkdownFiles,
+  onEditTable,
+  onLink,
 }: {
   id: string;
   content: string;
@@ -43,14 +63,41 @@ export default function Editor({
   onSelection: (line: number, column: number) => void;
   onImage: (file: File) => void;
   onComposition: (active: boolean) => void;
+  onMarkdownFiles?: (files: File[]) => void;
+  onEditTable?: (range: { from: number; to: number }) => void;
+  onLink?: (href: string) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
-  const callbacks = useRef({ onChange, onReady, onSelection, onImage, onComposition });
-  callbacks.current = { onChange, onReady, onSelection, onImage, onComposition };
+  const callbacks = useRef({
+    onChange,
+    onReady,
+    onSelection,
+    onImage,
+    onComposition,
+    onMarkdownFiles,
+    onEditTable,
+    onLink,
+  });
+  callbacks.current = {
+    onChange,
+    onReady,
+    onSelection,
+    onImage,
+    onComposition,
+    onMarkdownFiles,
+    onEditTable,
+    onLink,
+  };
   useEffect(() => {
     if (!host.current) return;
     const initial = sessions.get(id);
+    let plainPaste = false;
+    let largeDocument = content.length > 1_000_000;
+    const formatKey = (key: string, action: FormatAction) => ({
+      key,
+      run: (editor: EditorView) => applyFormatting(editor, action),
+    });
     const state =
       initial?.state ||
       EditorState.create({
@@ -62,11 +109,19 @@ export default function Editor({
           EditorView.lineWrapping,
           bracketMatching(),
           closeBrackets(),
-          syntaxHighlighting(defaultHighlightStyle),
-          markdown({ base: markdownLanguage, codeLanguages: languages }),
+          parsingCompartment.of(largeDocument ? [] : syntaxExtensions()),
           search({ top: true }),
           highlightSelectionMatches(),
           keymap.of([
+            formatKey('Mod-b', 'bold'),
+            formatKey('Mod-i', 'italic'),
+            formatKey('Mod-Shift-x', 'strike'),
+            formatKey('Mod-e', 'inlineCode'),
+            formatKey('Mod-Alt-1', 'heading1'),
+            formatKey('Mod-Alt-2', 'heading2'),
+            formatKey('Mod-Alt-3', 'heading3'),
+            formatKey('Alt-ArrowUp', 'moveUp'),
+            formatKey('Alt-ArrowDown', 'moveDown'),
             ...closeBracketsKeymap,
             ...defaultKeymap,
             ...historyKeymap,
@@ -79,6 +134,13 @@ export default function Editor({
           livePreview,
           EditorView.contentAttributes.of({ 'aria-label': 'Markdown 编辑器', spellcheck: 'false' }),
           EditorView.domEventHandlers({
+            keydown: (event) => {
+              plainPaste =
+                (event.ctrlKey || event.metaKey) &&
+                event.shiftKey &&
+                event.key.toLowerCase() === 'v';
+              return false;
+            },
             compositionstart: () => {
               callbacks.current.onComposition(true);
               queueMicrotask(() => view.current?.dispatch({ effects: compositionState.of(true) }));
@@ -87,7 +149,10 @@ export default function Editor({
               callbacks.current.onComposition(false);
               setTimeout(() => view.current?.dispatch({ effects: compositionState.of(false) }), 0);
             },
-            paste: (event) => {
+            paste: (event, editor) => {
+              const pastePlain = plainPaste;
+              plainPaste = false;
+              if (pastePlain) return false;
               const file = [...(event.clipboardData?.files || [])].find((f) =>
                 f.type.startsWith('image/'),
               );
@@ -96,9 +161,26 @@ export default function Editor({
                 callbacks.current.onImage(file);
                 return true;
               }
+              const html = event.clipboardData?.getData('text/html');
+              if (html && editor.state.facet(liveMode) && !editor.composing) {
+                const text = clipboardMarkdown(html);
+                if (text) {
+                  event.preventDefault();
+                  editor.dispatch(insertMarkdownTransaction(editor.state, text));
+                  return true;
+                }
+              }
               return false;
             },
             drop: (event) => {
+              const documents = [...(event.dataTransfer?.files || [])].filter((file) =>
+                /\.(md|markdown)$/i.test(file.name),
+              );
+              if (documents.length && callbacks.current.onMarkdownFiles) {
+                event.preventDefault();
+                callbacks.current.onMarkdownFiles(documents);
+                return true;
+              }
               const file = [...(event.dataTransfer?.files || [])].find((f) =>
                 f.type.startsWith('image/'),
               );
@@ -112,6 +194,14 @@ export default function Editor({
           }),
           EditorView.updateListener.of((update) => {
             if (update.docChanged) callbacks.current.onChange(update.state.doc.toString());
+            if (update.docChanged && update.state.doc.length > 1_000_000 !== largeDocument) {
+              largeDocument = update.state.doc.length > 1_000_000;
+              queueMicrotask(() =>
+                view.current?.dispatch({
+                  effects: parsingCompartment.reconfigure(largeDocument ? [] : syntaxExtensions()),
+                }),
+              );
+            }
             if (update.selectionSet || update.docChanged) {
               const head = update.state.selection.main.head;
               const line = update.state.doc.lineAt(head);
@@ -121,6 +211,14 @@ export default function Editor({
         ],
       });
     const editor = new EditorView({ state, parent: host.current });
+    const editTable = (event: Event) =>
+      callbacks.current.onEditTable?.((event as CustomEvent<{ from: number; to: number }>).detail);
+    editor.dom.addEventListener('markwrite:edit-table', editTable);
+    const followLink = (event: Event) =>
+      callbacks.current.onLink?.((event as CustomEvent<string>).detail);
+    editor.dom.addEventListener('markwrite:follow-link', followLink);
+    const refreshSyntax = () => editor.dispatch({ effects: syntaxChanged.of(null) });
+    window.addEventListener('markwrite-syntax-configured', refreshSyntax);
     view.current = editor;
     editor.dispatch({
       effects: [
@@ -133,6 +231,9 @@ export default function Editor({
     return () => {
       sessions.set(id, { state: editor.state, scroll: editor.scrollDOM.scrollTop });
       callbacks.current.onReady(null);
+      editor.dom.removeEventListener('markwrite:edit-table', editTable);
+      editor.dom.removeEventListener('markwrite:follow-link', followLink);
+      window.removeEventListener('markwrite-syntax-configured', refreshSyntax);
       editor.destroy();
       view.current = null;
     };

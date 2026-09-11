@@ -1,15 +1,21 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+mod ai;
+mod history;
+mod session;
 mod storage;
+mod transfer;
+mod workspace;
 use base64::Engine;
+use notify::Watcher;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashSet,
     fs,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{atomic::AtomicU64, Arc, Mutex},
 };
 use storage::DiskFile;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 #[derive(Default, Serialize, Deserialize)]
@@ -21,6 +27,10 @@ struct Access {
 struct AppState {
     access: Mutex<Access>,
     writes: Mutex<()>,
+    session_writes: Mutex<()>,
+    search_generation: Arc<AtomicU64>,
+    search_request: Mutex<Option<String>>,
+    watcher: Mutex<Option<notify::RecommendedWatcher>>,
 }
 impl AppState {
     fn persist(&self, app: &tauri::AppHandle) -> Result<(), String> {
@@ -30,7 +40,7 @@ impl AppState {
         let data = serde_json::to_vec(&*access).map_err(|e| e.to_string())?;
         let temp = directory.join("access.json.tmp");
         fs::write(&temp, data).map_err(|e| e.to_string())?;
-        fs::rename(temp, directory.join("access.json")).map_err(|e| e.to_string())?;
+        storage::replace_file(&temp, &directory.join("access.json")).map_err(|e| e.to_string())?;
         Ok(())
     }
     fn allow_file(&self, path: &Path) -> Result<PathBuf, String> {
@@ -71,7 +81,20 @@ fn recovery(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .join("recovery"))
 }
 fn valid_name(name: &str) -> Result<(), String> {
-    if name.trim().is_empty() || name.contains(['/', '\\', '\0']) || name == "." || name == ".." {
+    let stem = name.split('.').next().unwrap_or("").to_uppercase();
+    let reserved = [
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ]
+    .contains(&stem.as_str());
+    if name.trim().is_empty()
+        || name.chars().any(char::is_control)
+        || name.contains(['/', '\\', '\0', ':', '*', '?', '"', '<', '>', '|'])
+        || name.ends_with([' ', '.'])
+        || name == "."
+        || name == ".."
+        || reserved
+    {
         Err("名称无效。".into())
     } else {
         Ok(())
@@ -90,8 +113,8 @@ struct Entry {
     children: Option<Vec<Entry>>,
 }
 fn scan(path: &Path, depth: usize, count: &mut usize) -> Result<Vec<Entry>, String> {
-    if depth > 16 || *count > 20_000 {
-        return Ok(vec![]);
+    if depth > 32 || *count > 100_000 {
+        return Err("目录超过 32 层或 100,000 项，请打开更具体的工作文件夹。".into());
     }
     let mut entries = vec![];
     for item in fs::read_dir(path).map_err(|e| e.to_string())? {
@@ -171,6 +194,7 @@ async fn choose_folder(
         .roots
         .insert(path.clone());
     state.persist(&app)?;
+    start_watcher(&app, &state, &path)?;
     Ok(Some(Folder {
         entries: scan(&path, 0, &mut 0)?,
         path: path.to_string_lossy().into_owned(),
@@ -253,63 +277,68 @@ async fn rename_document(
     valid_name(&name)?;
     let _guard = state.writes.lock().map_err(|e| e.to_string())?;
     let p = state.check(Path::new(&path))?;
-    let dest = p.parent().ok_or("路径无效")?.join(name);
-    if dest.exists() {
-        return Err("同名文件已存在。".into());
-    }
-    fs::rename(&p, &dest).map_err(|e| e.to_string())?;
-    state.allow_file(&dest)?;
-    state
+    if state
         .access
         .lock()
         .map_err(|e| e.to_string())?
-        .files
-        .remove(&p);
-    state.persist(&app)?;
-    Ok(dest.to_string_lossy().into_owned())
-}
-#[derive(Serialize)]
-struct Hit {
-    path: String,
-    line: usize,
-    text: String,
-}
-fn search_entries(entries: Vec<Entry>, query: &str, hits: &mut Vec<Hit>) {
-    for entry in entries {
-        if hits.len() >= 500 {
-            break;
+        .roots
+        .contains(&p)
+    {
+        return Err("请在系统文件管理器重命名工作文件夹本身，然后重新打开。".into());
+    }
+    let dest = p.parent().ok_or("路径无效")?.join(name);
+    if dest.symlink_metadata().is_ok() {
+        return Err("同名文件已存在。".into());
+    }
+    fn document_paths(path: &Path) -> Result<Vec<PathBuf>, String> {
+        if path.is_file() {
+            return Ok(vec![path.to_path_buf()]);
         }
-        if let Some(children) = entry.children {
-            search_entries(children, query, hits);
-        } else if let Ok(file) = storage::read(Path::new(&entry.path)) {
-            for (i, line) in file.content.lines().enumerate() {
-                if hits.len() >= 500 {
-                    break;
-                }
-                if line.to_lowercase().contains(query) {
-                    hits.push(Hit {
-                        path: entry.path.clone(),
-                        line: i + 1,
-                        text: line.chars().take(240).collect(),
-                    });
+        fn flatten(entries: Vec<Entry>, files: &mut Vec<PathBuf>) {
+            for entry in entries {
+                if let Some(children) = entry.children {
+                    flatten(children, files);
+                } else {
+                    files.push(PathBuf::from(entry.path));
                 }
             }
         }
+        let mut files = vec![];
+        flatten(scan(path, 0, &mut 0)?, &mut files);
+        Ok(files)
     }
-}
-#[tauri::command]
-async fn search_folder(
-    path: String,
-    query: String,
-    state: State<'_, AppState>,
-) -> Result<Vec<Hit>, String> {
-    if query.trim().is_empty() {
-        return Ok(vec![]);
+    let renamed_documents = document_paths(&p)?;
+    storage::rename_without_replace(&p, &dest)
+        .map_err(|e| format!("无法重命名（目标可能已存在）：{e}"))?;
+    {
+        let mut access = state.access.lock().map_err(|e| e.to_string())?;
+        access.files = access
+            .files
+            .iter()
+            .map(|file| {
+                file.strip_prefix(&p)
+                    .map(|suffix| dest.join(suffix))
+                    .unwrap_or_else(|_| file.clone())
+            })
+            .collect();
+        access.files.insert(dest.clone());
     }
-    let p = state.check_directory(Path::new(&path))?;
-    let mut hits = vec![];
-    search_entries(scan(&p, 0, &mut 0)?, &query.to_lowercase(), &mut hits);
-    Ok(hits)
+    for old in renamed_documents {
+        let suffix = old.strip_prefix(&p).map_err(|e| e.to_string())?;
+        let new = if suffix.as_os_str().is_empty() {
+            dest.clone()
+        } else {
+            dest.join(suffix)
+        };
+        if let Err(error) = history::relocate(&recovery(&app)?, &old, &new) {
+            let _ = app.emit(
+                "document-open-error",
+                format!("名称已更新，但部分历史迁移失败：{error}"),
+            );
+        }
+    }
+    state.persist(&app)?;
+    Ok(dest.to_string_lossy().into_owned())
 }
 fn image_type(path: &Path) -> Result<&'static str, String> {
     match path
@@ -421,10 +450,7 @@ async fn open_external(url: String) -> Result<(), String> {
     if !url.starts_with("https://") && !url.starts_with("http://") {
         return Err("只支持 HTTP 和 HTTPS 链接。".into());
     }
-    std::process::Command::new("xdg-open")
-        .arg(url)
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    open::that_detached(url).map_err(|e| e.to_string())?;
     Ok(())
 }
 #[tauri::command]
@@ -442,8 +468,126 @@ async fn initial_documents(
     state.persist(&app)?;
     Ok(result)
 }
+#[derive(Clone, Serialize)]
+struct WorkspaceChange {
+    paths: Vec<String>,
+}
+fn start_watcher(app: &tauri::AppHandle, state: &AppState, path: &Path) -> Result<(), String> {
+    let app = app.clone();
+    let root = path.to_path_buf();
+    let mut watcher =
+        notify::recommended_watcher(move |event: Result<notify::Event, notify::Error>| {
+            if let Ok(event) = event {
+                if matches!(event.kind, notify::EventKind::Access(_)) {
+                    return;
+                }
+                let paths: Vec<String> = event
+                    .paths
+                    .into_iter()
+                    .filter(|p| {
+                        p.starts_with(&root)
+                            && !p.strip_prefix(&root).unwrap_or(p).components().any(|c| {
+                                let part = c.as_os_str().to_string_lossy();
+                                part.starts_with('.') || part == "node_modules" || part == "target"
+                            })
+                    })
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .take(1000)
+                    .collect();
+                if !paths.is_empty() {
+                    let _ = app.emit("workspace-changed", WorkspaceChange { paths });
+                }
+            }
+        })
+        .map_err(|e| format!("无法监听文件夹：{e}"))?;
+    watcher
+        .watch(path, notify::RecursiveMode::Recursive)
+        .map_err(|e| e.to_string())?;
+    *state.watcher.lock().map_err(|e| e.to_string())? = Some(watcher);
+    Ok(())
+}
+#[tauri::command]
+async fn watch_folder(
+    path: String,
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let path = state.check_directory(Path::new(&path))?;
+    start_watcher(&app, &state, &path)
+}
+#[tauri::command]
+async fn save_export(
+    name: String,
+    extension: String,
+    bytes: Vec<u8>,
+    app: tauri::AppHandle,
+) -> Result<bool, String> {
+    if !["pdf", "docx"].contains(&extension.as_str()) {
+        return Err("导出类型无效。".into());
+    }
+    if bytes.len() > 100 * 1024 * 1024 {
+        return Err("导出文件超过 100MB。".into());
+    }
+    let safe_name = name.rsplit(['/', '\\']).next().unwrap_or("文档");
+    let Some(path) = app
+        .dialog()
+        .file()
+        .set_file_name(safe_name)
+        .add_filter(extension.to_uppercase(), &[extension.as_str()])
+        .blocking_save_file()
+    else {
+        return Ok(false);
+    };
+    storage::atomic_write(
+        &path.into_path().map_err(|e| e.to_string())?,
+        &bytes,
+        None,
+        &recovery(&app)?,
+    )?;
+    Ok(true)
+}
+fn accept_documents(app: &tauri::AppHandle, paths: impl IntoIterator<Item = PathBuf>) {
+    let state = app.state::<AppState>();
+    let mut files = vec![];
+    for path in paths {
+        if path.is_file() && is_markdown(&path) {
+            match state.allow_file(&path).and_then(|p| storage::read(&p)) {
+                Ok(file) => files.push(file),
+                Err(error) => {
+                    let _ = app.emit("document-open-error", error);
+                }
+            }
+        }
+    }
+    if !files.is_empty() {
+        let _ = state.persist(app);
+        let _ = app.emit("open-documents", files);
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            accept_documents(
+                app,
+                args.into_iter().skip(1).map(|arg| {
+                    let path = PathBuf::from(arg);
+                    if path.is_absolute() {
+                        path
+                    } else {
+                        Path::new(&cwd).join(path)
+                    }
+                }),
+            );
+        }))
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
+                accept_documents(window.app_handle(), paths.clone());
+            }
+        })
         .manage(AppState::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -464,7 +608,24 @@ fn main() {
             save_as,
             create_entry,
             rename_document,
-            search_folder,
+            workspace::search_folder,
+            workspace::cancel_search,
+            workspace::workspace_documents,
+            workspace::history_list,
+            workspace::history_read,
+            workspace::trash_entries,
+            workspace::attachment_inventory,
+            workspace::git_status,
+            workspace::git_diff,
+            workspace::git_init,
+            workspace::git_commit,
+            watch_folder,
+            save_export,
+            session::save_session,
+            session::load_session,
+            ai::ai_transform,
+            transfer::upload_image,
+            transfer::publish_html,
             read_asset,
             attach_image,
             export_html,
@@ -473,4 +634,53 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("无法启动 Markwrite");
+}
+
+#[cfg(test)]
+mod native_tests {
+    use super::*;
+    #[test]
+    fn filenames_are_portable_and_cannot_escape_the_parent() {
+        for name in [
+            "../secret",
+            "..",
+            "note/part",
+            "note\\part",
+            "CON.md",
+            "lpt1.txt",
+            "bad:name.md",
+            "trailing.",
+            "bad\nname.md",
+        ] {
+            assert!(valid_name(name).is_err(), "{name:?}");
+        }
+        assert!(valid_name("中文 笔记.md").is_ok());
+    }
+    #[test]
+    fn scopes_do_not_follow_symlinks_outside_authorized_root() {
+        let base = std::env::temp_dir().join(format!(
+            "markwrite-scope-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(base.join("allowed")).unwrap();
+        fs::write(base.join("private.md"), "secret").unwrap();
+        let state = AppState::default();
+        state
+            .access
+            .lock()
+            .unwrap()
+            .roots
+            .insert(base.join("allowed").canonicalize().unwrap());
+        assert!(state.check(&base.join("private.md")).is_err());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(base.join("private.md"), base.join("allowed/link.md"))
+                .unwrap();
+            assert!(state.check(&base.join("allowed/link.md")).is_err());
+        }
+        fs::remove_dir_all(base).unwrap();
+    }
 }

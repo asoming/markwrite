@@ -1,0 +1,315 @@
+.editing-menubar {
+  position: relative;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 34px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--paper);
+  font-size: 13px;
+  user-select: none;
+}
+.editing-menubar [role='menubar'] {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  gap: 1px;
+}
+.editing-menu-group {
+  position: relative;
+}
+.editing-menu-group > button {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 4px;
+}
+.editing-menu-group > button:hover,
+.editing-menu-group > button.is-open {
+  background: var(--hover);
+}
+.editing-menu-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-left: auto;
+  padding-left: 12px;
+  white-space: nowrap;
+}
+.editing-menu-popup {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  min-width: 240px;
+  max-height: calc(100vh - 115px);
+  overflow: auto;
+  padding: 5px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 26px #11182720;
+  border-radius: 7px;
+}
+.editing-menu-popup > button {
+  display: flex;
+  align-items: center;
+  text-align: left;
+  gap: 7px;
+  width: 100%;
+  min-height: 31px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.editing-menu-popup > button:hover,
+.editing-menu-popup > button:focus {
+  background: var(--accent-bg);
+  color: var(--accent);
+  outline: none;
+}
+.editing-menu-popup kbd {
+  margin-left: auto;
+  padding-left: 16px;
+}
+.menu-check {
+  width: 12px;
+  flex-shrink: 0;
+}
+.editing-menu-popup [role='separator'] {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 6px;
+}
+.insert-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.insert-dialog {
+  width: 520px;
+  max-width: 100%;
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+  padding: 24px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.insert-dialog-wide {
+  width: 800px;
+}
+.insert-dialog header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 22px;
+}
+.insert-dialog h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.5;
+}
+.insert-dialog header p,
+.insert-help {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 6px 0 0;
+}
+.insert-dialog > label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 16px 0;
+}
+.insert-dialog input,
+.insert-dialog select,
+.insert-dialog textarea {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--ink);
+  background: var(--paper);
+  padding: 8px 10px;
+  min-width: 0;
+}
+.insert-dialog textarea {
+  resize: vertical;
+  line-height: 1.6;
+  font-family: ui-monospace, monospace;
+}
+.insert-dialog textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.insert-dialog .insert-toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.insert-dialog .insert-toggle input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.insert-dialog footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+.insert-dialog footer button {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px 20px;
+}
+.insert-dialog footer .primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+.insert-error {
+  color: #c64343;
+  font-size: 12px;
+}
+.table-grid-tools {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+.table-grid-tools button {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 9px;
+}
+.table-grid-tools button:hover {
+  background: var(--hover);
+}
+.table-grid-tools span {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+.table-grid-scroll {
+  overflow: auto;
+  max-height: 380px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.table-input-grid {
+  border-collapse: collapse;
+  min-width: 100%;
+  font-size: 12px;
+}
+.table-input-grid td,
+.table-input-grid th {
+  padding: 0;
+  border: 1px solid var(--border);
+  min-width: 140px;
+}
+.table-input-grid th {
+  padding: 8px;
+  background: var(--sidebar);
+  text-align: left;
+  font-weight: 400;
+  color: var(--muted);
+}
+.table-input-grid th label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.table-input-grid select {
+  padding: 4px;
+  font-size: 12px;
+}
+.table-input-grid td input {
+  border: 0;
+  border-radius: 0;
+  width: 100%;
+  min-width: 140px;
+  padding: 10px;
+  font-size: 13px;
+}
+.table-input-grid tbody tr:first-child input {
+  font-weight: 600;
+  background: var(--sidebar);
+}
+.table-input-grid td input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.cm-inline-math {
+  display: inline-block;
+  vertical-align: baseline;
+  cursor: text;
+}
+.cm-inline-math .katex {
+  font-size: 1.08em;
+}
+.cm-inline-math .math-error {
+  color: #b05245;
+}
+@media (max-width: 1050px) {
+  .editing-menu-hint {
+    display: none;
+  }
+}
+@media (max-width: 800px) {
+  .editing-menubar {
+    padding: 0 4px;
+  }
+  .editing-menu-group > button {
+    padding: 0 7px;
+  }
+  .editing-menu-popup {
+    min-width: 210px;
+  }
+  .editing-menu-group:nth-last-child(-n + 3) .editing-menu-popup {
+    left: auto;
+    right: 0;
+  }
+  .insert-dialog {
+    padding: 18px;
+  }
+  .insert-dialog-backdrop {
+    padding: 12px;
+  }
+}
+.insert-file-button {
+  display: block;
+  width: 100%;
+  padding: 12px;
+  border: 1px dashed var(--accent);
+  border-radius: 6px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  margin-bottom: 18px;
+}
+.live-block-tools {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 6px;
+}
+.live-block-tools button {
+  font-size: 11px;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--paper);
+  color: var(--muted);
+}
+.live-block-tools button:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}

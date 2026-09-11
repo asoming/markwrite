@@ -1,0 +1,110 @@
+name: Desktop builds
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', 'README.md']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x86_64
+            os: ubuntu-22.04
+            args: --bundles deb
+            artifact: markwrite-linux-x86_64
+            paths: |
+              src-tauri/target/release/bundle/deb/*.deb
+          - name: Windows x86_64
+            os: windows-latest
+            args: --config src-tauri/tauri.windows.conf.json --bundles nsis
+            artifact: markwrite-windows-x86_64
+            paths: |
+              src-tauri/target/release/bundle/nsis/*-setup.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - name: Install Linux build libraries
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev patchelf
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Test native services
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Build installer
+        run: npm run tauri -- build ${{ matrix.args }}
+      - name: Ensure WebView2 runtime for Windows smoke test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Microsoft documents these per-machine and per-user runtime keys:
+          # https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution
+          $runtimeKeys = @(
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}',
+            'HKCU:\Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}'
+          )
+          function Test-WebViewRuntime {
+            foreach ($key in $runtimeKeys) {
+              $version = (Get-ItemProperty -Path $key -Name pv -ErrorAction SilentlyContinue).pv
+              if ($version -and $version -ne '0.0.0.0') { return $true }
+            }
+            return $false
+          }
+          if (-not (Test-WebViewRuntime)) {
+            $installer = Join-Path $env:RUNNER_TEMP 'MicrosoftEdgeWebview2Setup.exe'
+            Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $installer
+            $install = Start-Process -FilePath $installer -ArgumentList '/silent', '/install' -Wait -PassThru
+            if (-not (Test-WebViewRuntime)) { throw "WebView2 runtime installation failed (exit $($install.ExitCode))" }
+          }
+      - name: Windows launch and close smoke test
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class WindowMessages {
+            [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+          }
+          '@
+          $app = Start-Process -FilePath "src-tauri/target/release/markwrite.exe" -PassThru
+          try {
+            for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              Start-Sleep -Seconds 1
+              $app.Refresh()
+              if ($app.HasExited) { throw "Application exited before displaying a window" }
+              if ($app.MainWindowHandle -ne [IntPtr]::Zero) { break }
+            }
+            if ($app.MainWindowHandle -eq [IntPtr]::Zero) { throw "No native window appeared" }
+            Start-Sleep -Seconds 5
+            if (-not [WindowMessages]::PostMessage($app.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) { throw "Could not post native close request" }
+            if (-not $app.WaitForExit(15000)) { throw "Native close request did not exit the application" }
+            if ($app.ExitCode -ne 0) { throw "Application exited with code $($app.ExitCode)" }
+          } finally {
+            if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
+          }
+      - name: Keep installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.paths }}
+          if-no-files-found: error
+          retention-days: 30

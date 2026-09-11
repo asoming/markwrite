@@ -88,7 +88,7 @@ pub fn atomic_write(
         }
         out.write_all(bytes).map_err(|e| e.to_string())?;
         out.sync_all().map_err(|e| e.to_string())?;
-        // Recheck immediately before replacement; keep one pre-write snapshot per canonical path.
+        // Recheck immediately before replacement; snapshot the displaced content.
         let current = match fs::read(path) {
             Ok(b) => Some(b),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
@@ -98,14 +98,11 @@ pub fn atomic_write(
             return Err("CONFLICT:写入前文件再次发生变化，请比较磁盘版本。".into());
         }
         if let Some(old) = existing.as_deref() {
-            fs::create_dir_all(backup_dir).map_err(|e| format!("无法创建恢复副本：{e}"))?;
-            fs::write(
-                backup_dir.join(format!("{}.md", version(path.to_string_lossy().as_bytes()))),
-                old,
-            )
-            .map_err(|e| format!("无法保存恢复副本：{e}"))?;
+            crate::history::snapshot(backup_dir, path, old)?;
         }
-        fs::rename(&temp, path).map_err(|e| e.to_string())?;
+        drop(out);
+        replace_file(&temp, path).map_err(|e| e.to_string())?;
+        #[cfg(unix)]
         if let Ok(dir) = fs::File::open(parent) {
             dir.sync_all().map_err(|e| e.to_string())?;
         }
@@ -116,6 +113,83 @@ pub fn atomic_write(
     }
     result
 }
+
+/// Rename a file or directory without ever replacing a concurrently created destination.
+#[cfg(target_os = "linux")]
+pub fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    unsafe extern "C" {
+        fn renameat2(
+            old_dir: i32,
+            old_path: *const std::ffi::c_char,
+            new_dir: i32,
+            new_path: *const std::ffi::c_char,
+            flags: u32,
+        ) -> i32;
+    }
+    let source = CString::new(source.as_os_str().as_bytes()).map_err(|_| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid source path")
+    })?;
+    let target = CString::new(target.as_os_str().as_bytes()).map_err(|_| {
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, "Invalid target path")
+    })?;
+    // Linux AT_FDCWD=-100 and RENAME_NOREPLACE=1; pointers live throughout the call.
+    let result = unsafe { renameat2(-100, source.as_ptr(), -100, target.as_ptr(), 1) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+#[cfg(windows)]
+pub fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_WRITE_THROUGH};
+    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+    let target: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
+    let result = unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), MOVEFILE_WRITE_THROUGH) };
+    if result == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+#[cfg(not(any(target_os = "linux", windows)))]
+pub fn rename_without_replace(_source: &Path, _target: &Path) -> std::io::Result<()> {
+    Err(std::io::Error::new(
+        std::io::ErrorKind::Unsupported,
+        "Safe rename is currently supported on Linux and Windows.",
+    ))
+}
+
+/// Same-volume replacement preserves the existing target until the replacement succeeds.
+#[cfg(not(windows))]
+pub fn replace_file(source: &Path, target: &Path) -> std::io::Result<()> {
+    fs::rename(source, target)
+}
+#[cfg(windows)]
+pub fn replace_file(source: &Path, target: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+    let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+    let target: Vec<u16> = target.as_os_str().encode_wide().chain(Some(0)).collect();
+    // Both NUL-terminated buffers remain alive for this synchronous Win32 call.
+    let result = unsafe {
+        MoveFileExW(
+            source.as_ptr(),
+            target.as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    };
+    if result == 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,16 +263,12 @@ mod tests {
         let d = read(&f).unwrap();
         atomic_write(&f, b"second", Some(&d.version), &p.join("backup")).unwrap();
         assert_eq!(fs::read_to_string(&f).unwrap(), "second");
+        let entries = crate::history::list(&p.join("backup"), &f).unwrap();
+        assert_eq!(entries.len(), 1);
         assert_eq!(
-            fs::read_to_string(
-                fs::read_dir(p.join("backup"))
-                    .unwrap()
-                    .next()
-                    .unwrap()
-                    .unwrap()
-                    .path()
-            )
-            .unwrap(),
+            crate::history::read(&p.join("backup"), &f, &entries[0].id)
+                .unwrap()
+                .content,
             "first"
         );
         fs::remove_dir_all(p).unwrap();
@@ -210,6 +280,57 @@ mod tests {
         assert!(atomic_write(&f, b"ours", Some("old"), &p.join("backup")).is_err());
         assert!(!f.exists());
         fs::remove_dir_all(p).unwrap();
+    }
+    #[test]
+    fn restore_creates_history_of_the_replaced_version() {
+        let root = sandbox("history-restore");
+        let document = root.join("note.md");
+        let backup = root.join("history");
+        fs::write(&document, "one").unwrap();
+        atomic_write(
+            &document,
+            b"two",
+            Some(&read(&document).unwrap().version),
+            &backup,
+        )
+        .unwrap();
+        let old = crate::history::list(&backup, &document).unwrap();
+        let restored = crate::history::read(&backup, &document, &old[0].id).unwrap();
+        atomic_write(
+            &document,
+            &serialize(&restored),
+            Some(&read(&document).unwrap().version),
+            &backup,
+        )
+        .unwrap();
+        assert_eq!(read(&document).unwrap().content, "one");
+        let versions = crate::history::list(&backup, &document).unwrap();
+        assert_eq!(versions.len(), 2);
+        assert_eq!(
+            crate::history::read(&backup, &document, &versions[0].id)
+                .unwrap()
+                .content,
+            "two"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn rename_cannot_overwrite_an_existing_destination() {
+        let root = sandbox("rename-no-replace");
+        let a = root.join("a.md");
+        let b = root.join("b.md");
+        fs::write(&a, "source").unwrap();
+        fs::write(&b, "destination").unwrap();
+        assert!(rename_without_replace(&a, &b).is_err());
+        assert_eq!(fs::read_to_string(&a).unwrap(), "source");
+        assert_eq!(fs::read_to_string(&b).unwrap(), "destination");
+        #[cfg(unix)]
+        {
+            let link = root.join("dangling.md");
+            std::os::unix::fs::symlink(root.join("missing"), &link).unwrap();
+            assert!(rename_without_replace(&a, &link).is_err());
+        }
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn invalid_utf8_is_rejected() {

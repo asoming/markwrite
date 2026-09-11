@@ -42,31 +42,45 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { EditorView } from '@codemirror/view';
-import { undo, redo } from '@codemirror/commands';
+import { undo, redo, selectAll } from '@codemirror/commands';
 import { openSearchPanel } from '@codemirror/search';
 import { invoke } from '@tauri-apps/api/core';
 import Editor, { releaseEditor } from './editor/Editor';
 import Reader from './Reader';
+import { configureInlineSyntax } from './lib/markdown';
+import { useDocumentStats } from './lib/useDocumentStats';
+import { loadExtensions, type ExtensionPack } from './lib/extensions';
 import { findTable, changeTable, type TableAction } from './editor/table';
 import * as platform from './lib/platform';
-import {
-  getHeadings,
-  wordCount,
-  renderMarkdown,
-  hydrateDiagrams,
-  escapeHtml,
-} from './lib/markdown';
-import { defaultSettings, readSession, writeSession } from './lib/recovery';
+import { getHeadings, renderMarkdown, hydrateDiagrams, escapeHtml } from './lib/markdown';
+import { defaultSettings, readSession, writeSession, flushSession } from './lib/recovery';
 import { welcome, syntaxSample } from './lib/sample';
 import type { Document, DiskFile, FileEntry, Mode, SearchHit, Settings } from './lib/types';
 import katexCss from 'katex/dist/katex.min.css?inline';
+import EditingMenu, { type EditingAction } from './components/EditingMenu';
+import InsertDialog, { type InsertKind } from './components/InsertDialog';
+import {
+  applyFormatting,
+  insertMarkdownTransaction,
+  readTableAtSelection,
+  type TableModel,
+} from './editor/formatting';
+import WorkspacePanel, { type WorkspaceTab } from './components/WorkspacePanel';
+import DiffView from './components/DiffView';
+import ExtensionsPanel from './components/ExtensionsPanel';
+import AiPanel from './components/AiPanel';
+import TransferPanel from './components/TransferPanel';
+import {
+  fileName,
+  pathKey,
+  readRecents,
+  updateRecents,
+  wikiTargets,
+  relativeDocument,
+} from './lib/workspace';
 
 const uid = () => crypto.randomUUID();
-const basename = (path: string) =>
-  path
-    .split('/')
-    .pop()
-    ?.replace(/^file:/, '') || '未命名.md';
+const basename = fileName;
 function draft(name: string, content = ''): Document {
   return {
     id: uid(),
@@ -81,6 +95,7 @@ function draft(name: string, content = ''): Document {
 }
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const canceled = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
+configureInlineSyntax(loadExtensions());
 const recovered = readSession();
 const initialDocs = recovered?.docs.length ? recovered.docs : [draft('开始写作.md', welcome)];
 function IconButton({
@@ -257,6 +272,9 @@ export default function App() {
       : initialDocs[0].id,
   );
   const [settings, setSettings] = useState<Settings>(recovered?.settings || defaultSettings);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
+  const [syntaxRevision, setSyntaxRevision] = useState(0);
   const [mode, setMode] = useState<Mode>('live');
   const [sidebar, setSidebar] = useState(true);
   const [sideTab, setSideTab] = useState<'files' | 'outline' | 'search'>('files');
@@ -264,6 +282,14 @@ export default function App() {
     platform.desktop ? recovered?.root : undefined,
   );
   const [entries, setEntries] = useState<FileEntry[]>([]);
+  const [workspaces, setWorkspaces] = useState<string[]>(() => {
+    try {
+      const value = JSON.parse(localStorage.getItem('markwrite.workspaces.v1') || '[]');
+      return Array.isArray(value) ? value.filter((v) => typeof v === 'string').slice(0, 10) : [];
+    } catch {
+      return [];
+    }
+  });
   const [filter, setFilter] = useState('');
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -272,10 +298,57 @@ export default function App() {
   const [position, setPosition] = useState({ line: 1, column: 1 });
   const [selection, setSelection] = useState(false);
   const [dialog, setDialog] = useState<
-    'settings' | 'commands' | 'quickopen' | 'shortcuts' | 'conflict' | 'close' | null
+    | 'settings'
+    | 'commands'
+    | 'quickopen'
+    | 'shortcuts'
+    | 'conflict'
+    | 'close'
+    | 'about'
+    | 'extensions'
+    | 'ai'
+    | 'export'
+    | 'transfer'
+    | null
   >(null);
   const [palette, setPalette] = useState('');
+  const [transfer, setTransfer] = useState<{
+    kind: 'image' | 'publish';
+    html?: string;
+    name: string;
+    id: string;
+    source: string;
+    from: number;
+    to: number;
+  }>();
   const [menu, setMenu] = useState(false);
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab | null>(null);
+  const [compareId, setCompareId] = useState<string | null>(null);
+  const [recents, setRecents] = useState(readRecents);
+  const [insertDialog, setInsertDialog] = useState<{
+    kind: InsertKind;
+    documentId: string;
+    from: number;
+    to: number;
+    source: string;
+    text: string;
+    table?: TableModel;
+  } | null>(null);
+  const [linkChoices, setLinkChoices] = useState<{ path: string; name?: string }[]>([]);
+  const aiSelection = useRef<{
+    id: string;
+    from: number;
+    to: number;
+    source: string;
+    selection: string;
+  } | null>(null);
+  const [exportFormat, setExportFormat] = useState<'html' | 'pdf' | 'docx'>('html');
+  const [exportOptions, setExportOptions] = useState({
+    toc: true,
+    theme: 'light',
+    template: 'standard' as 'standard' | 'academic' | 'compact',
+  });
+
   const [toast, setToast] = useState('');
   const [closeTarget, setCloseTarget] = useState<string>();
   const [diskConflict, setDiskConflict] = useState<(DiskFile & { documentId: string }) | null>(
@@ -289,6 +362,7 @@ export default function App() {
   const [sideWidth, setSideWidth] = useState(248);
   const editor = useRef<EditorView | null>(null);
   const saving = useRef(new Set<string>());
+  const searchRequest = useRef<string>('');
   const composing = useRef(false);
   const exitAfterSave = useRef(false);
   const current = docs.find((d) => d.id === activeId) || docs[0];
@@ -300,12 +374,12 @@ export default function App() {
     new: () => void;
     close: () => void;
   }>({ save: () => {}, open: () => {}, new: () => {}, close: () => {} });
-  const headings = useMemo(() => getHeadings(current?.content || ''), [current?.content]);
+  const { headings, words } = useDocumentStats(current?.content || '', current.id);
   const activeTable = useMemo(
-    () => findTable(current?.content || '', position.line),
+    () =>
+      current?.content.length > 300_000 ? null : findTable(current?.content || '', position.line),
     [current?.content, position.line],
   );
-  const words = useMemo(() => wordCount(current?.content || ''), [current?.content]);
   function updateDocs(fn: (items: Document[]) => Document[]) {
     const next = fn(docsRef.current);
     docsRef.current = next;
@@ -335,7 +409,13 @@ export default function App() {
     setSelection(!!editor.current && !editor.current.state.selection.main.empty);
   }
   function addDisk(file: DiskFile) {
-    const existing = docsRef.current.find((d) => d.path && d.path === file.path);
+    if (file.path)
+      try {
+        setRecents(updateRecents(file.path));
+      } catch {
+        notify('最近文件列表暂时无法保存。');
+      }
+    const existing = docsRef.current.find((d) => d.path && pathKey(d.path) === pathKey(file.path));
     if (existing) {
       setActiveId(existing.id);
       if (existing.content !== existing.saved && existing.version !== file.version)
@@ -366,6 +446,16 @@ export default function App() {
       const folder = await platform.openFolder();
       if (folder) {
         setRoot(folder.path);
+        const recentRoots = [folder.path, ...workspaces.filter((p) => p !== folder.path)].slice(
+          0,
+          10,
+        );
+        setWorkspaces(recentRoots);
+        try {
+          localStorage.setItem('markwrite.workspaces.v1', JSON.stringify(recentRoots));
+        } catch {
+          /* workspace is still open */
+        }
         setEntries(folder.entries);
         setSideTab('files');
         setSidebar(true);
@@ -383,7 +473,9 @@ export default function App() {
       }
   }
   async function openPath(path: string, line?: number) {
-    const existing = docsRef.current.find((d) => d.path === path);
+    const existing = docsRef.current.find(
+      (d) => d.id === path || (d.path && pathKey(d.path) === pathKey(path)),
+    );
     try {
       if (existing) setActiveId(existing.id);
       else addDisk(await platform.readFile(path));
@@ -406,14 +498,10 @@ export default function App() {
       await showConflict(d);
       return false;
     }
-    if (d.path && d.content === d.saved && !asNew) {
-      notify('文件已保存');
-      return true;
-    }
     saving.current.add(d.id);
     patch(d.id, { status: 'saving' });
     try {
-      const result =
+      let result =
         !d.path || asNew
           ? await platform.saveAs(d.content, d.name)
           : await platform.writeFile({
@@ -427,25 +515,51 @@ export default function App() {
         patch(d.id, { status: d.content === d.saved ? 'clean' : 'dirty' });
         return false;
       }
+      let migrationConflict: string | undefined;
+      if (settingsRef.current.attachmentMode === 'relative' && d.content.includes('data:image/')) {
+        try {
+          const migrated = await platform.migrateEmbeddedImages(result.path, d.content);
+          if (migrated !== d.content)
+            result = await platform.writeFile({ ...result, content: migrated });
+        } catch (error) {
+          if (errorText(error).includes('CONFLICT:')) migrationConflict = errorText(error);
+          notify(
+            migrationConflict
+              ? '附件迁移时磁盘文件被外部修改，当前内容已保留，请比较版本。'
+              : `文档已保存，附件迁移未完成：${errorText(error)}。内嵌图片仍保留，保存时会重试。`,
+          );
+        }
+      }
+      const persisted = result;
+      try {
+        setRecents(updateRecents(persisted.path));
+      } catch {
+        /* document was saved successfully */
+      }
       updateDocs((items) =>
         items.map((item) =>
           item.id === d.id
             ? {
                 ...item,
-                path: result.path,
-                name: basename(result.path),
-                version: result.version,
-                bom: result.bom,
-                crlf: result.crlf,
-                saved: d.content,
-                status: item.content === d.content ? 'clean' : 'dirty',
-                error: undefined,
+                path: persisted.path,
+                name: basename(persisted.path),
+                version: persisted.version,
+                bom: persisted.bom,
+                crlf: persisted.crlf,
+                content: item.content === d.content ? persisted.content : item.content,
+                saved: persisted.content,
+                status: migrationConflict
+                  ? 'conflict'
+                  : item.content === d.content
+                    ? 'clean'
+                    : 'dirty',
+                error: migrationConflict,
               }
             : item,
         ),
       );
       if (root) void refresh();
-      return true;
+      return !migrationConflict;
     } catch (e) {
       if (canceled(e)) {
         patch(d.id, { status: d.content === d.saved ? 'clean' : 'dirty' });
@@ -516,17 +630,29 @@ export default function App() {
     const d = currentRef.current,
       view = editor.current;
     if (!d || !view) return;
+    const range = { from: view.state.selection.main.from, to: view.state.selection.main.to };
+    const original = view.state.doc.toString();
     if (file.size > 20 * 1024 * 1024) {
       notify('图片超过 20MB，请先压缩。');
       return;
     }
     try {
-      const path = await platform.attachImage(d.path, file);
-      if (currentRef.current.id !== d.id) {
+      const path = await platform.attachImage(
+        settingsRef.current.attachmentMode === 'embedded' ? undefined : d.path,
+        file,
+      );
+      if (currentRef.current.id !== d.id || editor.current?.state.doc.toString() !== original) {
         notify('图片已处理，请回到原文档后重新插入。');
         return;
       }
-      insert(`![${file.name.replace(/[\[\]]/g, '')}](${path})\n`);
+      view.dispatch(
+        insertMarkdownTransaction(
+          view.state,
+          `![${file.name.replace(/[\[\]]/g, '')}](<${path}>)\n`,
+          range,
+        ),
+      );
+      view.focus();
     } catch (e) {
       notify(errorText(e));
     }
@@ -551,7 +677,7 @@ export default function App() {
     };
     input.click();
   }
-  async function followLink(href: string) {
+  async function followLink(href: string, source = currentRef.current) {
     if (/^https?:\/\//.test(href)) {
       try {
         await platform.openExternal(href);
@@ -560,20 +686,54 @@ export default function App() {
       }
       return;
     }
+    if (href.startsWith('#wiki:')) {
+      try {
+        const target = decodeURIComponent(href.slice(6));
+        const disk =
+          platform.desktop && root
+            ? await invoke<DiskFile[]>('workspace_documents', { path: root })
+            : [];
+        const opened = docsRef.current.map((d) => ({
+          path: d.path || d.id,
+          content: d.content,
+          name: d.name,
+        }));
+        const candidates = wikiTargets(target, source.path || source.id, [
+          ...opened,
+          ...disk.filter((d) => !opened.some((o) => o.path === d.path)),
+        ]);
+        if (candidates.length === 1) {
+          await openPath(candidates[0].path);
+          const heading = target.split('#')[1];
+          if (heading)
+            setTimeout(() => {
+              const h = getHeadings(currentRef.current.content).find(
+                (h) => h.text === heading || h.id === heading,
+              );
+              if (h) jump(h.line);
+            }, 100);
+        } else if (candidates.length) setLinkChoices(candidates);
+        else notify(`链接目标“${target}”不存在。请创建对应文档，或检查名称和工作文件夹。`);
+      } catch (error) {
+        notify(errorText(error));
+      }
+      return;
+    }
     if (href.startsWith('#')) return;
-    const path = currentRef.current?.path;
+    const path = source?.path;
     if (!path || /^[a-z]+:/i.test(href)) {
       notify('请先保存文档，再打开相对链接。');
       return;
     }
     try {
       const decoded = decodeURIComponent(href.split('#')[0]);
-      await openPath(`${path.slice(0, path.lastIndexOf('/'))}/${decoded}`);
+      const normalized = path.replace(/\\/g, '/');
+      await openPath(`${normalized.slice(0, normalized.lastIndexOf('/'))}/${decoded}`);
     } catch (e) {
       notify(`无法打开链接：${errorText(e)}`);
     }
   }
-  async function doExport() {
+  async function doExport(format: 'html' | 'pdf' | 'docx' | 'publish' = 'html') {
     if (!current || exporting) return;
     setExporting(true);
     setMenu(false);
@@ -587,6 +747,27 @@ export default function App() {
         img.src = await platform.assetData(current.path, img.dataset.asset!);
         img.removeAttribute('data-asset');
         img.classList.remove('pending-image');
+      }
+      if (format !== 'html' && format !== 'publish') {
+        const { exportDocument } = await import('./lib/export');
+        if (await exportDocument(format, node, current.name, { template: exportOptions.template }))
+          notify(`${format.toUpperCase()} 已导出`);
+        return;
+      }
+      const unsupported = [...node.querySelectorAll('.math-error,.diagram-error,img[data-asset]')];
+      if (unsupported.length) throw new Error('存在未能渲染的公式、图表或图片，请修正后再导出。');
+      if (exportOptions.toc) {
+        const nav = document.createElement('nav');
+        nav.className = 'export-toc';
+        nav.innerHTML =
+          '<h2>目录</h2>' +
+          getHeadings(current.content)
+            .map(
+              (h) =>
+                `<p style="margin-left:${(h.level - 1) * 16}px"><a href="#${h.id}">${escapeHtml(h.text)}</a></p>`,
+            )
+            .join('');
+        node.prepend(nav);
       }
       let mathCss = katexCss;
       if (node.querySelector('.katex')) {
@@ -607,7 +788,21 @@ export default function App() {
           mathCss = mathCss.split(url).join(data);
         }
       }
-      const html = `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(current.name)}</title><style>body{max-width:800px;margin:60px auto;padding:0 28px;color:#24272e;font:17px/1.85 system-ui,sans-serif}h1,h2,h3{line-height:1.4}h1{font-size:2em}h2{margin-top:2em}a{color:#4361d9}pre{padding:20px;background:#f3f4f6;overflow:auto;border-radius:8px}code{font-family:monospace}table{border-collapse:collapse;width:100%}td,th{padding:10px 14px;border:1px solid #e4e7ec;text-align:left}blockquote{border-left:3px solid #4361d9;margin-left:0;padding-left:20px;color:#657080}img,svg{max-width:100%}hr{border:0;border-top:1px solid #e4e7ec;margin:32px 0}${mathCss}</style></head><body>${node.outerHTML}</body></html>`;
+      const html = `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(current.name)}</title><style>body{max-width:800px;margin:60px auto;padding:0 28px;color:#24272e;font:17px/1.85 system-ui,sans-serif}h1,h2,h3{line-height:1.4}h1{font-size:2em}h2{margin-top:2em}a{color:#4361d9}pre{padding:20px;background:#f3f4f6;overflow:auto;border-radius:8px}code{font-family:monospace}table{border-collapse:collapse;width:100%}td,th{padding:10px 14px;border:1px solid #e4e7ec;text-align:left}blockquote{border-left:3px solid #4361d9;margin-left:0;padding-left:20px;color:#657080}img,svg{max-width:100%}hr{border:0;border-top:1px solid #e4e7ec;margin:32px 0}${mathCss}${exportOptions.theme === 'dark' ? 'body{background:#20232a;color:#e1e5ec}pre{background:#272c35}a{color:#93a8ff}td,th{border-color:#4b5261}' : ''}${exportOptions.template === 'academic' ? 'body{font-family:serif;max-width:720px}h1{text-align:center}' : exportOptions.template === 'compact' ? 'body{font-size:14px;line-height:1.55;max-width:1000px}' : ''}</style></head><body>${node.outerHTML}</body></html>`;
+      if (format === 'publish') {
+        const r = editor.current?.state.selection.main;
+        setTransfer({
+          kind: 'publish',
+          html,
+          name: current.name,
+          id: current.id,
+          source: current.content,
+          from: r?.from || 0,
+          to: r?.to || 0,
+        });
+        setDialog('transfer');
+        return;
+      }
       if (await platform.exportHtml(html, current.name.replace(/\.(md|markdown)$/i, '') + '.html'))
         notify('HTML 已导出，可离线查看');
     } catch (e) {
@@ -624,7 +819,7 @@ export default function App() {
     }
     try {
       if (namePrompt.type === 'rename' && current.path) {
-        const newPath = await platform.renameFile(current.path, namePrompt.value);
+        const newPath = await renameGuarded(current.path, namePrompt.value);
         patch(current.id, { path: newPath, name: basename(newPath) });
       } else if (namePrompt.type === 'rename')
         patch(current.id, {
@@ -645,25 +840,47 @@ export default function App() {
     }
   }
   useEffect(() => {
+    const update = (event: Event) => {
+      configureInlineSyntax((event as CustomEvent<ExtensionPack[]>).detail || loadExtensions());
+      setSyntaxRevision((v) => v + 1);
+    };
+    window.addEventListener('markwrite-extensions-changed', update);
+    return () => window.removeEventListener('markwrite-extensions-changed', update);
+  }, []);
+  useEffect(() => {
     const media = matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
       document.documentElement.dataset.theme =
         settings.theme === 'system' ? (media.matches ? 'dark' : 'light') : settings.theme;
     };
     apply();
+    for (const [name, value] of Object.entries(settings.customColors || {}))
+      if (/^#[0-9a-f]{6}$/i.test(value))
+        document.documentElement.style.setProperty('--' + name, value);
+    if (!settings.customColors)
+      for (const name of ['paper', 'ink', 'accent'])
+        document.documentElement.style.removeProperty('--' + name);
     media.addEventListener('change', apply);
     return () => media.removeEventListener('change', apply);
-  }, [settings.theme]);
+  }, [settings.theme, settings.customColors]);
   useEffect(() => {
-    const timer = setTimeout(() => {
+    const timer = setTimeout(async () => {
       try {
-        writeSession(docsRef.current, activeId, settings, root);
+        await flushSession(docsRef.current, activeId, settings, root);
       } catch {
         notify('草稿恢复空间不足。请立即保存到文件，避免丢失当前修改。');
       }
     }, 300);
     return () => clearTimeout(timer);
   }, [docs, activeId, settings, root]);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void flushSession(docsRef.current, activeId, settings, root).catch(() =>
+        notify('草稿恢复副本写入失败，请立即保存文档并检查磁盘空间。'),
+      );
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [activeId, settings, root]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(''), 6000);
@@ -676,6 +893,34 @@ export default function App() {
       .then((files) => files.forEach(addDisk))
       .catch((e) => notify(errorText(e)));
   }, []);
+  useEffect(() => {
+    if (!platform.desktop) return;
+    let disposed = false;
+    const unlisten: (() => void)[] = [];
+    void import('@tauri-apps/api/event')
+      .then(async ({ listen }) => {
+        const handlers = await Promise.all([
+          listen<DiskFile[]>('open-documents', (event) => event.payload.forEach(addDisk)),
+          listen<string>('document-open-error', (event) => notify(event.payload)),
+          listen('workspace-changed', () => {
+            void refresh();
+            window.dispatchEvent(new Event('focus'));
+          }),
+          listen<{ requestId: string; hits: SearchHit[] }>('search-progress', (event) => {
+            if (event.payload.requestId === searchRequest.current)
+              setHits((old) => [...old, ...event.payload.hits].slice(-500));
+          }),
+        ]);
+        if (disposed) handlers.forEach((fn) => fn());
+        else unlisten.push(...handlers);
+      })
+      .catch((e) => notify(errorText(e)));
+    if (root) void invoke('watch_folder', { path: root }).catch((e) => notify(errorText(e)));
+    return () => {
+      disposed = true;
+      unlisten.forEach((fn) => fn());
+    };
+  }, [root]);
   useEffect(() => {
     const timer = setInterval(() => {
       if (!settings.autosave || composing.current) return;
@@ -707,7 +952,12 @@ export default function App() {
             patch(d.id, { status: 'conflict', error: '磁盘文件已修改，请比较版本。' });
           else patch(d.id, { ...file, saved: file.content, status: 'clean' });
         } catch {
-          /* Save surfaces path failures; background scans never erase the current buffer. */
+          const latest = docsRef.current.find((item) => item.id === d.id);
+          if (latest && latest.status !== 'error' && !saving.current.has(d.id))
+            patch(d.id, {
+              status: 'error',
+              error: '原文件无法访问或已被移动。当前文字已保留，可另存为。',
+            });
         }
       }
       checking = false;
@@ -724,6 +974,8 @@ export default function App() {
   }, []);
   useEffect(() => {
     let canceled = false;
+    const requestId = crypto.randomUUID();
+    searchRequest.current = requestId;
     if (!query.trim()) {
       setHits([]);
       setSearching(false);
@@ -732,7 +984,7 @@ export default function App() {
     setSearching(true);
     const timer = setTimeout(async () => {
       try {
-        const disk = root ? await platform.searchFolder(root, query) : [];
+        const disk = root ? await platform.searchFolder(root, query, requestId) : [];
         const openedPaths = new Set(docsRef.current.map((d) => d.path || d.id));
         const fromBuffers = docsRef.current.flatMap((d) =>
           d.content
@@ -743,17 +995,18 @@ export default function App() {
                 : [],
             ),
         );
-        if (!canceled)
+        if (!canceled && searchRequest.current === requestId)
           setHits([...fromBuffers, ...disk.filter((h) => !openedPaths.has(h.path))].slice(0, 500));
       } catch (e) {
         if (!canceled) notify(errorText(e));
       } finally {
-        if (!canceled) setSearching(false);
+        if (!canceled && searchRequest.current === requestId) setSearching(false);
       }
     }, 250);
     return () => {
       canceled = true;
       clearTimeout(timer);
+      if (platform.desktop) void invoke('cancel_search', { requestId }).catch(() => {});
     };
   }, [query, root, docs]);
   useEffect(() => {
@@ -774,15 +1027,20 @@ export default function App() {
     let disposed = false;
     if (platform.desktop)
       void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
-        const fn = await getCurrentWindow().onCloseRequested((event) => {
+        const fn = await getCurrentWindow().onCloseRequested(async (event) => {
           if (exitAfterSave.current) return;
+          if (saving.current.size) {
+            event.preventDefault();
+            notify('正在完成文件操作，请稍后再关闭。');
+            return;
+          }
           if (docsRef.current.some((d) => d.content !== d.saved || d.status === 'conflict')) {
             event.preventDefault();
             setCloseTarget('app');
             setDialog('close');
           } else
             try {
-              writeSession(docsRef.current, activeId, settings, root);
+              await flushSession(docsRef.current, activeId, settings, root);
             } catch {
               event.preventDefault();
               notify('无法保存会话，请先另存文档。');
@@ -824,6 +1082,13 @@ export default function App() {
         e.preventDefault();
         setPalette('');
         setDialog('quickopen');
+      } else if (key === 's' && e.shiftKey) {
+        e.preventDefault();
+        void save(currentRef.current.id, true);
+      } else if (key === 'h') {
+        e.preventDefault();
+        setMode('source');
+        if (editor.current) openSearchPanel(editor.current);
       } else if (key === 's') {
         e.preventDefault();
         actions.current.save();
@@ -873,7 +1138,7 @@ export default function App() {
       icon: <Save size={18} />,
       run: () => void save(current.id, true),
     },
-    { label: '导出 HTML', hint: '', icon: <Download size={18} />, run: () => void doExport() },
+    { label: '导出 HTML', hint: '', icon: <Download size={18} />, run: () => openExport('html') },
     {
       label: '查找与替换',
       hint: 'Ctrl F',
@@ -915,25 +1180,339 @@ export default function App() {
       .map((e) => ({ ...e, id: '' })),
   ].filter((e) => e.name.toLowerCase().includes(palette.toLowerCase()));
   async function finishClose(keepDraft: boolean) {
+    if (saving.current.size) {
+      notify('正在完成文件操作，请稍后再关闭。');
+      return;
+    }
     if (closeTarget === 'app') {
       if (!keepDraft)
         for (const d of [...docsRef.current]) {
-          if (d.content !== d.saved && !(await save(d.id))) return;
+          if (
+            (d.content !== d.saved || d.status === 'conflict' || d.status === 'error') &&
+            !(await save(d.id))
+          )
+            return;
+          const latest = docsRef.current.find((item) => item.id === d.id);
+          if (
+            latest &&
+            (latest.content !== latest.saved ||
+              latest.status === 'conflict' ||
+              latest.status === 'error')
+          )
+            return;
         }
       try {
-        writeSession(docsRef.current, activeId, settings, root);
+        await flushSession(docsRef.current, activeId, settings, root);
       } catch {
         notify('草稿保存失败，请先另存文件。');
         return;
       }
       exitAfterSave.current = true;
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      await getCurrentWindow().close();
+      try {
+        await getCurrentWindow().close();
+      } catch (error) {
+        exitAfterSave.current = false;
+        notify(`无法关闭窗口：${errorText(error)}`);
+        return;
+      }
     } else if (closeTarget) {
       if (!keepDraft && !(await save(closeTarget))) return;
+      const latest = docsRef.current.find((d) => d.id === closeTarget);
+      if (
+        !keepDraft &&
+        latest &&
+        (latest.content !== latest.saved ||
+          latest.status === 'conflict' ||
+          latest.status === 'error')
+      )
+        return;
       removeDoc(closeTarget);
     }
     setDialog(null);
+  }
+  function openExport(format: 'html' | 'pdf' | 'docx') {
+    setExportFormat(format);
+    setMenu(false);
+    setDialog('export');
+  }
+  function replaceCurrent(text: string) {
+    const view = editor.current;
+    if (!view) return;
+    setMode('live');
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: text },
+      userEvent: 'input.restore',
+    });
+    view.focus();
+  }
+  function launchInsert(kind: InsertKind) {
+    const view = editor.current;
+    if (!view) return;
+    setMode('live');
+    const range = view.state.selection.main;
+    const table = kind === 'table' ? readTableAtSelection(view) : null;
+    setInsertDialog({
+      kind,
+      documentId: current.id,
+      from: table?.from ?? range.from,
+      to: table?.to ?? range.to,
+      source: view.state.doc.toString(),
+      text: view.state.sliceDoc(range.from, range.to),
+      table: table?.table,
+    });
+  }
+  function applyInsert(markdown: string) {
+    const view = editor.current,
+      target = insertDialog;
+    if (!view || !target) return;
+    if (current.id !== target.documentId || view.state.doc.toString() !== target.source) {
+      notify('原文已改变，请重新选择插入位置。');
+      return;
+    }
+    const text = target.kind === 'table' && !target.table ? '\n\n' + markdown + '\n\n' : markdown;
+    view.dispatch(
+      insertMarkdownTransaction(view.state, text, { from: target.from, to: target.to }),
+    );
+    setInsertDialog(null);
+    view.focus();
+  }
+  async function importDroppedFiles(files: File[]) {
+    if (platform.desktop) return; // Native drag/drop is authorized and delivered by Rust.
+    for (const file of files) {
+      if (file.size > 32 * 1024 * 1024) {
+        notify(`${file.name} 超过 32MB，未打开。`);
+        continue;
+      }
+      try {
+        const text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
+        const d = draft(file.name, text.replace(/\r\n/g, '\n'));
+        updateDocs((items) => [...items, d]);
+        setActiveId(d.id);
+      } catch {
+        notify(`${file.name} 不是有效 UTF-8 文件。`);
+      }
+    }
+    notify('已作为草稿打开，按 Ctrl S 选择保存位置。');
+  }
+  async function renameGuarded(path: string, name: string) {
+    const affected = docsRef.current
+      .filter(
+        (d) =>
+          d.path &&
+          (pathKey(d.path) === pathKey(path) || pathKey(d.path).startsWith(pathKey(path) + '/')),
+      )
+      .map((d) => d.id);
+    if (affected.some((id) => saving.current.has(id)))
+      throw new Error('文档正在保存，请稍后再重命名。');
+    affected.forEach((id) => saving.current.add(id));
+    try {
+      const next = await platform.renameFile(path, name);
+      handleRenamed(path, next);
+      return next;
+    } finally {
+      affected.forEach((id) => saving.current.delete(id));
+    }
+  }
+  function handleRenamed(from: string, to: string) {
+    updateDocs((items) =>
+      items.map((d) => {
+        if (!d.path) return d;
+        const old = d.path.replace(/\\/g, '/'),
+          base = from.replace(/\\/g, '/');
+        if (pathKey(old) === pathKey(base) || pathKey(old).startsWith(pathKey(base) + '/')) {
+          const next = to + old.slice(base.length);
+          return { ...d, path: next, name: basename(next) };
+        }
+        return d;
+      }),
+    );
+    try {
+      setRecents(updateRecents(undefined, from));
+    } catch {
+      /* auxiliary list only */
+    }
+  }
+  function handleTrashed(paths: string[]) {
+    updateDocs((items) =>
+      items.map((d) =>
+        d.path &&
+        paths.some(
+          (p) => pathKey(d.path!) === pathKey(p) || pathKey(d.path!).startsWith(pathKey(p) + '/'),
+        )
+          ? { ...d, path: undefined, version: undefined, status: 'dirty', saved: '' }
+          : d,
+      ),
+    );
+    try {
+      let next = readRecents();
+      for (const path of paths) next = updateRecents(undefined, path);
+      setRecents(next);
+    } catch {
+      /* buffers retained */
+    }
+  }
+  function handleMenuAction(action: EditingAction) {
+    const view = editor.current;
+    if (action.startsWith('format:')) {
+      setMode('live');
+      if (view) applyFormatting(view, action.slice(7) as Parameters<typeof applyFormatting>[1]);
+      return;
+    }
+    if (action.startsWith('insert:')) {
+      launchInsert(action.slice(7) as InsertKind);
+      return;
+    }
+    if (action.startsWith('theme:')) {
+      setSettings((s) => ({ ...s, theme: action.slice(6) as Settings['theme'] }));
+      return;
+    }
+    switch (action) {
+      case 'app:new':
+        newDocument();
+        break;
+      case 'app:open':
+        void openFiles();
+        break;
+      case 'app:folder':
+        void openFolder();
+        break;
+      case 'app:save':
+        void save();
+        break;
+      case 'app:saveAs':
+        void save(current.id, true);
+        break;
+      case 'app:exportHtml':
+        openExport('html');
+        break;
+      case 'app:exportPdf':
+        openExport('pdf');
+        break;
+      case 'app:exportDocx':
+        openExport('docx');
+        break;
+      case 'app:close':
+        requestClose();
+        break;
+      case 'app:quit':
+        if (platform.desktop)
+          void import('@tauri-apps/api/window')
+            .then(({ getCurrentWindow }) => getCurrentWindow().close())
+            .catch((e) => notify(errorText(e)));
+        break;
+      case 'app:find':
+      case 'app:replace':
+        setMode('source');
+        if (view) {
+          openSearchPanel(view);
+          view.focus();
+        }
+        break;
+      case 'app:selectAll':
+        if (view) {
+          setMode('live');
+          selectAll(view);
+          view.focus();
+        }
+        break;
+      case 'app:undo':
+        if (view) {
+          setMode('live');
+          undo(view);
+        }
+        break;
+      case 'app:redo':
+        if (view) {
+          setMode('live');
+          redo(view);
+        }
+        break;
+      case 'app:settings':
+        setDialog('settings');
+        break;
+      case 'app:shortcuts':
+        setDialog('shortcuts');
+        break;
+      case 'app:about':
+        setDialog('about');
+        break;
+      case 'app:upload':
+        if (view) {
+          const r = view.state.selection.main;
+          setTransfer({
+            kind: 'image',
+            name: current.name,
+            id: current.id,
+            source: current.content,
+            from: r.from,
+            to: r.to,
+          });
+          setDialog('transfer');
+        }
+        break;
+      case 'app:publish':
+        void doExport('publish');
+        break;
+      case 'app:extensions':
+        setDialog('extensions');
+        break;
+      case 'app:ai':
+        if (view) {
+          const r = view.state.selection.main;
+          aiSelection.current = {
+            id: current.id,
+            from: r.from,
+            to: r.to,
+            source: current.content,
+            selection: view.state.sliceDoc(r.from, r.to),
+          };
+          setDialog('ai');
+        }
+        break;
+      case 'app:quickOpen':
+        setPalette('');
+        setDialog('quickopen');
+        break;
+      case 'app:search':
+        setSidebar(true);
+        setSideTab('search');
+        break;
+      case 'view:live':
+        setMode('live');
+        break;
+      case 'view:source':
+        setMode('source');
+        break;
+      case 'view:read':
+        setMode('read');
+        break;
+      case 'view:focus':
+        setFocus((v) => !v);
+        break;
+      case 'view:sidebar':
+        setSidebar((v) => !v);
+        break;
+      case 'view:compare':
+        setWorkspaceTab(null);
+        setCompareId((v) => (v ? null : docs.find((d) => d.id !== current.id)?.id || current.id));
+        break;
+      case 'view:workspace':
+        setWorkspaceTab('files');
+        break;
+      case 'view:git':
+        setWorkspaceTab('git');
+        break;
+      case 'view:history':
+        setWorkspaceTab('history');
+        break;
+      case 'view:backlinks':
+        setWorkspaceTab('backlinks');
+        break;
+      case 'view:attachments':
+        setWorkspaceTab('attachments');
+        break;
+    }
   }
   return (
     <div
@@ -944,9 +1523,12 @@ export default function App() {
           '--editor-size': `${settings.fontSize}px`,
           '--editor-line': settings.lineHeight,
           '--content-width': `${settings.width}px`,
-          '--body-font': settings.serif
-            ? '"Noto Serif CJK SC", "Source Han Serif SC", serif'
-            : '"Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif',
+          '--code-font': settings.codeFont || 'monospace',
+          '--body-font':
+            settings.bodyFont ||
+            (settings.serif
+              ? '"Noto Serif CJK SC", "Source Han Serif SC", serif'
+              : '"Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif'),
         } as CSSProperties
       }
     >
@@ -1042,6 +1624,29 @@ export default function App() {
                 </div>
                 {root ? (
                   <>
+                    {workspaces.length > 1 && (
+                      <select
+                        className="workspace-switch"
+                        aria-label="切换工作区"
+                        value={root}
+                        onChange={async (e) => {
+                          const next = e.target.value;
+                          try {
+                            const listing = await platform.listFolder(next);
+                            setEntries(listing);
+                            setRoot(next);
+                          } catch (error) {
+                            notify(errorText(error));
+                          }
+                        }}
+                      >
+                        {workspaces.map((path) => (
+                          <option value={path} key={path}>
+                            {basename(path)}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                     <div className="tree-filter">
                       <Search size={13} />
                       <input
@@ -1073,6 +1678,38 @@ export default function App() {
                       打开文件夹 <ArrowUpRight size={13} />
                     </button>
                   </div>
+                )}
+                {!!recents.length && (
+                  <>
+                    <div className="section-caption">
+                      <span>最近打开</span>
+                    </div>
+                    {recents.slice(0, 8).map((recent) => (
+                      <div className="recent-file" key={recent.path}>
+                        <button
+                          className="tree-row"
+                          title={recent.path}
+                          onClick={() => void openPath(recent.path)}
+                        >
+                          <FileText size={14} />
+                          <span>{recent.name}</span>
+                        </button>
+                        <button
+                          className="remove-recent"
+                          aria-label={`移除最近记录 ${recent.name}`}
+                          onClick={() => {
+                            try {
+                              setRecents(updateRecents(undefined, recent.path));
+                            } catch (e) {
+                              notify(errorText(e));
+                            }
+                          }}
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </>
                 )}
                 <div className="section-caption">
                   <span>开始探索</span>
@@ -1126,6 +1763,17 @@ export default function App() {
                 <div className="section-caption">
                   <span>搜索内容</span>
                   <span>{searching ? '搜索中…' : `${hits.length} 条`}</span>
+                  {searching && (
+                    <button
+                      onClick={() => {
+                        searchRequest.current = '';
+                        setSearching(false);
+                        if (platform.desktop) void invoke('cancel_search', {}).catch(() => {});
+                      }}
+                    >
+                      取消
+                    </button>
+                  )}
                 </div>
                 <div className="tree-filter search-input">
                   <Search size={14} />
@@ -1200,6 +1848,14 @@ export default function App() {
         </aside>
       )}
       <main className="main">
+        {!focus && (
+          <EditingMenu
+            onAction={handleMenuAction}
+            mode={mode}
+            theme={settings.theme}
+            focus={focus}
+          />
+        )}
         {!focus && (
           <header className="topbar">
             <div className="breadcrumb">
@@ -1280,7 +1936,7 @@ export default function App() {
                         重命名
                       </button>
                       <hr />
-                      <button disabled={exporting} onClick={() => void doExport()}>
+                      <button disabled={exporting} onClick={() => openExport('html')}>
                         <Download size={15} />
                         {exporting ? '正在导出…' : '导出 HTML'}
                       </button>
@@ -1349,62 +2005,119 @@ export default function App() {
             当前文档较大，已暂停即时渲染以保证编辑响应。仍可使用源码和阅读模式。
           </div>
         )}
-        <div className="document-surface">
-          <Editor
-            id={current.id}
-            content={current.content}
-            path={current.path}
-            mode={mode}
-            onChange={(text) => contentChanged(current.id, text)}
-            onReady={(v) => {
-              editor.current = v;
-            }}
-            onSelection={(line, column) => {
-              setPosition({ line, column });
-              setSelection(!!editor.current && !editor.current.state.selection.main.empty);
-            }}
-            onImage={(file) => void image(file)}
-            onComposition={(v) => {
-              composing.current = v;
-            }}
-          />
-          {mode === 'read' && (
-            <Reader
+        <div className="document-workspace">
+          <div className="document-surface">
+            <Editor
+              id={current.id}
               content={current.content}
               path={current.path}
+              mode={mode}
+              onChange={(text) => contentChanged(current.id, text)}
+              onReady={(v) => {
+                editor.current = v;
+              }}
+              onSelection={(line, column) => {
+                setPosition({ line, column });
+                setSelection(!!editor.current && !editor.current.state.selection.main.empty);
+              }}
               onLink={(href) => void followLink(href)}
+              onImage={(file) => void image(file)}
+              onMarkdownFiles={(files) => void importDroppedFiles(files)}
+              onEditTable={({ from }) => {
+                const view = editor.current;
+                if (view) {
+                  view.dispatch({ selection: { anchor: from } });
+                  launchInsert('table');
+                }
+              }}
+              onComposition={(v) => {
+                composing.current = v;
+              }}
             />
-          )}
-          {mode !== 'read' && activeTable && (
-            <div className="table-actions" onMouseDown={(e) => e.preventDefault()}>
-              <span>表格</span>
-              <button onClick={() => editTable('addRow')}>添加行</button>
-              <button onClick={() => editTable('addColumn')}>添加列</button>
-              <button onClick={() => editTable('removeRow')}>删除行</button>
-              <button onClick={() => editTable('removeColumn')}>删除列</button>
+            {mode === 'read' && (
+              <Reader
+                content={current.content}
+                path={current.path}
+                theme={settings.theme}
+                revision={syntaxRevision}
+                onLink={(href) => void followLink(href)}
+              />
+            )}
+            {mode !== 'read' && activeTable && (
+              <div className="table-actions" onMouseDown={(e) => e.preventDefault()}>
+                <span>表格</span>
+                <button onClick={() => launchInsert('table')}>可视化编辑</button>
+                <button onClick={() => editTable('addRow')}>添加行</button>
+                <button onClick={() => editTable('addColumn')}>添加列</button>
+                <button onClick={() => editTable('removeRow')}>删除行</button>
+                <button onClick={() => editTable('removeColumn')}>删除列</button>
+              </div>
+            )}
+            {mode !== 'read' && selection && (
+              <div className="format-bar" onMouseDown={(e) => e.preventDefault()}>
+                <IconButton title="粗体" onClick={() => handleMenuAction('format:bold')}>
+                  <Bold size={15} />
+                </IconButton>
+                <IconButton title="斜体" onClick={() => handleMenuAction('format:italic')}>
+                  <Italic size={15} />
+                </IconButton>
+                <IconButton title="插入链接" onClick={() => launchInsert('link')}>
+                  <LinkIcon size={15} />
+                </IconButton>
+                <IconButton title="行内代码" onClick={() => handleMenuAction('format:inlineCode')}>
+                  <Code2 size={15} />
+                </IconButton>
+                <IconButton title="引用" onClick={() => handleMenuAction('format:quote')}>
+                  <Quote size={15} />
+                </IconButton>
+              </div>
+            )}
+          </div>
+          {compareId && (
+            <div className="compare-pane">
+              <div className="workspace-title">
+                <select
+                  aria-label="对照文档"
+                  value={compareId}
+                  onChange={(e) => setCompareId(e.target.value)}
+                >
+                  {docs.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+                <button aria-label="关闭并排对照" onClick={() => setCompareId(null)}>
+                  <X size={16} />
+                </button>
+              </div>
+              <Reader
+                content={(docs.find((d) => d.id === compareId) || current).content}
+                path={(docs.find((d) => d.id === compareId) || current).path}
+                theme={settings.theme}
+                revision={syntaxRevision}
+                onLink={(href) =>
+                  void followLink(href, docs.find((d) => d.id === compareId) || current)
+                }
+              />
             </div>
           )}
-          {mode !== 'read' && selection && (
-            <div className="format-bar" onMouseDown={(e) => e.preventDefault()}>
-              <IconButton title="粗体" onClick={() => insert('**', '**', '粗体文字')}>
-                <Bold size={15} />
-              </IconButton>
-              <IconButton title="斜体" onClick={() => insert('*', '*', '斜体文字')}>
-                <Italic size={15} />
-              </IconButton>
-              <IconButton
-                title="插入链接"
-                onClick={() => insert('[', '](https://example.com)', '链接文字')}
-              >
-                <LinkIcon size={15} />
-              </IconButton>
-              <IconButton title="行内代码" onClick={() => insert('`', '`', '代码')}>
-                <Code2 size={15} />
-              </IconButton>
-              <IconButton title="引用" onClick={() => insert('> ')}>
-                <Quote size={15} />
-              </IconButton>
-            </div>
+          {workspaceTab && !focus && (
+            <WorkspacePanel
+              tab={workspaceTab}
+              onTab={setWorkspaceTab}
+              root={root}
+              current={current}
+              docs={docs}
+              entries={entries}
+              onClose={() => setWorkspaceTab(null)}
+              onOpen={(path) => void openPath(path)}
+              onRestore={(text) => replaceCurrent(text)}
+              onRefresh={() => void refresh()}
+              onTrashed={handleTrashed}
+              onRename={renameGuarded}
+              onNotify={notify}
+            />
           )}
         </div>
         {focus && (
@@ -1464,6 +2177,223 @@ export default function App() {
           </footer>
         )}
       </main>
+      {insertDialog && (
+        <InsertDialog
+          kind={insertDialog.kind}
+          initialText={insertDialog.text}
+          table={insertDialog.table}
+          onClose={() => setInsertDialog(null)}
+          onInsert={applyInsert}
+          onChooseImage={() => {
+            setInsertDialog(null);
+            chooseImage();
+          }}
+          documents={docs
+            .filter((d) => d.id !== current.id)
+            .map((d) => ({
+              name: d.name,
+              path:
+                d.path && current.path
+                  ? relativeDocument(current.path, d.path)
+                  : '#wiki:' + encodeURIComponent(d.name.replace(/\.(md|markdown)$/i, '')),
+            }))}
+        />
+      )}
+      {!!linkChoices.length && (
+        <Modal
+          title="选择链接目标"
+          subtitle="存在同名文档，请选择要打开的文件。"
+          onClose={() => setLinkChoices([])}
+        >
+          {linkChoices.map((d) => (
+            <button
+              className="panel-list-item"
+              key={d.path}
+              onClick={() => {
+                void openPath(d.path);
+                setLinkChoices([]);
+              }}
+            >
+              {d.name || d.path}
+              <small>{d.path}</small>
+            </button>
+          ))}
+        </Modal>
+      )}
+      {dialog === 'transfer' && transfer && (
+        <Modal
+          title={transfer.kind === 'image' ? '上传图片到图床' : '发布文档'}
+          subtitle="连接你自己的服务，明确发送后才会联网"
+          onClose={() => setDialog(null)}
+        >
+          <TransferPanel
+            kind={transfer.kind}
+            html={transfer.html}
+            name={transfer.name}
+            onInsert={(url) => {
+              const view = editor.current;
+              if (!view) return;
+              if (current.id !== transfer.id || current.content !== transfer.source) {
+                notify('原文已变化，请复制链接后在目标位置插入。');
+                return;
+              }
+              setMode('live');
+              view.dispatch(
+                insertMarkdownTransaction(view.state, `![图片](<${url}>)`, {
+                  from: transfer.from,
+                  to: transfer.to,
+                }),
+              );
+              setDialog(null);
+            }}
+          />
+        </Modal>
+      )}
+      {dialog === 'about' && (
+        <Modal
+          title="墨页 · Markwrite"
+          subtitle="本地优先的 Markdown 写作工具"
+          onClose={() => setDialog(null)}
+        >
+          <p>
+            通过菜单设置格式、插入表格和公式，也可以直接使用
+            Markdown。源码、编辑与阅读共用同一份正文。
+          </p>
+          <p>
+            本版本提供历史、反向链接、附件管理、Git、PDF 与 Word 导出。扩展使用可检查的文字片段；AI
+            仅在你主动选择文字并配置服务后工作。
+          </p>
+          <p className="panel-note">
+            Linux 与 Windows 构建；输入法、显示缩放和长期写作的真机验证记录见项目文档。
+          </p>
+          <button
+            className="primary-button"
+            onClick={() => void platform.openExternal('https://github.com/asoming/markwrite')}
+          >
+            查看项目与更新
+          </button>
+        </Modal>
+      )}
+      {dialog === 'extensions' && (
+        <Modal
+          title="编辑扩展"
+          subtitle="管理模板和可复用片段"
+          wide
+          onClose={() => setDialog(null)}
+        >
+          <ExtensionsPanel
+            onError={notify}
+            onInsert={(markdown) => {
+              const view = editor.current;
+              if (!view) return;
+              const selected = view.state.sliceDoc(
+                view.state.selection.main.from,
+                view.state.selection.main.to,
+              );
+              setMode('live');
+              view.dispatch(
+                insertMarkdownTransaction(
+                  view.state,
+                  markdown.replaceAll('{{selection}}', selected),
+                ),
+              );
+              setDialog(null);
+              view.focus();
+            }}
+          />
+        </Modal>
+      )}
+      {dialog === 'ai' && (
+        <Modal
+          title="AI 写作助手"
+          subtitle="选择文字 → 预览修改 → 接受或舍弃"
+          wide
+          onClose={() => setDialog(null)}
+        >
+          <AiPanel
+            selection={aiSelection.current?.selection || ''}
+            onApply={(text) => {
+              const snapshot = aiSelection.current,
+                view = editor.current;
+              if (!snapshot || !view) return;
+              if (current.id !== snapshot.id || current.content !== snapshot.source) {
+                notify('原文已变化，请重新选择内容生成建议。');
+                return;
+              }
+              setMode('live');
+              view.dispatch(
+                insertMarkdownTransaction(view.state, text, {
+                  from: snapshot.from,
+                  to: snapshot.to,
+                }),
+              );
+              setDialog(null);
+              view.focus();
+            }}
+          />
+        </Modal>
+      )}
+      {dialog === 'export' && (
+        <Modal
+          title={`导出 ${exportFormat === 'docx' ? 'Word 文档' : exportFormat.toUpperCase()}`}
+          subtitle="使用当前编辑内容，无需先覆盖原文档"
+          onClose={() => setDialog(null)}
+        >
+          <div className="settings-extra">
+            <label>
+              排版模板{' '}
+              <select
+                value={exportOptions.template}
+                onChange={(e) =>
+                  setExportOptions((v) => ({ ...v, template: e.target.value as typeof v.template }))
+                }
+              >
+                <option value="standard">标准文档</option>
+                <option value="academic">学术阅读</option>
+                <option value="compact">紧凑笔记</option>
+              </select>
+            </label>
+            {exportFormat === 'html' && (
+              <>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={exportOptions.toc}
+                    onChange={(e) => setExportOptions((v) => ({ ...v, toc: e.target.checked }))}
+                  />{' '}
+                  包含文档目录
+                </label>
+                <label>
+                  外观{' '}
+                  <select
+                    value={exportOptions.theme}
+                    onChange={(e) => setExportOptions((v) => ({ ...v, theme: e.target.value }))}
+                  >
+                    <option value="light">浅色</option>
+                    <option value="dark">深色</option>
+                  </select>
+                </label>
+              </>
+            )}
+            <p className="panel-note">
+              本地图片、公式和图表会嵌入导出文件。未加载的网络图片或语法错误会提示处理，不会悄悄丢弃。
+            </p>
+          </div>
+          <div className="modal-actions">
+            <button onClick={() => setDialog(null)}>取消</button>
+            <button
+              className="primary-button"
+              disabled={exporting}
+              onClick={() => {
+                setDialog(null);
+                void doExport(exportFormat);
+              }}
+            >
+              选择位置并导出
+            </button>
+          </div>
+        </Modal>
+      )}
       {toast && (
         <div className="toast" role="status">
           <span>{toast}</span>
@@ -1631,8 +2561,120 @@ export default function App() {
               </select>
             </label>
           </div>
+          <div className="settings-section settings-extra">
+            <h3>字体与阅读预设</h3>
+            <label>
+              正文字体{' '}
+              <input
+                aria-label="正文字体名称"
+                placeholder="留空使用系统字体"
+                value={settings.bodyFont || ''}
+                onChange={(e) => setSettings((v) => ({ ...v, bodyFont: e.target.value }))}
+              />
+            </label>
+            <label>
+              代码字体{' '}
+              <input
+                aria-label="代码字体名称"
+                value={settings.codeFont || ''}
+                onChange={(e) => setSettings((v) => ({ ...v, codeFont: e.target.value }))}
+              />
+            </label>
+            <div className="snippet-buttons">
+              <button
+                onClick={() =>
+                  setSettings((v) => ({
+                    ...v,
+                    fontSize: 17,
+                    lineHeight: 1.9,
+                    width: 760,
+                    serif: false,
+                  }))
+                }
+              >
+                日常写作
+              </button>
+              <button
+                onClick={() =>
+                  setSettings((v) => ({
+                    ...v,
+                    fontSize: 19,
+                    lineHeight: 2,
+                    width: 720,
+                    serif: true,
+                  }))
+                }
+              >
+                长文阅读
+              </button>
+              <button
+                onClick={() =>
+                  setSettings((v) => ({
+                    ...v,
+                    fontSize: 15,
+                    lineHeight: 1.6,
+                    width: 1000,
+                    serif: false,
+                  }))
+                }
+              >
+                技术文档
+              </button>
+            </div>
+            <details>
+              <summary>自定义主题颜色</summary>
+              {(['paper', 'ink', 'accent'] as const).map((key) => (
+                <label className="setting-row" key={key}>
+                  <span>{{ paper: '背景', ink: '正文', accent: '强调色' }[key]}</span>
+                  <input
+                    type="color"
+                    aria-label={`自定义${key}`}
+                    value={
+                      settings.customColors?.[key] ||
+                      { paper: '#fcfcfd', ink: '#24272e', accent: '#4361d9' }[key]
+                    }
+                    onChange={(e) =>
+                      setSettings((v) => ({
+                        ...v,
+                        customColors: {
+                          paper: '#fcfcfd',
+                          ink: '#24272e',
+                          accent: '#4361d9',
+                          ...v.customColors,
+                          [key]: e.target.value,
+                        },
+                      }))
+                    }
+                  />
+                </label>
+              ))}
+              <button onClick={() => setSettings((v) => ({ ...v, customColors: undefined }))}>
+                恢复主题原色
+              </button>
+            </details>
+          </div>
           <div className="settings-section">
             <h3>文件与保存</h3>
+            <label className="setting-row">
+              <span>图片保存方式</span>
+              <select
+                aria-label="图片保存方式"
+                value={settings.attachmentMode}
+                onChange={(e) =>
+                  setSettings((v) => ({
+                    ...v,
+                    attachmentMode: e.target.value as Settings['attachmentMode'],
+                  }))
+                }
+              >
+                <option value="relative">文档旁的 assets 文件夹</option>
+                <option value="embedded">内嵌到 Markdown</option>
+              </select>
+            </label>
+            <p className="settings-note">
+              目录扫描排除隐藏目录、.git、node_modules、target 和符号链接；搜索最多显示 500
+              条匹配，可随时取消。
+            </p>
             <label className="setting-row">
               <span>
                 自动保存<small>停止输入后，保存已有路径的文档</small>
@@ -1705,6 +2747,10 @@ export default function App() {
               <pre>{diskConflict.content}</pre>
             </section>
           </div>
+          <DiffView
+            before={docs.find((d) => d.id === diskConflict.documentId)?.content || ''}
+            after={diskConflict.content}
+          />
           <div className="modal-footer conflict-footer">
             <button
               onClick={() => {
@@ -1816,10 +2862,7 @@ export default function App() {
           <IconButton title="插入二级标题" onClick={() => insert('\n## ', '', '新标题')}>
             <Heading2 size={16} />
           </IconButton>
-          <IconButton
-            title="插入表格"
-            onClick={() => insert('\n| 标题 | 标题 |\n| --- | --- |\n| 内容 | 内容 |\n')}
-          >
+          <IconButton title="插入表格" onClick={() => launchInsert('table')}>
             <Table size={16} />
           </IconButton>
           <IconButton title="插入图片" onClick={chooseImage}>

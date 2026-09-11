@@ -2,6 +2,14 @@ import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import katex from 'katex';
 import type { Heading } from './types';
+import type { ExtensionPack } from './extensions';
+import { setInlineSyntax, inlineSyntaxRules, inlineMatch, syntaxInk } from './syntax';
+
+export function configureInlineSyntax(packs: readonly ExtensionPack[]) {
+  const count = setInlineSyntax(packs);
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('markwrite-syntax-configured'));
+  return count;
+}
 
 export const escapeHtml = (value: string) =>
   value.replace(
@@ -18,6 +26,47 @@ export const slug = (text: string) =>
 export const md = new Marked({ gfm: true, breaks: false });
 md.use({
   extensions: [
+    {
+      name: 'customInline',
+      level: 'inline',
+      start(source) {
+        const positions = inlineSyntaxRules()
+          .map((rule) => source.indexOf(rule.open))
+          .filter((position) => position >= 0);
+        return positions.length ? Math.min(...positions) : -1;
+      },
+      tokenizer(source) {
+        for (const rule of inlineSyntaxRules()) {
+          const match = inlineMatch(source, rule);
+          if (match)
+            return {
+              type: 'customInline',
+              raw: match.raw,
+              text: match.text,
+              syntaxName: rule.name,
+              color: rule.color,
+            };
+        }
+      },
+      renderer(token) {
+        return `<mark class="syntax-highlight" data-syntax="${escapeHtml(token.syntaxName)}" style="background-color:${token.color};color:${syntaxInk(token.color)}">${escapeHtml(token.text)}</mark>`;
+      },
+    },
+    {
+      name: 'wikiLink',
+      level: 'inline',
+      start: (s) => s.indexOf('[['),
+      tokenizer(s) {
+        const match = /^\[\[([^\]\n]+)\]\]/.exec(s);
+        if (match) {
+          const [target, label] = match[1].split('|');
+          return { type: 'wikiLink', raw: match[0], target: target.trim(), text: label || target };
+        }
+      },
+      renderer(token) {
+        return `<a href="#wiki:${encodeURIComponent(token.target)}" class="wiki-link">${escapeHtml(token.text)}</a>`;
+      },
+    },
     {
       name: 'blockMath',
       level: 'block',
@@ -46,13 +95,14 @@ md.use({
 });
 function math(text: string, displayMode: boolean) {
   try {
-    return katex.renderToString(text, {
+    const html = katex.renderToString(text, {
       displayMode,
       throwOnError: true,
       trust: false,
       strict: 'ignore',
       output: 'html',
     });
+    return `<span class="math-rendered" data-tex="${encodeURIComponent(text)}" data-display="${displayMode}">${html}</span>`;
   } catch {
     return `<code class="math-error" title="公式语法有误">${escapeHtml(text)}</code>`;
   }
@@ -79,7 +129,7 @@ md.use({
 export function renderMarkdown(source: string): string {
   const html = md.parse(source.replace(/^\uFEFF/, '')) as string;
   const safe = DOMPurify.sanitize(html, {
-    ADD_ATTR: ['data-diagram'],
+    ADD_ATTR: ['data-diagram', 'data-tex', 'data-display'],
     FORBID_TAGS: ['style', 'form', 'input', 'iframe', 'object', 'embed', 'video', 'audio'],
     FORBID_ATTR: ['srcset'],
   });
@@ -144,7 +194,7 @@ export async function hydrateDiagrams(root: HTMLElement) {
 }
 export function getHeadings(content: string): Heading[] {
   const headings: Heading[] = [];
-  let offset = 0;
+  let line = 1;
   const counts = new Map<string, number>();
   for (const token of md.lexer(content)) {
     if (token.type === 'heading') {
@@ -158,11 +208,11 @@ export function getHeadings(content: string): Heading[] {
       headings.push({
         level: token.depth,
         text,
-        line: content.slice(0, offset).split('\n').length,
+        line,
         id: n ? `${base}-${n}` : base,
       });
     }
-    offset += token.raw.length;
+    line += (token.raw.match(/\n/g) || []).length;
   }
   return headings;
 }

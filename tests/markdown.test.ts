@@ -28,10 +28,11 @@ describe('Markdown fidelity and rendering', () => {
     expect(root.querySelectorAll('.katex')).toHaveLength(1);
     expect(root.querySelector('pre code')?.textContent).toBe('$x$');
   });
-  it('renders tables and retains unknown syntax as text', () => {
+  it('renders tables and wiki links without changing source', () => {
     const html = renderMarkdown('| A | B |\n| --- | --- |\n| 1 | 2 |\n\n[[未支持的双链]]');
     expect(html).toContain('<table>');
-    expect(html).toContain('[[未支持的双链]]');
+    expect(html).toContain('class="wiki-link"');
+    expect(html).toContain('未支持的双链');
   });
   it('does not execute script or auto-load remote images', () => {
     const html = renderMarkdown(

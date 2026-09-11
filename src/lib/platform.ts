@@ -187,8 +187,12 @@ export async function renameFile(path: string, name: string): Promise<string> {
   if (desktop) return invoke('rename_document', { path, name });
   throw new Error('浏览器预览暂不支持重命名，请使用“另存为”。');
 }
-export async function searchFolder(path: string, query: string): Promise<SearchHit[]> {
-  if (desktop) return invoke('search_folder', { path, query });
+export async function searchFolder(
+  path: string,
+  query: string,
+  requestId?: string,
+): Promise<SearchHit[]> {
+  if (desktop) return invoke('search_folder', { path, query, requestId });
   const hits: SearchHit[] = [];
   for (const [p, h] of handles) {
     if (!p.startsWith(`${path}/`) || !/\.(md|markdown)$/i.test(p)) continue;
@@ -200,6 +204,24 @@ export async function searchFolder(path: string, query: string): Promise<SearchH
     });
   }
   return hits;
+}
+export async function migrateEmbeddedImages(path: string, content: string) {
+  const images = [
+    ...new Set(
+      content.match(/data:image\/(?:png|jpe?g|gif|webp|avif|bmp);base64,[A-Za-z0-9+/=]+/gi) || [],
+    ),
+  ];
+  let result = content;
+  for (const data of images) {
+    const [header, base64] = data.split(',');
+    const mime = header.slice(5).split(';')[0];
+    const extension = mime.split('/')[1].replace('jpeg', 'jpg');
+    const binary = atob(base64);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const asset = await attachImage(path, new File([bytes], `image.${extension}`, { type: mime }));
+    result = result.split(data).join(asset);
+  }
+  return result;
 }
 export async function assetData(documentPath: string, asset: string): Promise<string> {
   if (/^data:image\//.test(asset)) return asset;

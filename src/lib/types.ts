@@ -27,6 +27,10 @@ export type Settings = {
   width: number;
   autosave: boolean;
   serif: boolean;
+  bodyFont?: string;
+  codeFont?: string;
+  attachmentMode: 'relative' | 'embedded';
+  customColors?: { paper: string; ink: string; accent: string };
 };
 export type Heading = { level: number; text: string; line: number; id: string };
 export type SearchHit = { path: string; line: number; text: string };
