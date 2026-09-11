@@ -27,6 +27,7 @@ export type Settings = {
   theme: Theme;
   language: Language;
   defaultMode: Mode;
+  followFileParent: boolean;
   fontSize: number;
   lineHeight: number;
   width: number;

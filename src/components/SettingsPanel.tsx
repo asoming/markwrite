@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { Check, FileText, Globe, Image, Palette, Type, X } from 'lucide-react';
 import { defaultSettings } from '../lib/recovery';
-import { resolveTheme, themeOptions } from '../lib/themes';
+import { resolveTheme, themeOptions, themeDefaults } from '../lib/themes';
 import type { Settings } from '../lib/types';
 import './settings.css';
 
@@ -27,6 +27,8 @@ export default function SettingsPanel({
   const [category, setCategory] = useState<Category>('general');
   const [association, setAssociation] = useState<boolean | null>(null);
   const [requesting, setRequesting] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const checkGeneration = useRef(0);
   const [result, setResult] = useState<DefaultAppResult>();
   const [error, setError] = useState('');
   const panel = useRef<HTMLDivElement>(null);
@@ -81,19 +83,32 @@ export default function SettingsPanel({
       previous?.focus();
     };
   }, []);
+  async function refreshDefault() {
+    if (!check.current) return;
+    const generation = ++checkGeneration.current;
+    setChecking(true);
+    try {
+      const value = await check.current();
+      if (!mounted.current || generation !== checkGeneration.current) return;
+      setAssociation(value);
+      if (value === true) {
+        setError('');
+        setResult(undefined);
+      }
+    } catch {
+      if (mounted.current && generation === checkGeneration.current) setAssociation(null);
+    } finally {
+      if (mounted.current && generation === checkGeneration.current) setChecking(false);
+    }
+  }
   useEffect(() => {
-    if (category !== 'files' || !check.current) return;
-    let disposed = false;
-    void check
-      .current()
-      .then((value) => {
-        if (!disposed) setAssociation(value);
-      })
-      .catch(() => {
-        if (!disposed) setAssociation(null);
-      });
+    if (category !== 'files') return;
+    void refreshDefault();
+    const refresh = () => void refreshDefault();
+    window.addEventListener('focus', refresh);
     return () => {
-      disposed = true;
+      checkGeneration.current++;
+      window.removeEventListener('focus', refresh);
     };
   }, [category]);
   function keyDown(event: KeyboardEvent) {
@@ -263,6 +278,33 @@ export default function SettingsPanel({
             {category === 'files' && (
               <>
                 <section className="preferences-section">
+                  <h4>{t('文件树', 'File tree')}</h4>
+                  <label className="preference-toggle">
+                    <span>
+                      {t('跟随当前文件', 'Follow current file')}
+                      <small>
+                        {t(
+                          '自动显示 Markdown 所在的文件夹',
+                          'Show the folder containing the active Markdown file',
+                        )}
+                      </small>
+                    </span>
+                    <input
+                      type="checkbox"
+                      className="switch"
+                      aria-label={t('跟随当前文件', 'Follow current file')}
+                      checked={settings.followFileParent}
+                      onChange={(event) => update({ followFileParent: event.target.checked })}
+                    />
+                  </label>
+                  <p className="preference-help">
+                    {t(
+                      '手动打开文件夹会固定目录；点击文件树上的图钉可恢复跟随。',
+                      'Opening a folder pins it. Use the pin in the file tree to resume following.',
+                    )}
+                  </p>
+                </section>
+                <section className="preferences-section">
                   <h4>{t('保存', 'Saving')}</h4>
                   <label className="preference-toggle">
                     <span>
@@ -293,8 +335,8 @@ export default function SettingsPanel({
                   <h4>{t('默认打开方式', 'Default application')}</h4>
                   <p className="preference-help">
                     {t(
-                      '双击 .md 或 .markdown 文件时，使用墨页打开。Windows 可能需要在系统默认应用中完成选择。',
-                      'Open .md and .markdown files with Markwrite when double-clicked. Windows may ask you to finish the selection in system settings.',
+                      '双击 .md 或 .markdown 文件时，用 Markwrite 打开。',
+                      'Open .md and .markdown files with Markwrite when double-clicked.',
                     )}
                   </p>
                   {association === true && (
@@ -307,15 +349,24 @@ export default function SettingsPanel({
                     type="button"
                     className="preference-button"
                     disabled={requesting || !defaultAppAvailable}
+                    aria-label={t(
+                      '将 Markdown 默认设为墨页打开',
+                      'Use Markwrite as the default Markdown app',
+                    )}
                     onClick={() => void requestDefault()}
                   >
-                    {requesting
-                      ? t('正在处理…', 'Working…')
-                      : t(
-                          '将 Markdown 默认设为墨页打开',
-                          'Use Markwrite as the default Markdown app',
-                        )}
+                    {requesting ? t('正在处理…', 'Working…') : t('设为默认应用', 'Set as default')}
                   </button>
+                  {defaultAppAvailable && onCheckDefaultApp && (
+                    <button
+                      type="button"
+                      className="preference-button preference-refresh"
+                      disabled={checking || requesting}
+                      onClick={() => void refreshDefault()}
+                    >
+                      {checking ? t('正在检查…', 'Checking…') : t('刷新状态', 'Refresh status')}
+                    </button>
+                  )}
                   {!defaultAppAvailable && (
                     <p className="preference-help">
                       {t(
@@ -546,7 +597,11 @@ export default function SettingsPanel({
                         aria-pressed={settings.theme === theme.id}
                         aria-label={theme.name[settings.language]}
                         onClick={() =>
-                          update({ theme: theme.id, serif: theme.serif, customColors: undefined })
+                          update({
+                            theme: theme.id,
+                            ...themeDefaults(theme.id),
+                            customColors: undefined,
+                          })
                         }
                         style={
                           {
@@ -576,8 +631,8 @@ export default function SettingsPanel({
                   </div>
                   <p className="preference-help">
                     {t(
-                      '主题同时用于编辑与阅读。切换主题会恢复其配色和字体风格，保留自定义字体、字号、行高与宽度。',
-                      'Themes apply to editing and reading. Selecting a theme restores its palette and font style while keeping custom fonts, size, line height, and width.',
+                      '主题用于编辑与阅读。切换会应用主题的字号、行距、宽度与配色，保留手动指定的字体。',
+                      'Themes apply to editing and reading. Selecting a theme applies its colors, typography, size, line height, and width while keeping explicitly chosen fonts.',
                     )}
                   </p>
                 </section>

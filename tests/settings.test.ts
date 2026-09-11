@@ -33,6 +33,7 @@ afterEach(() => {
 function renderPanel(
   initial: Partial<Settings> = {},
   request = async (): Promise<DefaultAppResult> => ({ status: 'set' }),
+  check?: () => Promise<boolean | null>,
 ) {
   let latest = { ...defaultSettings, ...initial };
   const close = vi.fn();
@@ -46,6 +47,7 @@ function renderPanel(
       },
       onClose: close,
       onDefaultApp: request,
+      onCheckDefaultApp: check,
     });
   }
   act(() => root.render(createElement(Harness)));
@@ -75,6 +77,60 @@ function change(label: string, value: string) {
 }
 
 describe('preferences and theme compatibility', () => {
+  it('upgrades legacy named-theme metrics and the old default code font while preserving customization', () => {
+    const legacy = {
+      fontSize: 17,
+      lineHeight: 1.9,
+      width: 760,
+      serif: false,
+      bodyFont: 'User Serif',
+      codeFont: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
+      autosave: false,
+    };
+    function load(settings: Partial<Settings>) {
+      localStorage.setItem(
+        'markwrite.session.v1',
+        JSON.stringify({ docs: [], active: '', settings }),
+      );
+      return readSession()!.settings;
+    }
+    const presets = [
+      ['github', 16, 1.6, 860, false],
+      ['newsprint', 16, 1.5, 640, true],
+      ['night', 16, 1.625, 914, false],
+      ['pixyll', 20, 1.8, 914, true],
+      ['whitey', 19, 1.53, 960, true],
+    ] as const;
+    for (const [theme, fontSize, lineHeight, width, serif] of presets) {
+      expect(load({ ...legacy, theme })).toMatchObject({
+        theme,
+        fontSize,
+        lineHeight,
+        width,
+        serif,
+        bodyFont: 'User Serif',
+        codeFont: '',
+        autosave: false,
+      });
+    }
+    // Changing even one metric identifies an intentional layout; retain the whole layout.
+    for (const customized of [{ fontSize: 23 }, { lineHeight: 2.2 }, { width: 1020 }]) {
+      const settings = {
+        ...legacy,
+        theme: 'newsprint' as const,
+        ...customized,
+        codeFont: 'My Code Font',
+      };
+      expect(load(settings)).toMatchObject(settings);
+    }
+    expect(load({ ...legacy, theme: 'light' })).toMatchObject({
+      theme: 'light',
+      fontSize: 17,
+      lineHeight: 1.9,
+      width: 760,
+      codeFont: '',
+    });
+  });
   it('migrates old preferences to Chinese and reading without losing existing settings', () => {
     localStorage.setItem(
       'markwrite.session.v1',
@@ -127,7 +183,7 @@ describe('preferences and theme compatibility', () => {
     expect(isTheme('pixyll')).toBe(true);
     expect(isTheme('__proto__')).toBe(false);
     expect(themeTypography('newsprint').serif).toBe(true);
-    expect(themeTypography('whitey').serif).toBe(false);
+    expect(themeTypography('whitey').serif).toBe(true);
   });
   it('applies all five named palettes through the root used by editor and reader', () => {
     const style = document.createElement('style');
@@ -177,7 +233,9 @@ describe('settings panel interactions', () => {
       defaultMode: 'live',
       theme: 'newsprint',
       serif: true,
-      fontSize: 22,
+      fontSize: 16,
+      lineHeight: 1.5,
+      width: 640,
       bodyFont: 'My Font',
       codeFont: 'Consolas',
       autosave: false,
@@ -192,8 +250,8 @@ describe('settings panel interactions', () => {
     change('Background color', '#192633');
     expect(session.settings().customColors).toMatchObject({
       paper: '#192633',
-      ink: '#dce5ee',
-      accent: '#8ecbdf',
+      ink: themeOptions.find((theme) => theme.id === 'night')!.ink,
+      accent: themeOptions.find((theme) => theme.id === 'night')!.accent,
     });
     click(button('Restore theme colors'));
     expect(session.settings().customColors).toBeUndefined();
@@ -231,7 +289,8 @@ describe('settings panel interactions', () => {
     click(button('Files'));
     click(button('Use Markwrite as the default Markdown app'));
     expect(request).toHaveBeenCalledTimes(1);
-    expect(button('Working…').disabled).toBe(true);
+    expect(button('Use Markwrite as the default Markdown app').disabled).toBe(true);
+    expect(button('Use Markwrite as the default Markdown app').textContent).toBe('Working…');
     await act(async () => finish({ status: 'settings-opened' }));
     expect(host.querySelector('[role="status"]')?.textContent).toContain('Select Markwrite');
     expect(host.textContent).not.toContain('Markwrite is the default Markdown app');
@@ -244,6 +303,61 @@ describe('settings panel interactions', () => {
     await act(async () => button('Use Markwrite as the default Markdown app').click());
     expect(host.querySelector('[role="alert"]')?.textContent).toContain('Permission denied');
     expect(host.querySelector('[role="status"]')).toBeNull();
+  });
+  it.each(['window focus', 'refresh button'] as const)(
+    'clears an old association error when %s reads a newly confirmed default',
+    async (trigger) => {
+      const request = vi.fn(async (): Promise<DefaultAppResult> => {
+        throw new Error('Permission denied');
+      });
+      const check = vi
+        .fn<() => Promise<boolean | null>>()
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
+      renderPanel({ language: 'en' }, request, check);
+      await act(async () => button('Files').click());
+      expect(check).toHaveBeenCalledTimes(1);
+      expect(host.textContent).not.toContain('Markwrite is the default Markdown app');
+      await act(async () => button('Use Markwrite as the default Markdown app').click());
+      expect(host.querySelector('[role="alert"]')?.textContent).toContain('Permission denied');
+      await act(async () => {
+        if (trigger === 'window focus') window.dispatchEvent(new Event('focus'));
+        else button('Refresh status').click();
+      });
+      expect(host.querySelector('[role="alert"]')).toBeNull();
+      expect(host.querySelector('.preference-success')?.textContent).toContain(
+        'Markwrite is the default Markdown app',
+      );
+      expect(check).toHaveBeenCalledTimes(2);
+      expect(request).toHaveBeenCalledTimes(1);
+    },
+  );
+  it('ignores a stale status-check failure after a newer focus check confirms the default', async () => {
+    let rejectOlder!: (reason: Error) => void;
+    const check = vi
+      .fn<() => Promise<boolean | null>>()
+      .mockResolvedValueOnce(false)
+      .mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectOlder = reject;
+          }),
+      )
+      .mockResolvedValueOnce(true);
+    const request = vi.fn(async (): Promise<DefaultAppResult> => ({ status: 'settings-opened' }));
+    renderPanel({ language: 'en' }, request, check);
+    await act(async () => button('Files').click());
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    expect(check).toHaveBeenCalledTimes(2);
+    await act(async () => window.dispatchEvent(new Event('focus')));
+    expect(host.querySelector('.preference-success')).not.toBeNull();
+    await act(async () => rejectOlder(new Error('Stale status unavailable')));
+    expect(host.querySelector('.preference-success')?.textContent).toContain(
+      'Markwrite is the default Markdown app',
+    );
+    expect(button('Refresh status').disabled).toBe(false);
+    expect(check).toHaveBeenCalledTimes(3);
+    expect(request).not.toHaveBeenCalled();
   });
   it('supports category arrow keys, focus wrapping, and Escape without changing preferences', () => {
     const session = renderPanel();

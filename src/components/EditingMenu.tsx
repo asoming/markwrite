@@ -10,6 +10,8 @@ export type EditingAction =
   | 'app:open'
   | 'app:import'
   | 'app:folder'
+  | 'app:rename'
+  | 'app:reference'
   | 'app:save'
   | 'app:saveAs'
   | 'app:exportHtml'
@@ -70,6 +72,7 @@ const menus: { label: string; items: Item[] }[] = [
       'separator',
       { label: '保存', action: 'app:save', shortcut: 'Ctrl S' },
       { label: '另存为…', action: 'app:saveAs', shortcut: 'Ctrl Shift S' },
+      { label: '重命名', action: 'app:rename' },
       'separator',
       { label: '导出 HTML…', action: 'app:exportHtml' },
       { label: '导出 PDF…', action: 'app:exportPdf' },
@@ -182,6 +185,7 @@ const menus: { label: string; items: Item[] }[] = [
   {
     label: '帮助',
     items: [
+      { label: 'Markdown 语法手册', action: 'app:reference' },
       { label: '快捷键', action: 'app:shortcuts' },
       { label: '关于墨页', action: 'app:about' },
     ],
@@ -333,7 +337,6 @@ export default function EditingMenu({
           </div>
         ))}
       </div>
-      <span className="editing-menu-hint">{t('选中文字，使用菜单设置格式')}</span>
     </nav>
   );
 }

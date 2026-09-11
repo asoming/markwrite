@@ -1,0 +1,121 @@
+/* Unmodified local fonts. Font family aliases avoid depending on host installs.
+ * Copyright and distribution terms are retained in public/themes/. */
+@font-face {
+  font-family: 'Markwrite Open Sans';
+  src: url('/themes/github/400.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Open Sans';
+  src: url('/themes/github/400i.woff') format('woff');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Open Sans';
+  src: url('/themes/github/700.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Open Sans';
+  src: url('/themes/github/700i.woff') format('woff');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite PT Serif';
+  src: url('/themes/newsprint/PT_Serif-Web-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite PT Serif';
+  src: url('/themes/newsprint/PT_Serif-Web-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite PT Serif';
+  src: url('/themes/newsprint/PT_Serif-Web-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite PT Serif';
+  src: url('/themes/newsprint/PT_Serif-Web-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Merriweather';
+  src: url('/themes/pixyll/Merriweather-Light.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Merriweather';
+  src: url('/themes/pixyll/Merriweather-LightItalic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Merriweather';
+  src: url('/themes/pixyll/Merriweather-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Merriweather';
+  src: url('/themes/pixyll/Merriweather-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Lato';
+  src: url('/themes/pixyll/Lato-Light.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Lato';
+  src: url('/themes/pixyll/Lato-Black.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Lato';
+  src: url('/themes/pixyll/Lato-BlackItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Vollkorn';
+  src: url('/themes/whitey/Vollkorn.ttf') format('truetype');
+  font-weight: 400 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Markwrite Vollkorn';
+  src: url('/themes/whitey/Vollkorn-Italic.ttf') format('truetype');
+  font-weight: 400 900;
+  font-style: italic;
+  font-display: swap;
+}

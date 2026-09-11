@@ -1,5 +1,5 @@
 import type { Document, Settings } from './types';
-import { isTheme } from './themes';
+import { isTheme, themeDefaults } from './themes';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 const KEY = 'markwrite.session.v1';
 let nativeSession: string | null = null;
@@ -13,13 +13,14 @@ export const defaultSettings: Settings = {
   theme: 'system',
   language: 'zh-CN',
   defaultMode: 'read',
+  followFileParent: true,
   fontSize: 17,
   lineHeight: 1.9,
   width: 760,
   autosave: true,
   serif: false,
   bodyFont: '',
-  codeFont: '"Cascadia Code", "JetBrains Mono", Consolas, monospace',
+  codeFont: '',
   attachmentMode: 'relative',
 };
 export function readSession(): {
@@ -41,8 +42,19 @@ export function readSession(): {
       settings: {
         ...defaultSettings,
         ...value.settings,
+        ...(['github', 'newsprint', 'night', 'pixyll', 'whitey'].includes(value.settings?.theme) &&
+        value.settings.fontSize === 17 &&
+        value.settings.lineHeight === 1.9 &&
+        value.settings.width === 760
+          ? themeDefaults(value.settings.theme)
+          : {}),
+        codeFont:
+          value.settings?.codeFont === '"Cascadia Code", "JetBrains Mono", Consolas, monospace'
+            ? ''
+            : value.settings?.codeFont || '',
         theme: isTheme(value.settings?.theme) ? value.settings.theme : defaultSettings.theme,
         language: value.settings?.language === 'en' ? 'en' : 'zh-CN',
+        followFileParent: value.settings?.followFileParent !== false,
         defaultMode: ['read', 'live', 'source'].includes(value.settings?.defaultMode)
           ? value.settings.defaultMode
           : defaultSettings.defaultMode,

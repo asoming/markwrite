@@ -34,16 +34,19 @@ struct AppState {
     search_request: Mutex<Option<String>>,
     watcher: Mutex<Option<notify::RecommendedWatcher>>,
 }
+fn persist_access(directory: &Path, access: &Access) -> Result<(), String> {
+    fs::create_dir_all(directory).map_err(|e| e.to_string())?;
+    let data = serde_json::to_vec(access).map_err(|e| e.to_string())?;
+    let temp = directory.join("access.json.tmp");
+    fs::write(&temp, data).map_err(|e| e.to_string())?;
+    storage::replace_file(&temp, &directory.join("access.json")).map_err(|e| e.to_string())?;
+    Ok(())
+}
 impl AppState {
     fn persist(&self, app: &tauri::AppHandle) -> Result<(), String> {
         let directory = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
-        fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
         let access = self.access.lock().map_err(|e| e.to_string())?;
-        let data = serde_json::to_vec(&*access).map_err(|e| e.to_string())?;
-        let temp = directory.join("access.json.tmp");
-        fs::write(&temp, data).map_err(|e| e.to_string())?;
-        storage::replace_file(&temp, &directory.join("access.json")).map_err(|e| e.to_string())?;
-        Ok(())
+        persist_access(&directory, &access)
     }
     fn allow_file(&self, path: &Path) -> Result<PathBuf, String> {
         let p = path.canonicalize().map_err(|e| e.to_string())?;
@@ -73,6 +76,37 @@ impl AppState {
         } else {
             Err("请先打开这个文件夹。".into())
         }
+    }
+    fn parent_folder_at(
+        &self,
+        document_path: &Path,
+        access_directory: &Path,
+    ) -> Result<Folder, String> {
+        // The document must already be granted by the picker, OS open event, or a
+        // workspace. Canonical paths retain Windows drive/UNC prefixes correctly.
+        let document = self.check(document_path)?;
+        if !document.is_file() || !is_markdown(&document) {
+            return Err("只有已打开的 Markdown 文件可以显示其父文件夹。".into());
+        }
+        let parent = document
+            .parent()
+            .ok_or("这个文档没有可浏览的父文件夹。")?
+            .to_path_buf();
+        let entries = scan(&parent, 0, &mut 0)?;
+        // Keep the grant and its durable record consistent. A failed scan or write
+        // cannot grant a new root, and previously authorized folders remain intact.
+        let mut access = self.access.lock().map_err(|e| e.to_string())?;
+        let added = access.roots.insert(parent.clone());
+        if let Err(error) = persist_access(access_directory, &access) {
+            if added {
+                access.roots.remove(&parent);
+            }
+            return Err(error);
+        }
+        Ok(Folder {
+            path: parent.to_string_lossy().into_owned(),
+            entries,
+        })
     }
 }
 fn recovery(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -205,6 +239,18 @@ async fn choose_folder(
 #[tauri::command]
 async fn list_folder(path: String, state: State<'_, AppState>) -> Result<Vec<Entry>, String> {
     scan(&state.check_directory(Path::new(&path))?, 0, &mut 0)
+}
+#[tauri::command]
+async fn parent_folder(document_path: String, app: tauri::AppHandle) -> Result<Folder, String> {
+    // Scanning a large sibling tree must not occupy the async command executor.
+    // The caller starts watching only after choosing this result as the visible root.
+    tauri::async_runtime::spawn_blocking(move || {
+        let access_directory = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+        app.state::<AppState>()
+            .parent_folder_at(Path::new(&document_path), &access_directory)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 async fn read_document(path: String, state: State<'_, AppState>) -> Result<DiskFile, String> {
@@ -639,6 +685,7 @@ fn main() {
             native_settings::request_markdown_default,
             choose_folder,
             list_folder,
+            parent_folder,
             read_document,
             save_document,
             save_as,
@@ -675,6 +722,145 @@ fn main() {
 #[cfg(test)]
 mod native_tests {
     use super::*;
+    fn parent_fixture(name: &str) -> PathBuf {
+        let base = std::env::temp_dir().join(format!(
+            "markwrite-parent-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(base.join("notes/child")).unwrap();
+        fs::write(base.join("notes/文档.MD"), "# 文档").unwrap();
+        fs::write(base.join("notes/sibling.md"), "sibling").unwrap();
+        fs::write(base.join("notes/child/nested.markdown"), "nested").unwrap();
+        fs::write(base.join("private.md"), "private").unwrap();
+        base
+    }
+    #[test]
+    fn parent_folder_grants_only_the_authorized_documents_canonical_parent() {
+        let base = parent_fixture("scope");
+        let document = base.join("notes/文档.MD");
+        let state = AppState::default();
+        state.allow_file(&document).unwrap();
+        let parent = document
+            .canonicalize()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        assert!(state.check_directory(&parent).is_err());
+        let folder = state
+            .parent_folder_at(&document, &base.join("settings"))
+            .unwrap();
+        assert_eq!(PathBuf::from(&folder.path), parent);
+        assert_eq!(state.check_directory(&parent).unwrap(), parent);
+        assert!(state.check(&base.join("notes/sibling.md")).is_ok());
+        assert!(state.check_directory(&base).is_err());
+        assert!(state.check(&base.join("private.md")).is_err());
+        let child = folder
+            .entries
+            .iter()
+            .find(|entry| entry.name == "child")
+            .unwrap();
+        assert!(child.directory);
+        assert_eq!(child.children.as_ref().unwrap()[0].name, "nested.markdown");
+        assert!(folder.entries.iter().any(|entry| entry.name == "文档.MD"));
+        let persisted: Access =
+            serde_json::from_slice(&fs::read(base.join("settings/access.json")).unwrap()).unwrap();
+        assert_eq!(persisted.roots, HashSet::from([parent]));
+        assert!(persisted.files.contains(&document.canonicalize().unwrap()));
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[test]
+    fn parent_folder_cannot_promote_unopened_files_directories_or_non_markdown() {
+        let base = parent_fixture("denied");
+        let state = AppState::default();
+        let settings = base.join("settings");
+        assert!(state
+            .parent_folder_at(&base.join("notes/文档.MD"), &settings)
+            .is_err());
+        fs::write(base.join("notes/file.txt"), "text").unwrap();
+        state.allow_file(&base.join("notes/file.txt")).unwrap();
+        assert!(state
+            .parent_folder_at(&base.join("notes/file.txt"), &settings)
+            .is_err());
+        fs::create_dir(base.join("notes/folder.md")).unwrap();
+        state.allow_file(&base.join("notes/folder.md")).unwrap();
+        assert!(state
+            .parent_folder_at(&base.join("notes/folder.md"), &settings)
+            .is_err());
+        assert!(state.access.lock().unwrap().roots.is_empty());
+        assert!(!settings.exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[test]
+    fn parent_folder_persistence_failure_rolls_back_only_the_new_grant() {
+        let base = parent_fixture("rollback");
+        let document = base.join("notes/文档.MD");
+        let parent = document
+            .canonicalize()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let blocked_settings = base.join("not-a-directory");
+        fs::write(&blocked_settings, "preserve").unwrap();
+        let state = AppState::default();
+        state.allow_file(&document).unwrap();
+        assert!(state
+            .parent_folder_at(&document, &blocked_settings)
+            .is_err());
+        assert!(state.check_directory(&parent).is_err());
+        assert!(state.check(&document).is_ok());
+        assert!(state.check(&base.join("notes/sibling.md")).is_err());
+        state.access.lock().unwrap().roots.insert(parent.clone());
+        assert!(state
+            .parent_folder_at(&document, &blocked_settings)
+            .is_err());
+        assert_eq!(state.check_directory(&parent).unwrap(), parent);
+        assert_eq!(fs::read_to_string(blocked_settings).unwrap(), "preserve");
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[test]
+    fn parent_folder_failed_scan_does_not_grant_or_persist_access() {
+        let base = parent_fixture("scan-limit");
+        let mut descendant = base.join("notes/deep");
+        for _ in 0..34 {
+            fs::create_dir_all(&descendant).unwrap();
+            descendant = descendant.join("level");
+        }
+        let state = AppState::default();
+        let document = base.join("notes/文档.MD");
+        state.allow_file(&document).unwrap();
+        assert!(state
+            .parent_folder_at(&document, &base.join("settings"))
+            .is_err());
+        assert!(state.access.lock().unwrap().roots.is_empty());
+        assert!(!base.join("settings/access.json").exists());
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn parent_folder_scan_skips_symlinks_and_does_not_grant_their_targets() {
+        let base = parent_fixture("symlink");
+        let document = base.join("notes/文档.MD");
+        std::os::unix::fs::symlink(base.join("private.md"), base.join("notes/link.md")).unwrap();
+        std::os::unix::fs::symlink(&base, base.join("notes/ancestor")).unwrap();
+        let state = AppState::default();
+        state.allow_file(&document).unwrap();
+        let folder = state
+            .parent_folder_at(&document, &base.join("settings"))
+            .unwrap();
+        assert!(!folder
+            .entries
+            .iter()
+            .any(|entry| ["link.md", "ancestor"].contains(&entry.name.as_str())));
+        assert!(state.check(&base.join("notes/link.md")).is_err());
+        assert!(state.check_directory(&base.join("notes/ancestor")).is_err());
+        fs::remove_dir_all(base).unwrap();
+    }
     #[test]
     fn filenames_are_portable_and_cannot_escape_the_parent() {
         for name in [

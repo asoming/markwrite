@@ -1,5 +1,8 @@
-/* App-wide original palettes; document rules are shared by reading and live editing. */
-:root[data-theme='light'],
+/* Markwrite adapters for the five themes linked by theme.typora.io.
+ * Pixyll typography is MIT-derived (John Otander); the other adapters are
+ * independently implemented against Markwrite's reader and CodeMirror DOM.
+ * Sources, exact revisions and bundled font licenses: public/themes/NOTICE.txt.
+ */
 :root[data-theme='github'],
 :root[data-theme='newsprint'],
 :root[data-theme='pixyll'],
@@ -8,99 +11,763 @@
 }
 :root[data-theme='github'] {
   --paper: #ffffff;
-  --sidebar: #f6f8fa;
-  --ink: #24292f;
-  --muted: #57606a;
-  --border: #d0d7de;
-  --accent: #0969da;
-  --accent-bg: #ddf0ff;
-  --hover: #eaeef2;
-  --code: #f6f8fa;
+  --sidebar: #fafafa;
+  --ink: #333333;
+  --muted: #777777;
+  --border: #dfe2e5;
+  --accent: #4183c4;
+  --accent-bg: #e7eff8;
+  --hover: #f0f2f4;
+  --code: #f8f8f8;
   --overlay: #24292f38;
   --shadow: 0 20px 70px #24292f24;
+  --theme-heading-font: var(--body-font);
+  --theme-heading-weight: 700;
+  --theme-heading-line: 1.4;
+  --theme-h1: 2.25;
+  --theme-h2: 1.75;
+  --theme-h3: 1.5;
+  --theme-h4: 1.25;
+  --theme-h5: 1;
+  --theme-h6: 1;
+  --theme-heading-space: 1em;
+  --theme-paragraph-space: 0.8em;
+  --theme-top-space: 30px;
+  --theme-code-ink: #333;
+  --theme-code-radius: 3px;
+  --theme-code-padding: 14px 16px;
+  --theme-quote-border: #dfe2e5;
+  --theme-quote-width: 4px;
+  --theme-quote-padding: 0 15px;
+  --theme-table-padding: 6px 13px;
+  --theme-table-head: #f8f8f8;
+  --theme-table-rule: #dfe2e5;
 }
 :root[data-theme='newsprint'] {
-  --paper: #f4f0e6;
-  --sidebar: #ebe5d9;
-  --ink: #37332d;
-  --muted: #756d60;
-  --border: #d9d0bf;
-  --accent: #88643c;
-  --accent-bg: #e8dfcc;
-  --hover: #e8e1d3;
-  --code: #ebe5d9;
+  --paper: #f3f2ee;
+  --sidebar: #e8e7e3;
+  --ink: #1f0909;
+  --muted: #66615c;
+  --border: #d6d4ce;
+  --accent: #065588;
+  --accent-bg: #dce4e7;
+  --hover: #e6e5df;
+  --code: #dadada;
   --overlay: #332b2438;
   --shadow: 0 20px 70px #332b2424;
+  --theme-heading-font: var(--body-font);
+  --theme-heading-weight: 400;
+  --theme-heading-line: 1.15;
+  --theme-h1: 1.875;
+  --theme-h2: 1.3125;
+  --theme-h3: 1.3125;
+  --theme-h4: 1.125;
+  --theme-h5: 1;
+  --theme-h6: 1;
+  --theme-heading-space: 1.5em;
+  --theme-paragraph-space: 1.5em;
+  --theme-top-space: 30px;
+  --theme-code-ink: #1f0909;
+  --theme-code-radius: 0;
+  --theme-code-padding: 1ch;
+  --theme-quote-border: currentColor;
+  --theme-quote-width: 5px;
+  --theme-quote-padding: 0 1em;
+  --theme-table-padding: 0.25em 0.25em 0.25em 0.4em;
+  --theme-table-head: transparent;
+  --theme-table-rule: #aaa7a0;
 }
 :root[data-theme='night'] {
   color-scheme: dark;
-  --paper: #18212b;
-  --sidebar: #131b24;
-  --ink: #dce5ee;
-  --muted: #9dabbc;
-  --border: #344251;
-  --accent: #8ecbdf;
-  --accent-bg: #253b49;
-  --hover: #253240;
-  --code: #202d3a;
+  --paper: #363b40;
+  --sidebar: #2e3033;
+  --ink: #b8bfc6;
+  --muted: #9099a3;
+  --border: #474d54;
+  --accent: #6dc1e7;
+  --accent-bg: #324f60;
+  --hover: #41474d;
+  --code: #333333;
   --overlay: #0009;
   --shadow: 0 20px 70px #0006;
+  --theme-heading-font: 'Lucida Grande', Corbel, var(--body-font);
+  --theme-heading-weight: 700;
+  --theme-heading-line: 1.25;
+  --theme-heading-ink: #dedede;
+  --theme-h1: 2.5;
+  --theme-h2: 1.63;
+  --theme-h3: 1.17;
+  --theme-h4: 1.12;
+  --theme-h5: 0.97;
+  --theme-h6: 0.93;
+  --theme-heading-space: 1.5em;
+  --theme-paragraph-space: 1.25em;
+  --theme-top-space: 30px;
+  --theme-code-ink: #cebcca;
+  --theme-code-radius: 3px;
+  --theme-code-padding: 12px 16px;
+  --theme-quote-border: #474d54;
+  --theme-quote-width: 2px;
+  --theme-quote-padding: 8px 30px;
+  --theme-table-padding: 6px 13px;
+  --theme-table-head: #3f454b;
+  --theme-table-rule: #555b61;
 }
 :root[data-theme='pixyll'] {
-  --paper: #fefdfb;
-  --sidebar: #f3f0f3;
-  --ink: #35343b;
-  --muted: #787280;
-  --border: #e0dbe3;
-  --accent: #82629a;
-  --accent-bg: #eee6f3;
-  --hover: #ece8ee;
-  --code: #f3f0f3;
+  --paper: #ffffff;
+  --sidebar: #fafafa;
+  --ink: #333333;
+  --muted: #7a7a7a;
+  --border: #dddddd;
+  --accent: #463f5c;
+  --accent-bg: #eeeaf4;
+  --hover: #f0edf4;
+  --code: #ffffff;
   --overlay: #352d3f38;
   --shadow: 0 20px 70px #352d3f24;
+  --theme-heading-font:
+    'Markwrite Lato', Lato, 'Helvetica Neue', Helvetica, 'Noto Sans CJK SC', sans-serif;
+  --theme-heading-weight: 700;
+  --theme-heading-line: 1.2;
+  --theme-h1: 2.6;
+  --theme-h2: 1.8384;
+  --theme-h3: 1.3;
+  --theme-h4: 1.04;
+  --theme-h5: 0.9;
+  --theme-h6: 0.9;
+  --theme-heading-space: 1em;
+  --theme-paragraph-space: 1em;
+  --theme-top-space: 32px;
+  --theme-code-ink: #7a7a7a;
+  --theme-code-radius: 0;
+  --theme-code-padding: 0.5em 1.125em;
+  --theme-quote-border: #7a7a7a;
+  --theme-quote-width: 5px;
+  --theme-quote-padding: 1.33em;
+  --theme-table-padding: 12px;
+  --theme-table-head: transparent;
+  --theme-table-rule: #333333;
 }
 :root[data-theme='whitey'] {
-  --paper: #ffffff;
-  --sidebar: #f5f6f6;
-  --ink: #3d4447;
-  --muted: #707a7e;
-  --border: #dfe4e4;
-  --accent: #337d78;
-  --accent-bg: #e2f0ed;
-  --hover: #edf1f0;
-  --code: #f5f6f6;
+  --paper: #fefefe;
+  --sidebar: #f5f5f5;
+  --ink: #333333;
+  --muted: #777777;
+  --border: #dddddd;
+  --accent: #2484c1;
+  --accent-bg: #e5f0f7;
+  --hover: #edf2f5;
+  --code: #ffffff;
   --overlay: #283b3938;
   --shadow: 0 20px 70px #283b3924;
+  --theme-heading-font: var(--body-font);
+  --theme-heading-weight: 400;
+  --theme-heading-line: 1.4;
+  --theme-h1: 3;
+  --theme-h2: 1.5;
+  --theme-h3: 1.17;
+  --theme-h4: 1;
+  --theme-h5: 0.83;
+  --theme-h6: 0.67;
+  --theme-heading-space: 2em;
+  --theme-paragraph-space: 1em;
+  --theme-top-space: 40px;
+  --theme-code-ink: #333333;
+  --theme-code-radius: 0;
+  --theme-code-padding: 6px 1em 8px;
+  --theme-quote-border: #dddddd;
+  --theme-quote-width: 1px;
+  --theme-quote-padding: 0 1em;
+  --theme-table-padding: 8px;
+  --theme-table-head: transparent;
+  --theme-table-rule: #dddddd;
 }
-:root[data-theme='github'] :is(.markdown-body h1, .markdown-body h2, .cm-h1, .cm-h2) {
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0.35em;
+
+/* Scope document typography to a named theme. Controls, dialogs and menus keep
+ * the application UI font; source mode keeps literal Markdown and a code font. */
+:root[data-theme='github'] .reader,
+:root[data-theme='github'] .cm-content,
+:root[data-theme='newsprint'] .reader,
+:root[data-theme='newsprint'] .cm-content,
+:root[data-theme='night'] .reader,
+:root[data-theme='night'] .cm-content,
+:root[data-theme='pixyll'] .reader,
+:root[data-theme='pixyll'] .cm-content,
+:root[data-theme='whitey'] .reader,
+:root[data-theme='whitey'] .cm-content {
+  padding-top: var(--theme-top-space) !important;
 }
-:root[data-theme='newsprint'] :is(.markdown-body h1, .cm-h1) {
-  letter-spacing: 0.015em;
-  border-bottom: 2px solid var(--ink);
-  padding-bottom: 0.35em;
+:root[data-theme='github'] .markdown-body h1,
+:root[data-theme='github'] .markdown-body h2,
+:root[data-theme='github'] .markdown-body h3,
+:root[data-theme='github'] .markdown-body h4,
+:root[data-theme='github'] .markdown-body h5,
+:root[data-theme='github'] .markdown-body h6,
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-heading,
+:root[data-theme='newsprint'] .markdown-body h1,
+:root[data-theme='newsprint'] .markdown-body h2,
+:root[data-theme='newsprint'] .markdown-body h3,
+:root[data-theme='newsprint'] .markdown-body h4,
+:root[data-theme='newsprint'] .markdown-body h5,
+:root[data-theme='newsprint'] .markdown-body h6,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-heading,
+:root[data-theme='night'] .markdown-body h1,
+:root[data-theme='night'] .markdown-body h2,
+:root[data-theme='night'] .markdown-body h3,
+:root[data-theme='night'] .markdown-body h4,
+:root[data-theme='night'] .markdown-body h5,
+:root[data-theme='night'] .markdown-body h6,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-heading,
+:root[data-theme='pixyll'] .markdown-body h1,
+:root[data-theme='pixyll'] .markdown-body h2,
+:root[data-theme='pixyll'] .markdown-body h3,
+:root[data-theme='pixyll'] .markdown-body h4,
+:root[data-theme='pixyll'] .markdown-body h5,
+:root[data-theme='pixyll'] .markdown-body h6,
+:root[data-theme='pixyll'] .editor-host:not(.source-mode) .cm-heading,
+:root[data-theme='whitey'] .markdown-body h1,
+:root[data-theme='whitey'] .markdown-body h2,
+:root[data-theme='whitey'] .markdown-body h3,
+:root[data-theme='whitey'] .markdown-body h4,
+:root[data-theme='whitey'] .markdown-body h5,
+:root[data-theme='whitey'] .markdown-body h6,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-heading {
+  font-family: var(--theme-heading-font);
+  font-weight: var(--theme-heading-weight);
+  color: var(--theme-heading-ink, var(--ink));
+  line-height: var(--theme-heading-line);
+  letter-spacing: normal;
+  border: 0;
+  border-radius: 0;
 }
-:root[data-theme='newsprint'] :is(.markdown-body blockquote, .cm-quote) {
-  font-style: italic;
+:root[data-theme='github'] .markdown-body h1,
+:root[data-theme='github'] .markdown-body h2,
+:root[data-theme='github'] .markdown-body h3,
+:root[data-theme='github'] .markdown-body h4,
+:root[data-theme='github'] .markdown-body h5,
+:root[data-theme='github'] .markdown-body h6,
+:root[data-theme='newsprint'] .markdown-body h1,
+:root[data-theme='newsprint'] .markdown-body h2,
+:root[data-theme='newsprint'] .markdown-body h3,
+:root[data-theme='newsprint'] .markdown-body h4,
+:root[data-theme='newsprint'] .markdown-body h5,
+:root[data-theme='newsprint'] .markdown-body h6,
+:root[data-theme='night'] .markdown-body h1,
+:root[data-theme='night'] .markdown-body h2,
+:root[data-theme='night'] .markdown-body h3,
+:root[data-theme='night'] .markdown-body h4,
+:root[data-theme='night'] .markdown-body h5,
+:root[data-theme='night'] .markdown-body h6,
+:root[data-theme='pixyll'] .markdown-body h1,
+:root[data-theme='pixyll'] .markdown-body h2,
+:root[data-theme='pixyll'] .markdown-body h3,
+:root[data-theme='pixyll'] .markdown-body h4,
+:root[data-theme='pixyll'] .markdown-body h5,
+:root[data-theme='pixyll'] .markdown-body h6,
+:root[data-theme='whitey'] .markdown-body h1,
+:root[data-theme='whitey'] .markdown-body h2,
+:root[data-theme='whitey'] .markdown-body h3,
+:root[data-theme='whitey'] .markdown-body h4,
+:root[data-theme='whitey'] .markdown-body h5,
+:root[data-theme='whitey'] .markdown-body h6 {
+  margin: var(--theme-heading-space) 0 0.5em;
 }
-:root[data-theme='pixyll'] :is(.markdown-body h1, .markdown-body h2, .cm-h1, .cm-h2) {
-  font-family: 'Noto Sans CJK SC', system-ui, sans-serif;
-  letter-spacing: -0.035em;
+:root[data-theme='github'] .markdown-body > :first-child,
+:root[data-theme='newsprint'] .markdown-body > :first-child,
+:root[data-theme='night'] .markdown-body > :first-child,
+:root[data-theme='pixyll'] .markdown-body > :first-child,
+:root[data-theme='whitey'] .markdown-body > :first-child {
+  margin-top: 0;
+}
+:root[data-theme='github'] .markdown-body h1,
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-h1,
+:root[data-theme='newsprint'] .markdown-body h1,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-h1,
+:root[data-theme='night'] .markdown-body h1,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-h1,
+:root[data-theme='pixyll'] .markdown-body h1,
+:root[data-theme='pixyll'] .editor-host:not(.source-mode) .cm-h1,
+:root[data-theme='whitey'] .markdown-body h1,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-h1 {
+  font-size: calc(var(--editor-size) * var(--theme-h1));
+}
+:root[data-theme='github'] .markdown-body h2,
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-h2,
+:root[data-theme='newsprint'] .markdown-body h2,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-h2,
+:root[data-theme='night'] .markdown-body h2,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-h2,
+:root[data-theme='pixyll'] .markdown-body h2,
+:root[data-theme='pixyll'] .editor-host:not(.source-mode) .cm-h2,
+:root[data-theme='whitey'] .markdown-body h2,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-h2 {
+  font-size: calc(var(--editor-size) * var(--theme-h2));
+}
+:root[data-theme='github'] .markdown-body h3,
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-h3,
+:root[data-theme='newsprint'] .markdown-body h3,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-h3,
+:root[data-theme='night'] .markdown-body h3,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-h3,
+:root[data-theme='pixyll'] .markdown-body h3,
+:root[data-theme='pixyll'] .editor-host:not(.source-mode) .cm-h3,
+:root[data-theme='whitey'] .markdown-body h3,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-h3 {
+  font-size: calc(var(--editor-size) * var(--theme-h3));
+}
+:root[data-theme='github'] .markdown-body h4,
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-h4,
+:root[data-theme='newsprint'] .markdown-body h4,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-h4,
+:root[data-theme='night'] .markdown-body h4,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-h4,
+:root[data-theme='pixyll'] .markdown-body h4,
+:root[data-theme='pixyll'] .editor-host:not(.source-mode) .cm-h4,
+:root[data-theme='whitey'] .markdown-body h4,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-h4 {
+  font-size: calc(var(--editor-size) * var(--theme-h4));
+}
+:root[data-theme='github'] .markdown-body h5,
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-h5,
+:root[data-theme='newsprint'] .markdown-body h5,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-h5,
+:root[data-theme='night'] .markdown-body h5,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-h5,
+:root[data-theme='pixyll'] .markdown-body h5,
+:root[data-theme='pixyll'] .editor-host:not(.source-mode) .cm-h5,
+:root[data-theme='whitey'] .markdown-body h5,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-h5 {
+  font-size: calc(var(--editor-size) * var(--theme-h5));
+}
+:root[data-theme='github'] .markdown-body h6,
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-h6,
+:root[data-theme='newsprint'] .markdown-body h6,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-h6,
+:root[data-theme='night'] .markdown-body h6,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-h6,
+:root[data-theme='pixyll'] .markdown-body h6,
+:root[data-theme='pixyll'] .editor-host:not(.source-mode) .cm-h6,
+:root[data-theme='whitey'] .markdown-body h6,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-h6 {
+  font-size: calc(var(--editor-size) * var(--theme-h6));
+}
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-heading,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-heading,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-heading,
+:root[data-theme='pixyll'] .editor-host:not(.source-mode) .cm-heading,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-heading {
+  padding-top: 0.3em !important;
+  padding-bottom: 0.3em !important;
+}
+:root[data-theme='github'] .markdown-body p,
+:root[data-theme='github'] .markdown-body ul,
+:root[data-theme='github'] .markdown-body ol,
+:root[data-theme='github'] .markdown-body blockquote,
+:root[data-theme='github'] .markdown-body table,
+:root[data-theme='github'] .markdown-body pre,
+:root[data-theme='newsprint'] .markdown-body p,
+:root[data-theme='newsprint'] .markdown-body ul,
+:root[data-theme='newsprint'] .markdown-body ol,
+:root[data-theme='newsprint'] .markdown-body blockquote,
+:root[data-theme='newsprint'] .markdown-body table,
+:root[data-theme='newsprint'] .markdown-body pre,
+:root[data-theme='night'] .markdown-body p,
+:root[data-theme='night'] .markdown-body ul,
+:root[data-theme='night'] .markdown-body ol,
+:root[data-theme='night'] .markdown-body blockquote,
+:root[data-theme='night'] .markdown-body table,
+:root[data-theme='night'] .markdown-body pre,
+:root[data-theme='pixyll'] .markdown-body p,
+:root[data-theme='pixyll'] .markdown-body ul,
+:root[data-theme='pixyll'] .markdown-body ol,
+:root[data-theme='pixyll'] .markdown-body blockquote,
+:root[data-theme='pixyll'] .markdown-body table,
+:root[data-theme='pixyll'] .markdown-body pre,
+:root[data-theme='whitey'] .markdown-body p,
+:root[data-theme='whitey'] .markdown-body ul,
+:root[data-theme='whitey'] .markdown-body ol,
+:root[data-theme='whitey'] .markdown-body blockquote,
+:root[data-theme='whitey'] .markdown-body table,
+:root[data-theme='whitey'] .markdown-body pre {
+  margin-top: 0;
+  margin-bottom: var(--theme-paragraph-space);
+}
+:root[data-theme='github'] .markdown-body ul,
+:root[data-theme='github'] .markdown-body ol,
+:root[data-theme='newsprint'] .markdown-body ul,
+:root[data-theme='newsprint'] .markdown-body ol,
+:root[data-theme='night'] .markdown-body ul,
+:root[data-theme='night'] .markdown-body ol,
+:root[data-theme='pixyll'] .markdown-body ul,
+:root[data-theme='pixyll'] .markdown-body ol,
+:root[data-theme='whitey'] .markdown-body ul,
+:root[data-theme='whitey'] .markdown-body ol {
+  padding-left: 1.875em;
+}
+:root[data-theme='github'] .markdown-body li,
+:root[data-theme='newsprint'] .markdown-body li,
+:root[data-theme='night'] .markdown-body li,
+:root[data-theme='pixyll'] .markdown-body li,
+:root[data-theme='whitey'] .markdown-body li {
+  margin: 0;
+  padding-left: 0;
+}
+:root[data-theme='github'] .markdown-body li > p,
+:root[data-theme='newsprint'] .markdown-body li > p,
+:root[data-theme='night'] .markdown-body li > p,
+:root[data-theme='pixyll'] .markdown-body li > p,
+:root[data-theme='whitey'] .markdown-body li > p {
+  margin: 0;
+}
+:root[data-theme='github'] .markdown-body li::marker,
+:root[data-theme='newsprint'] .markdown-body li::marker,
+:root[data-theme='night'] .markdown-body li::marker,
+:root[data-theme='pixyll'] .markdown-body li::marker,
+:root[data-theme='whitey'] .markdown-body li::marker {
+  color: inherit;
+}
+:root[data-theme='github'] .markdown-body a,
+:root[data-theme='github'] .cm-rich-link,
+:root[data-theme='newsprint'] .markdown-body a,
+:root[data-theme='newsprint'] .cm-rich-link,
+:root[data-theme='night'] .markdown-body a,
+:root[data-theme='night'] .cm-rich-link,
+:root[data-theme='pixyll'] .markdown-body a,
+:root[data-theme='pixyll'] .cm-rich-link,
+:root[data-theme='whitey'] .markdown-body a,
+:root[data-theme='whitey'] .cm-rich-link {
+  color: var(--accent);
+}
+:root[data-theme='github'] .markdown-body blockquote,
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-quote-line,
+:root[data-theme='newsprint'] .markdown-body blockquote,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-quote-line,
+:root[data-theme='night'] .markdown-body blockquote,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-quote-line,
+:root[data-theme='pixyll'] .markdown-body blockquote,
+:root[data-theme='pixyll'] .editor-host:not(.source-mode) .cm-quote-line,
+:root[data-theme='whitey'] .markdown-body blockquote,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-quote-line {
+  border: 0;
+  border-left: var(--theme-quote-width) solid var(--theme-quote-border);
+  color: var(--muted);
+  padding: var(--theme-quote-padding) !important;
+  background: transparent;
+}
+:root[data-theme='github'] .markdown-body blockquote > :last-child,
+:root[data-theme='newsprint'] .markdown-body blockquote > :last-child,
+:root[data-theme='night'] .markdown-body blockquote > :last-child,
+:root[data-theme='pixyll'] .markdown-body blockquote > :last-child,
+:root[data-theme='whitey'] .markdown-body blockquote > :last-child {
+  margin-bottom: 0;
+}
+:root[data-theme='github'] .markdown-body code,
+:root[data-theme='github'] .cm-rich-inlinecode,
+:root[data-theme='github'] .cm-code-line,
+:root[data-theme='github'] .source-mode .cm-content,
+:root[data-theme='newsprint'] .markdown-body code,
+:root[data-theme='newsprint'] .cm-rich-inlinecode,
+:root[data-theme='newsprint'] .cm-code-line,
+:root[data-theme='newsprint'] .source-mode .cm-content,
+:root[data-theme='night'] .markdown-body code,
+:root[data-theme='night'] .cm-rich-inlinecode,
+:root[data-theme='night'] .cm-code-line,
+:root[data-theme='night'] .source-mode .cm-content,
+:root[data-theme='pixyll'] .markdown-body code,
+:root[data-theme='pixyll'] .cm-rich-inlinecode,
+:root[data-theme='pixyll'] .cm-code-line,
+:root[data-theme='pixyll'] .source-mode .cm-content,
+:root[data-theme='whitey'] .markdown-body code,
+:root[data-theme='whitey'] .cm-rich-inlinecode,
+:root[data-theme='whitey'] .cm-code-line,
+:root[data-theme='whitey'] .source-mode .cm-content {
+  font-family: var(--code-font, Consolas, Menlo, Monaco, monospace);
+}
+:root[data-theme='github'] .markdown-body code,
+:root[data-theme='github'] .cm-rich-inlinecode,
+:root[data-theme='newsprint'] .markdown-body code,
+:root[data-theme='newsprint'] .cm-rich-inlinecode,
+:root[data-theme='night'] .markdown-body code,
+:root[data-theme='night'] .cm-rich-inlinecode,
+:root[data-theme='pixyll'] .markdown-body code,
+:root[data-theme='pixyll'] .cm-rich-inlinecode,
+:root[data-theme='whitey'] .markdown-body code,
+:root[data-theme='whitey'] .cm-rich-inlinecode {
+  background: var(--code);
+  color: var(--theme-code-ink);
+  font-size: 0.9em;
+  border-radius: var(--theme-code-radius);
+  padding: 2px 4px;
+}
+:root[data-theme='github'] .markdown-body pre,
+:root[data-theme='newsprint'] .markdown-body pre,
+:root[data-theme='night'] .markdown-body pre,
+:root[data-theme='pixyll'] .markdown-body pre,
+:root[data-theme='whitey'] .markdown-body pre {
+  padding: var(--theme-code-padding);
+  background: var(--code);
+  border: 1px solid var(--border);
+  border-radius: var(--theme-code-radius);
+  line-height: 1.6;
+}
+:root[data-theme='github'] .markdown-body pre code,
+:root[data-theme='newsprint'] .markdown-body pre code,
+:root[data-theme='night'] .markdown-body pre code,
+:root[data-theme='pixyll'] .markdown-body pre code,
+:root[data-theme='whitey'] .markdown-body pre code {
+  background: transparent;
+  color: var(--theme-code-ink);
+  padding: 0;
+}
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-code-line,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-code-line,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-code-line,
+:root[data-theme='pixyll'] .editor-host:not(.source-mode) .cm-code-line,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-code-line {
+  background: var(--code);
+  color: var(--theme-code-ink);
+  font-size: 0.9em;
+}
+:root[data-theme='github'] .source-mode .cm-content,
+:root[data-theme='newsprint'] .source-mode .cm-content,
+:root[data-theme='night'] .source-mode .cm-content,
+:root[data-theme='pixyll'] .source-mode .cm-content,
+:root[data-theme='whitey'] .source-mode .cm-content {
+  font-size: calc(var(--editor-size) * 0.9);
+  line-height: 1.7;
+}
+:root[data-theme='github'] .markdown-body table,
+:root[data-theme='newsprint'] .markdown-body table,
+:root[data-theme='night'] .markdown-body table,
+:root[data-theme='pixyll'] .markdown-body table,
+:root[data-theme='whitey'] .markdown-body table {
+  font-size: 1em;
+  border: 0;
+}
+:root[data-theme='github'] .markdown-body th,
+:root[data-theme='github'] .markdown-body td,
+:root[data-theme='newsprint'] .markdown-body th,
+:root[data-theme='newsprint'] .markdown-body td,
+:root[data-theme='night'] .markdown-body th,
+:root[data-theme='night'] .markdown-body td,
+:root[data-theme='pixyll'] .markdown-body th,
+:root[data-theme='pixyll'] .markdown-body td,
+:root[data-theme='whitey'] .markdown-body th,
+:root[data-theme='whitey'] .markdown-body td {
+  padding: var(--theme-table-padding);
+  border: 1px solid var(--theme-table-rule);
+}
+:root[data-theme='github'] .markdown-body th,
+:root[data-theme='newsprint'] .markdown-body th,
+:root[data-theme='night'] .markdown-body th,
+:root[data-theme='pixyll'] .markdown-body th,
+:root[data-theme='whitey'] .markdown-body th {
+  background: var(--theme-table-head);
   font-weight: 700;
 }
-:root[data-theme='whitey'] :is(.markdown-body h1, .cm-h1) {
-  font-weight: 500;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 0.45em;
-}
-:root[data-theme='whitey'] :is(.markdown-body blockquote, .cm-quote) {
+:root[data-theme='github'] .markdown-body tr:hover td,
+:root[data-theme='newsprint'] .markdown-body tr:hover td,
+:root[data-theme='night'] .markdown-body tr:hover td,
+:root[data-theme='pixyll'] .markdown-body tr:hover td,
+:root[data-theme='whitey'] .markdown-body tr:hover td {
   background: transparent;
-  border-left-color: var(--border);
 }
-:root[data-theme='night'] :is(.markdown-body a, .cm-link) {
-  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+:root[data-theme='github'] .markdown-body img,
+:root[data-theme='newsprint'] .markdown-body img,
+:root[data-theme='night'] .markdown-body img,
+:root[data-theme='pixyll'] .markdown-body img,
+:root[data-theme='whitey'] .markdown-body img {
+  border-radius: 0;
 }
-:root[data-theme] .markdown-body code {
-  font-family: var(--code-font, 'Cascadia Code', 'JetBrains Mono', monospace);
+:root[data-theme='github'] .markdown-body hr,
+:root[data-theme='newsprint'] .markdown-body hr,
+:root[data-theme='night'] .markdown-body hr,
+:root[data-theme='pixyll'] .markdown-body hr,
+:root[data-theme='whitey'] .markdown-body hr {
+  margin: 2em 0;
+}
+:root[data-theme='github'] .markdown-body h1,
+:root[data-theme='github'] .markdown-body h2,
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-h1,
+:root[data-theme='github'] .editor-host:not(.source-mode) .cm-h2 {
+  border-bottom: 1px solid #eeeeee;
+  padding-bottom: 0.3em !important;
+  line-height: 1.225;
+}
+:root[data-theme='github'] .markdown-body tbody tr:nth-child(even) {
+  background: #f8f8f8;
+}
+:root[data-theme='github'] .markdown-body h6 {
+  color: #777;
+}
+:root[data-theme='github'] .markdown-body a {
+  text-decoration: none;
+}
+:root[data-theme='github'] .markdown-body a:hover {
+  text-decoration: underline;
+}
+:root[data-theme='newsprint'] .markdown-body h1,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-h1 {
+  border-bottom: 1px solid currentColor;
+  padding-bottom: 0.8125em !important;
+  line-height: 1.3;
+}
+:root[data-theme='newsprint'] .markdown-body h2,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-h2 {
+  font-weight: 700;
+}
+:root[data-theme='newsprint'] .markdown-body blockquote,
+:root[data-theme='newsprint'] .editor-host:not(.source-mode) .cm-quote-line {
+  font-style: italic;
+  color: var(--ink);
+}
+:root[data-theme='newsprint'] .markdown-body blockquote,
+:root[data-theme='newsprint'] .markdown-body pre {
+  margin-left: 2em;
+}
+:root[data-theme='newsprint'] .markdown-body pre {
+  border: 0;
+  margin-bottom: 3em;
+}
+:root[data-theme='newsprint'] .markdown-body th {
+  text-transform: uppercase;
+}
+:root[data-theme='newsprint'] .markdown-body th,
+:root[data-theme='newsprint'] .markdown-body td {
+  border-width: 0 0 1px;
+}
+:root[data-theme='night'] .markdown-body h1,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-h1 {
+  font-weight: 400;
+  line-height: 1.1;
+  letter-spacing: -1.5px;
+}
+:root[data-theme='night'] .markdown-body h2,
+:root[data-theme='night'] .markdown-body h3,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-h2,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-h3 {
+  letter-spacing: -1px;
+}
+:root[data-theme='night'] .markdown-body h4,
+:root[data-theme='night'] .markdown-body h6,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-h4,
+:root[data-theme='night'] .editor-host:not(.source-mode) .cm-h6 {
+  font-weight: 400;
+  color: #fff;
+}
+:root[data-theme='night'] .markdown-body ul {
+  list-style-type: square;
+}
+:root[data-theme='night'] .markdown-body blockquote {
+  margin-left: 1.875em;
+}
+:root[data-theme='night'] .source-mode .cm-editor {
+  background: #2e3033;
+  color: #cebcca;
+}
+
+/* Pixyll's distinctive Lato/Merriweather typography, table rules and quotation
+ * treatment are adapted from its MIT-licensed theme, not just its palette. */
+:root[data-theme='pixyll'] .markdown-body p {
+  font-weight: 300;
+}
+:root[data-theme='pixyll'] .markdown-body a,
+:root[data-theme='pixyll'] .cm-rich-link {
+  text-decoration: underline;
+}
+:root[data-theme='pixyll'] .markdown-body blockquote,
+:root[data-theme='pixyll'] .editor-host:not(.source-mode) .cm-quote-line {
+  color: #555;
+  font-style: italic;
+}
+:root[data-theme='pixyll'] .markdown-body pre {
+  border-color: #7a7a7a;
+}
+:root[data-theme='pixyll'] .markdown-body th,
+:root[data-theme='pixyll'] .markdown-body td {
+  border-width: 1px 0 0;
+  line-height: 1.2;
+  vertical-align: top;
+}
+:root[data-theme='pixyll'] .markdown-body thead th {
+  border-top: 0;
+  border-bottom: 2px solid #333;
+  vertical-align: bottom;
+}
+:root[data-theme='pixyll'] .markdown-body input[type='checkbox'] {
+  accent-color: #333;
+}
+@media (min-width: 1024px) {
+  :root[data-theme='pixyll'] {
+    --theme-h1: 3.5984;
+    --theme-h2: 1.832;
+    --theme-h3: 1.52;
+    --theme-h4: 1.2728;
+  }
+}
+@media (max-width: 767px) {
+  :root[data-theme='pixyll'] {
+    --theme-h1: 2.2616;
+    --theme-h2: 1.5992;
+    --theme-h3: 1.1304;
+  }
+  :root[data-theme='pixyll'] .markdown-body blockquote {
+    padding: 0.5em;
+  }
+}
+
+:root[data-theme='whitey'] .markdown-body {
+  text-align: justify;
+}
+:root[data-theme='whitey'] .markdown-body h1,
+:root[data-theme='whitey'] .markdown-body h2,
+:root[data-theme='whitey'] .markdown-body h3,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-h1,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-h2,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-h3 {
+  text-align: center;
+}
+:root[data-theme='whitey'] .markdown-body h2,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-h2 {
+  padding-bottom: 0.5em !important;
+  background-image: linear-gradient(#2f2f2f, #2f2f2f);
+  background-size: 100px 1px;
+  background-position: center bottom;
+  background-repeat: no-repeat;
+}
+:root[data-theme='whitey'] .markdown-body h3,
+:root[data-theme='whitey'] .editor-host:not(.source-mode) .cm-h3 {
+  font-style: italic;
+}
+:root[data-theme='whitey'] .markdown-body h3 {
+  margin-top: 3em;
+}
+:root[data-theme='whitey'] .markdown-body h1 + h2,
+:root[data-theme='whitey'] .markdown-body h2 + h3 {
+  margin-top: 0.83em;
+}
+:root[data-theme='whitey'] .markdown-body ul {
+  list-style-type: square;
+}
+:root[data-theme='whitey'] .markdown-body ul,
+:root[data-theme='whitey'] .markdown-body ol {
+  padding-left: 1.2em;
+}
+:root[data-theme='whitey'] .markdown-body blockquote,
+:root[data-theme='whitey'] .markdown-body pre {
+  margin-left: 1em;
+}
+:root[data-theme='whitey'] .markdown-body th,
+:root[data-theme='whitey'] .markdown-body td {
+  border-width: 1px 0 0;
+  vertical-align: top;
+}
+:root[data-theme='whitey'] .markdown-body thead th {
+  border-top: 0;
+}
+:root[data-theme='whitey'] .markdown-body a {
+  text-decoration: none;
+}
+:root[data-theme='whitey'] .markdown-body a:hover {
+  text-decoration: underline;
 }

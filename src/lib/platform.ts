@@ -160,6 +160,23 @@ export async function listFolder(path: string): Promise<FileEntry[]> {
   if (!h) throw new Error('请重新打开文件夹。');
   return scan(h, path);
 }
+/** Reveal exactly the parent of an already opened document. No picker is opened. */
+export async function parentFolder(
+  documentPath: string,
+): Promise<{ path: string; entries: FileEntry[] } | null> {
+  if (desktop) return invoke('parent_folder', { documentPath });
+  const document = handles.get(documentPath);
+  if (!document) return null;
+  // Browser file handles cannot disclose their parent. Reuse only directory
+  // handles already granted by the user, including known aliases of the file.
+  for (const [path, file] of handles) {
+    const parentPath = path.slice(0, path.lastIndexOf('/'));
+    const parent = folders.get(parentPath);
+    if (parent && (file === document || (await file.isSameEntry(document))))
+      return { path: parentPath, entries: await scan(parent, parentPath) };
+  }
+  return null;
+}
 export async function createEntry(
   parent: string,
   name: string,

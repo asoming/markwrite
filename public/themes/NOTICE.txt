@@ -1,0 +1,83 @@
+Markwrite document theme adapters and bundled fonts
+==================================================
+
+Reference gallery: https://theme.typora.io/
+Reference pages: https://theme.typora.io/theme/Github/
+                 https://theme.typora.io/theme/Newsprint/
+                 https://theme.typora.io/theme/Night/
+                 https://theme.typora.io/theme/Pixyll/
+                 https://theme.typora.io/theme/Whitey/
+
+The gallery links these five themes to:
+https://github.com/typora/typora-default-themes
+Reference revision: cf4f2cb7e81a73050456367cfdfdb80b5a14a7b2
+
+Markwrite's Github, Newsprint, Night and Whitey CSS is independently written
+for its own reader and CodeMirror 6 editor. It follows the reference themes'
+observable typography (font families, size relationships, spacing, colors,
+heading rules, tables and block quotations), rather than redistributing their
+unlicensed source files. The upstream repository has no root LICENSE at the
+reference revision. These are adaptations, not identical Typora themes or an
+endorsement by Typora. App controls and editing behavior remain Markwrite's.
+
+Pixyll's typography adaptation derives from themes/pixyll.css at the same
+revision. That file identifies the theme as MIT-licensed, forked from pixyll.com,
+with copyright (c) 2015 John Otander. The original project's MIT license and
+copyright notices are preserved at pixyll/LICENSE.txt, retrieved from:
+https://github.com/johno/pixyll/blob/master/LICENSE.txt
+The adaptation scopes its selectors to Markwrite document surfaces, replaces
+Typora-only UI rules with Markwrite controls, maps source decorations to
+CodeMirror 6, uses local font files and preserves user font/size overrides.
+No remote CSS, tracking resources or font services are requested at runtime.
+
+Bundled fonts (unmodified)
+-------------------------
+Open Sans: github/400.woff, 400i.woff, 700.woff, 700i.woff, from the reference
+repository themes/github directory. Font metadata declares Apache License 2.0
+and "Digitized data copyright (c) 2010-2011, Google Corporation."
+The complete license is github/Apache-2.0.txt.
+
+PT Serif: newsprint/PT_Serif-Web-*.ttf, from the reference repository.
+Copyright (c) 2010 ParaType Ltd. Reserved Font Names "PT Sans", "PT Serif"
+and "ParaType". SIL Open Font License 1.1 is in newsprint/OFL.txt.
+
+Merriweather: pixyll/Merriweather-*.ttf, from the reference repository.
+Copyright (c) 2010-2013 Sorkin Type Co, Reserved Font Name "Merriweather".
+SIL Open Font License 1.1 is in pixyll/Merriweather-OFL.txt.
+
+Lato: pixyll/Lato-*.ttf, from the reference repository.
+Copyright (c) 2010-2011 tyPoland Lukasz Dziedzic, Reserved Font Name "Lato"
+(as identified in the bundled font files). The full SIL Open Font License 1.1
+and current project notice are in pixyll/Lato-OFL.txt, retrieved from:
+https://github.com/google/fonts/blob/main/ofl/lato/OFL.txt
+
+Vollkorn: whitey/Vollkorn.ttf and whitey/Vollkorn-Italic.ttf, unchanged copies
+of Vollkorn[wght].ttf and Vollkorn-Italic[wght].ttf from:
+https://github.com/google/fonts/tree/main/ofl/vollkorn
+Copyright 2017 The Vollkorn Project Authors.
+SIL Open Font License 1.1 is in whitey/OFL.txt.
+
+CSS font family aliases (e.g. "Markwrite Vollkorn") select these local fonts;
+they do not modify the font binaries. CJK characters fall back to installed
+Noto/Source Han/SimSun fonts. Font licenses remain separate from app code.
+
+Retrieved: 2026-09-11
+Bundled file SHA-256 digests follow so font sources can be reproduced:
+
+4e7d92a7152ed0ea59dc372f2e8cdf2f0f092ddce74caa0601c0b2b78daa1e8c  github/400.woff
+0ec9a60baa65653d03d176e27d8d7ff15d743b957ee7b0eb9e62107eb67aa3d9  github/400i.woff
+0ddfc4583192715ec5469530efd300265d9fc7898002fdcf21e8fc9fbf0533bb  github/700.woff
+0bd1f342915695cd9e2286bddeb71cf3c56c1675acfe644528d71ee6d0031deb  github/700i.woff
+038ba7336bd7ea14f12ad155bed51a4345cac5153275d521dec3ba04021c526e  newsprint/PT_Serif-Web-Bold.ttf
+f003788ba08981eb0988b3557a6f224a53dab49c20e283e8b74d5af3c466f8be  newsprint/PT_Serif-Web-BoldItalic.ttf
+f57e95ff9dc85691a3b2e193f2028db36f6663939a46c0fc4f286d618b80b7ce  newsprint/PT_Serif-Web-Italic.ttf
+a4951fade06ff8f09b7673aa81ffb65a8cd409e24d3289a6dc670bc4dda2557a  newsprint/PT_Serif-Web-Regular.ttf
+8b32bc539ca95dda2d2206a43234b5f3b0fe964bd25966c860bc80ec7f06d702  pixyll/Lato-Black.ttf
+09660c19f1773a761b2e56a05b666813dfd6e6196b4ad9d85ff881f29a30e839  pixyll/Lato-BlackItalic.ttf
+05903540a0675491fda9015a78c05bb589769951befab12a58a5568175566b49  pixyll/Lato-Light.ttf
+ff767f15660790c17208f8c0aeb1a627dc5aca48bc2438faa503f67dc6cf080d  pixyll/Merriweather-Bold.ttf
+51d56708b246d188c8468e1a792cf2eadecc844f1f2f1a79856d70c70f785b1f  pixyll/Merriweather-BoldItalic.ttf
+c2edab6e8962dd88fd4f39d598f77066d9d0c8f213bbc7f4e2abb524b028ed31  pixyll/Merriweather-Light.ttf
+e7b49e08cf8ab822490ed067d40a9e06691b94877d56d5ced8384fb5f5571a5b  pixyll/Merriweather-LightItalic.ttf
+cd947ae49b5d46e812d8d09434fbe8ec452286cd5557ef6a762a3562e2c8d300  whitey/Vollkorn-Italic.ttf
+4ebef434f76f80286204840354a84db79a0dc3c87deeeb791e015b70b2ade49d  whitey/Vollkorn.ttf

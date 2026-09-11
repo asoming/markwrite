@@ -220,13 +220,82 @@ fn installed_desktop_id(
     None
 }
 #[cfg(target_os = "linux")]
-fn linux_status() -> DefaultStatus {
+#[derive(Clone, Copy)]
+enum LinuxMimeBackend {
+    Gio,
+    Xdg,
+}
+#[cfg(target_os = "linux")]
+impl LinuxMimeBackend {
+    fn detect() -> Self {
+        let mut command = Command::new("gio");
+        command.arg("version");
+        if output(command).is_ok() {
+            Self::Gio
+        } else {
+            Self::Xdg
+        }
+    }
+    fn command(self, mime: &str, desktop_id: Option<&str>) -> Command {
+        let mut command = match self {
+            Self::Gio => {
+                let mut command = Command::new("gio");
+                command.args(["mime", mime]);
+                if let Some(id) = desktop_id {
+                    command.arg(id);
+                }
+                command
+            }
+            Self::Xdg => {
+                let mut command = Command::new("xdg-mime");
+                if let Some(id) = desktop_id {
+                    command.args(["default", id, mime]);
+                } else {
+                    command.args(["query", "default", mime]);
+                }
+                command
+            }
+        };
+        // GIO output is localized by default. Use one fixed locale for this machine-readable call.
+        command.env("LC_ALL", "C");
+        command
+    }
+    fn parse_handler(self, text: &str) -> Result<String, String> {
+        match self {
+            Self::Xdg => Ok(text.trim().to_string()),
+            Self::Gio => {
+                if let Some(line) = text
+                    .lines()
+                    .find(|line| line.starts_with("Default application for "))
+                {
+                    return line
+                        .rsplit_once(": ")
+                        .map(|(_, id)| id.trim().to_string())
+                        .ok_or_else(|| "无法识别系统返回的默认应用。".into());
+                }
+                if text
+                    .lines()
+                    .any(|line| line.starts_with("No default applications for "))
+                {
+                    return Ok(String::new());
+                }
+                Err("无法识别系统返回的默认应用。".into())
+            }
+        }
+    }
+    fn query(self, mime: &str) -> Result<String, String> {
+        self.parse_handler(&output(self.command(mime, None))?)
+    }
+}
+#[cfg(target_os = "linux")]
+fn linux_status_with(backend: LinuxMimeBackend) -> DefaultStatus {
     let mut handlers = vec![];
     let mut failed = false;
     for mime in ["text/markdown", "text/x-markdown"] {
-        let mut command = Command::new("xdg-mime");
-        command.args(["query", "default", mime]);
-        match output(command) {
+        // Ubuntu xdg-utils 1.1.3 rejects quoted Exec paths while checking a desktop entry,
+        // then reports an unrelated fallback. GIO is also the resolver used by GNOME Files
+        // and understands shared-mime-info aliases (text/x-markdown -> text/markdown).
+        match backend.query(mime) {
             Ok(application) => handlers.push(MimeHandler {
                 r#type: mime.into(),
                 application,
@@ -252,7 +321,7 @@ fn linux_status() -> DefaultStatus {
         handlers,
         can_request: !failed,
         message: if failed {
-            "无法查询默认应用。请确认已安装 xdg-utils 并从桌面会话启动。"
+            "无法查询默认应用。请确认系统已安装 gio 或 xdg-utils 并重试。"
         } else if is_default == Some(true) {
             "Markdown 文件已默认使用 Markwrite 打开。"
         } else {
@@ -260,6 +329,77 @@ fn linux_status() -> DefaultStatus {
         }
         .into(),
     }
+}
+#[cfg(target_os = "linux")]
+fn linux_status() -> DefaultStatus {
+    linux_status_with(LinuxMimeBackend::detect())
+}
+#[cfg(target_os = "linux")]
+fn markdown_default_overrides(text: &str, desktop_id: &str) -> String {
+    let mut in_defaults = false;
+    let mut result = String::new();
+    for line in text.split_inclusive('\n') {
+        let value = line.trim().trim_start_matches('\u{feff}');
+        if value.starts_with('[') {
+            in_defaults = value == "[Default Applications]";
+        }
+        if in_defaults {
+            if let Some((mime, _)) = value.split_once('=') {
+                if ["text/markdown", "text/x-markdown"].contains(&mime.trim()) {
+                    result.push_str(&format!("{}={desktop_id};", mime.trim()));
+                    if line.ends_with("\r\n") {
+                        result.push_str("\r\n");
+                    } else if line.ends_with('\n') {
+                        result.push('\n');
+                    }
+                    continue;
+                }
+            }
+        }
+        result.push_str(line);
+    }
+    result
+}
+#[cfg(target_os = "linux")]
+fn update_desktop_overrides(
+    config: &Path,
+    desktops: &str,
+    desktop_id: &str,
+    backup: &Path,
+) -> Result<(), String> {
+    // A user's ubuntu-/gnome-mimeapps.list precedes mimeapps.list. GIO and xdg-mime
+    // set only the latter, so update existing Markdown overrides in the former too.
+    // Never create desktop-specific files or change other associations/sections.
+    for desktop in desktops.split(':').filter(|name| !name.is_empty()) {
+        if !desktop
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_'))
+        {
+            continue;
+        }
+        let path = config.join(format!("{}-mimeapps.list", desktop.to_ascii_lowercase()));
+        let path = match path.canonicalize() {
+            Ok(path) => path,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(format!("无法读取桌面默认应用配置：{error}")),
+        };
+        if !fs::metadata(&path).is_ok_and(|m| m.is_file() && m.len() <= 1024 * 1024) {
+            return Err("桌面默认应用配置不是有效文件或超过 1MB。".into());
+        }
+        let text =
+            fs::read_to_string(&path).map_err(|e| format!("无法读取桌面默认应用配置：{e}"))?;
+        let updated = markdown_default_overrides(&text, desktop_id);
+        if updated != text {
+            // Reuse the conflict-checked atomic writer with a private pre-change backup.
+            crate::storage::atomic_write(
+                &path,
+                updated.as_bytes(),
+                Some(&crate::storage::version(text.as_bytes())),
+                backup,
+            )?;
+        }
+    }
+    Ok(())
 }
 #[cfg(windows)]
 fn registry_command() -> Result<Command, String> {
@@ -412,6 +552,7 @@ pub async fn request_markdown_default(app: tauri::AppHandle) -> Result<DefaultSt
     {
         let executable = std::env::current_exe().map_err(|e| e.to_string())?;
         let data = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+        let config = app.path().config_dir().map_err(|e| e.to_string())?;
         let applications = app
             .path()
             .data_dir()
@@ -445,15 +586,22 @@ pub async fn request_markdown_default(app: tauri::AppHandle) -> Result<DefaultSt
                     &applications.join("markwrite-app.desktop"),
                     desktop_entry(&executable, &icon)?.as_bytes(),
                 )?;
-                let mut database = Command::new("update-desktop-database");
-                database.arg(&applications);
-                let _ = output(database);
                 "markwrite-app.desktop".to_string()
             };
-            let mut command = Command::new("xdg-mime");
-            command.args(["default", &desktop_id, "text/markdown", "text/x-markdown"]);
-            output(command)?;
-            let mut status = linux_status();
+            let mut database = Command::new("update-desktop-database");
+            database.arg(&applications);
+            let _ = output(database);
+            let backend = LinuxMimeBackend::detect();
+            for mime in ["text/markdown", "text/x-markdown"] {
+                output(backend.command(mime, Some(&desktop_id)))?;
+            }
+            update_desktop_overrides(
+                &config,
+                &std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default(),
+                &desktop_id,
+                &data.join("association-backups"),
+            )?;
+            let mut status = linux_status_with(backend);
             if status.is_default != Some(true) {
                 status.message =
                     "系统尚未确认全部 Markdown 关联，请刷新状态或在系统设置中选择 Markwrite。"
@@ -491,6 +639,130 @@ pub async fn request_markdown_default(app: tauri::AppHandle) -> Result<DefaultSt
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn gio_output_parsing_accepts_locale_independent_punctuation_and_missing_default() {
+        let backend = LinuxMimeBackend::Gio;
+        for text in [
+            "Default application for ?text/markdown?: markwrite-app.desktop\nRegistered applications:\n\ttypora.desktop",
+            "Default application for ‘text/markdown’: markwrite-app.desktop",
+        ] {
+            assert_eq!(backend.parse_handler(text).unwrap(), "markwrite-app.desktop");
+        }
+        assert_eq!(
+            backend
+                .parse_handler("No default applications for ?text/markdown?")
+                .unwrap(),
+            ""
+        );
+        assert!(backend.parse_handler("Unexpected system response").is_err());
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn desktop_override_patch_changes_only_existing_markdown_defaults() {
+        let input = "# user preferences\r\n[Default Applications]\r\ntext/markdown=typora.desktop;\r\ntext/plain=other.desktop;\r\ntext/x-markdown=typora.desktop;\r\n\r\n[Added Associations]\r\ntext/markdown=typora.desktop;\r\n";
+        let patched = markdown_default_overrides(input, "markwrite-app.desktop");
+        assert_eq!(patched, "# user preferences\r\n[Default Applications]\r\ntext/markdown=markwrite-app.desktop;\r\ntext/plain=other.desktop;\r\ntext/x-markdown=markwrite-app.desktop;\r\n\r\n[Added Associations]\r\ntext/markdown=typora.desktop;\r\n");
+        assert_eq!(
+            markdown_default_overrides(
+                "[Added Associations]\ntext/markdown=other.desktop;",
+                "markwrite-app.desktop"
+            ),
+            "[Added Associations]\ntext/markdown=other.desktop;"
+        );
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn gio_resolves_quoted_launchers_aliases_and_user_desktop_overrides() {
+        use std::os::unix::fs::PermissionsExt;
+        // Each child gets isolated XDG directories; this never changes the user's associations.
+        if Command::new("gio").arg("version").output().is_err() {
+            eprintln!(
+                "GIO integration check requires the gio CLI; parser/override unit tests still run."
+            );
+            return;
+        }
+        let base = std::env::temp_dir().join(format!(
+            "markwrite-gio-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let config = base.join("config");
+        let data = base.join("data");
+        let empty = base.join("empty");
+        let bin = base.join("bin with spaces");
+        for path in [&config, &data.join("applications"), &empty, &bin] {
+            fs::create_dir_all(path).unwrap();
+        }
+        let program = bin.join("launcher");
+        fs::write(&program, "#!/bin/sh\nexit 0\n").unwrap();
+        fs::set_permissions(&program, fs::Permissions::from_mode(0o755)).unwrap();
+        for id in ["markwrite-app.desktop", "other.desktop"] {
+            fs::write(
+                data.join("applications").join(id),
+                desktop_entry(&program, Path::new("/tmp/icon.png")).unwrap(),
+            )
+            .unwrap();
+        }
+        let prior = "[Default Applications]\ntext/markdown=other.desktop;\ntext/plain=other.desktop;\n\n[Added Associations]\ntext/markdown=other.desktop;\n";
+        for name in ["ubuntu-mimeapps.list", "gnome-mimeapps.list"] {
+            fs::write(config.join(name), prior).unwrap();
+        }
+        let backend = LinuxMimeBackend::Gio;
+        let run = |mime: &str, id: Option<&str>| {
+            let mut command = backend.command(mime, id);
+            command
+                .env("XDG_CONFIG_HOME", &config)
+                .env("XDG_CONFIG_DIRS", &empty)
+                .env("XDG_DATA_HOME", &data)
+                .env("XDG_DATA_DIRS", "/usr/share")
+                .env("XDG_CURRENT_DESKTOP", "ubuntu:GNOME");
+            output(command).unwrap()
+        };
+        assert_eq!(
+            backend.parse_handler(&run("text/markdown", None)).unwrap(),
+            "other.desktop"
+        );
+        for mime in ["text/markdown", "text/x-markdown"] {
+            run(mime, Some("markwrite-app.desktop"));
+        }
+        // Reproduce GIO's generic-file update being shadowed by desktop-specific defaults.
+        assert_eq!(
+            backend.parse_handler(&run("text/markdown", None)).unwrap(),
+            "other.desktop"
+        );
+        let backup = base.join("backups");
+        update_desktop_overrides(
+            &config,
+            "ubuntu:GNOME:../outside",
+            "markwrite-app.desktop",
+            &backup,
+        )
+        .unwrap();
+        for mime in ["text/markdown", "text/x-markdown"] {
+            assert_eq!(
+                backend.parse_handler(&run(mime, None)).unwrap(),
+                "markwrite-app.desktop"
+            );
+        }
+        for name in ["ubuntu-mimeapps.list", "gnome-mimeapps.list"] {
+            let path = config.join(name);
+            let versions = crate::history::list(&backup, &path).unwrap();
+            assert_eq!(versions.len(), 1);
+            assert_eq!(
+                crate::history::read(&backup, &path, &versions[0].id)
+                    .unwrap()
+                    .content,
+                prior
+            );
+            assert!(fs::read_to_string(path)
+                .unwrap()
+                .contains("text/plain=other.desktop;"));
+        }
+        fs::remove_dir_all(base).unwrap();
+    }
     #[test]
     fn desktop_entry_escapes_paths_and_names_app_in_english() {
         let entry = desktop_entry(

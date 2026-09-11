@@ -9,22 +9,17 @@ import {
   Plus,
   Settings as SettingsIcon,
   ChevronRight,
-  ChevronDown,
   X,
   Check,
   Code2,
   BookOpen,
   PenLine,
-  MoreHorizontal,
-  ArrowUpRight,
   Command,
   Focus,
   Moon,
   FilePlus2,
-  FolderPlus,
   Download,
   Save,
-  Keyboard,
   ListTree,
   Files,
   AlertCircle,
@@ -39,7 +34,6 @@ import {
   Heading2,
   Undo2,
   Redo2,
-  SlidersHorizontal,
 } from 'lucide-react';
 import { EditorView } from '@codemirror/view';
 import { undo, redo, selectAll } from '@codemirror/commands';
@@ -76,8 +70,9 @@ import ExtensionsPanel from './components/ExtensionsPanel';
 import AiPanel from './components/AiPanel';
 import TransferPanel from './components/TransferPanel';
 import SettingsPanel from './components/SettingsPanel';
+import FileNavigator from './components/FileNavigator';
 import ImportPanel from './components/ImportPanel';
-import { resolveTheme, themeIsDark, themeTypography } from './lib/themes';
+import { resolveTheme, themeIsDark, themeTypography, themeDefaults } from './lib/themes';
 import { defaultMarkdownStatus, requestMarkdownDefault } from './lib/nativeSettings';
 import {
   fileName,
@@ -207,72 +202,6 @@ function Modal({
     </div>
   );
 }
-function FileTree({
-  entries,
-  active,
-  onOpen,
-  filter,
-  depth = 0,
-}: {
-  entries: FileEntry[];
-  active?: string;
-  onOpen: (path: string) => void;
-  filter: string;
-  depth?: number;
-}) {
-  const [closed, setClosed] = useState<Set<string>>(new Set());
-  const visible = (e: FileEntry): boolean =>
-    e.name.toLowerCase().includes(filter.toLowerCase()) || !!e.children?.some(visible);
-  return (
-    <>
-      {entries.filter(visible).map((entry) =>
-        entry.directory ? (
-          <div key={entry.path}>
-            <button
-              className="tree-row folder"
-              style={{ paddingLeft: 13 + depth * 14 }}
-              onClick={() =>
-                setClosed((old) => {
-                  const next = new Set(old);
-                  next.has(entry.path) ? next.delete(entry.path) : next.add(entry.path);
-                  return next;
-                })
-              }
-            >
-              {closed.has(entry.path) && !filter ? (
-                <ChevronRight size={13} />
-              ) : (
-                <ChevronDown size={13} />
-              )}
-              <FolderOpen size={15} />
-              <span>{entry.name}</span>
-            </button>
-            {(!closed.has(entry.path) || filter) && (
-              <FileTree
-                entries={entry.children || []}
-                active={active}
-                onOpen={onOpen}
-                filter={filter}
-                depth={depth + 1}
-              />
-            )}
-          </div>
-        ) : (
-          <button
-            key={entry.path}
-            className={`tree-row ${entry.path === active ? 'selected' : ''}`}
-            style={{ paddingLeft: 27 + depth * 14 }}
-            onClick={() => onOpen(entry.path)}
-            title={entry.path}
-          >
-            <FileText size={15} />
-            <span>{entry.name.replace(/\.(md|markdown)$/i, '')}</span>
-          </button>
-        ),
-      )}
-    </>
-  );
-}
 export default function App() {
   useI18n();
   const [docs, setDocs] = useState<Document[]>(initialDocs);
@@ -295,6 +224,14 @@ export default function App() {
     platform.desktop ? recovered?.root : undefined,
   );
   const [entries, setEntries] = useState<FileEntry[]>([]);
+  const [folderLoading, setFolderLoading] = useState(false);
+  const [folderError, setFolderError] = useState('');
+  const folderRequest = useRef(0);
+  const navigationRequest = useRef(0);
+  function selectDocument(id: string) {
+    navigationRequest.current++;
+    setActiveId(id);
+  }
   const [workspaces, setWorkspaces] = useState<string[]>(() => {
     try {
       const value = JSON.parse(localStorage.getItem('markwrite.workspaces.v1') || '[]');
@@ -303,7 +240,6 @@ export default function App() {
       return [];
     }
   });
-  const [filter, setFilter] = useState('');
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searching, setSearching] = useState(false);
@@ -335,7 +271,6 @@ export default function App() {
     from: number;
     to: number;
   }>();
-  const [menu, setMenu] = useState(false);
   const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab | null>(null);
   const [compareId, setCompareId] = useState<string | null>(null);
   const [recents, setRecents] = useState(readRecents);
@@ -432,7 +367,7 @@ export default function App() {
       }
     const existing = docsRef.current.find((d) => d.path && pathKey(d.path) === pathKey(file.path));
     if (existing) {
-      setActiveId(existing.id);
+      selectDocument(existing.id);
       if (existing.content !== existing.saved && existing.version !== file.version)
         patch(existing.id, { status: 'conflict' });
       else if (existing.content === existing.saved)
@@ -446,7 +381,7 @@ export default function App() {
       saved: file.content,
     };
     updateDocs((items) => [...items, d]);
-    setActiveId(d.id);
+    selectDocument(d.id);
   }
   async function openFiles() {
     try {
@@ -460,6 +395,10 @@ export default function App() {
     try {
       const folder = await platform.openFolder();
       if (folder) {
+        folderRequest.current++;
+        setSettings((value) => ({ ...value, followFileParent: false }));
+        setFolderError('');
+        setFolderLoading(false);
         setRoot(folder.path);
         const recentRoots = [folder.path, ...workspaces.filter((p) => p !== folder.path)].slice(
           0,
@@ -479,32 +418,87 @@ export default function App() {
       if (!canceled(e)) notify(errorText(e));
     }
   }
-  async function refresh() {
-    if (root)
-      try {
-        setEntries(await platform.listFolder(root));
-      } catch (e) {
-        notify(errorText(e));
-      }
+  useEffect(() => {
+    const title = `${current.name} — Markwrite`;
+    document.title = title;
+    if (platform.desktop)
+      void import('@tauri-apps/api/window')
+        .then(({ getCurrentWindow }) => getCurrentWindow().setTitle(title))
+        .catch(() => {});
+  }, [current.name]);
+  async function loadParent(path: string) {
+    const request = ++folderRequest.current;
+    setFolderLoading(true);
+    setFolderError('');
+    try {
+      const folder = await platform.parentFolder(path);
+      if (request !== folderRequest.current) return;
+      if (folder) {
+        setRoot(folder.path);
+        setEntries(folder.entries);
+      } else
+        setFolderError(t('请用“打开文件夹”选择所在目录。', 'Choose the folder with Open folder.'));
+    } catch (error) {
+      if (request === folderRequest.current) setFolderError(errorText(error));
+    } finally {
+      if (request === folderRequest.current) setFolderLoading(false);
+    }
   }
+  async function refresh() {
+    if (settingsRef.current.followFileParent && currentRef.current.path) {
+      await loadParent(currentRef.current.path);
+      return;
+    }
+    if (!root) return;
+    const request = ++folderRequest.current;
+    setFolderLoading(true);
+    setFolderError('');
+    try {
+      const nextEntries = await platform.listFolder(root);
+      if (request === folderRequest.current) setEntries(nextEntries);
+    } catch (error) {
+      if (request === folderRequest.current) setFolderError(errorText(error));
+    } finally {
+      if (request === folderRequest.current) setFolderLoading(false);
+    }
+  }
+  useEffect(() => {
+    if (settings.followFileParent && current.path) void loadParent(current.path);
+    else {
+      setFolderLoading(false);
+      setFolderError('');
+    }
+    return () => {
+      folderRequest.current++;
+    };
+  }, [settings.followFileParent, current.path]);
   async function openPath(path: string, line?: number) {
+    const request = ++navigationRequest.current;
     const existing = docsRef.current.find(
       (d) => d.id === path || (d.path && pathKey(d.path) === pathKey(path)),
     );
     try {
       if (existing) {
-        setActiveId(existing.id);
+        selectDocument(existing.id);
         setMode(settingsRef.current.defaultMode);
-      } else addDisk(await platform.readFile(path));
-      if (line) setTimeout(() => jump(line), 80);
+      } else {
+        const file = await platform.readFile(path);
+        if (request !== navigationRequest.current) return;
+        addDisk(file);
+      }
+      const selection = navigationRequest.current;
+      if (line)
+        setTimeout(() => {
+          if (selection === navigationRequest.current) jump(line);
+        }, 80);
     } catch (e) {
-      notify(errorText(e));
+      if (request === navigationRequest.current) notify(errorText(e));
     }
   }
   function newDocument() {
     const d = draft(`未命名 ${docsRef.current.filter((d) => !d.path).length + 1}.md`);
     updateDocs((items) => [...items, d]);
-    setActiveId(d.id);
+    selectDocument(d.id);
     setMode('live');
     setTimeout(() => editor.current?.focus(), 0);
   }
@@ -596,7 +590,7 @@ export default function App() {
     if (!d?.path) return;
     try {
       const disk = await platform.readFile(d.path);
-      setActiveId(d.id);
+      selectDocument(d.id);
       setDiskConflict({ ...disk, documentId: d.id });
       setDialog('conflict');
     } catch (e) {
@@ -608,7 +602,7 @@ export default function App() {
     releaseEditor(id);
     if (!next.length) next.push(draft('未命名.md'));
     updateDocs(() => next);
-    if (activeId === id) setActiveId(next[Math.max(0, next.length - 1)].id);
+    if (activeId === id) selectDocument(next[Math.max(0, next.length - 1)].id);
   }
   function requestClose(id = currentRef.current?.id) {
     const d = docsRef.current.find((d) => d.id === id);
@@ -761,7 +755,6 @@ export default function App() {
   async function doExport(format: 'html' | 'pdf' | 'docx' | 'publish' = 'html') {
     if (!current || exporting) return;
     setExporting(true);
-    setMenu(false);
     const node = document.createElement('article');
     node.className = 'markdown-body';
     node.innerHTML = renderMarkdown(current.content);
@@ -1092,7 +1085,6 @@ export default function App() {
     const handler = (e: KeyboardEvent) => {
       if (e.isComposing || dialog || insertDialog || namePrompt) return;
       if (e.key === 'Escape') {
-        setMenu(false);
         if (!dialog) setFocus(false);
       }
       if (!(e.ctrlKey || e.metaKey)) return;
@@ -1289,7 +1281,6 @@ export default function App() {
   }
   function openExport(format: 'html' | 'pdf' | 'docx') {
     setExportFormat(format);
-    setMenu(false);
     setDialog('export');
   }
   function replaceCurrent(text: string) {
@@ -1344,7 +1335,7 @@ export default function App() {
         const text = new TextDecoder('utf-8', { fatal: true }).decode(await file.arrayBuffer());
         const d = draft(file.name, text.replace(/\r\n/g, '\n'));
         updateDocs((items) => [...items, d]);
-        setActiveId(d.id);
+        selectDocument(d.id);
       } catch {
         notify(t('{0} 不是有效 UTF-8 文件。', undefined, [file.name]));
       }
@@ -1424,7 +1415,7 @@ export default function App() {
       setSettings((s) => ({
         ...s,
         theme,
-        serif: themeTypography(theme).serif,
+        ...themeDefaults(theme),
         customColors: undefined,
       }));
       return;
@@ -1442,6 +1433,20 @@ export default function App() {
       case 'app:folder':
         void openFolder();
         break;
+      case 'app:rename':
+        setNamePrompt({ type: 'rename', value: current.name });
+        break;
+      case 'app:reference': {
+        const existing = docsRef.current.find((item) => item.name === 'Markdown 语法手册.md');
+        if (existing) selectDocument(existing.id);
+        else {
+          const item = draft('Markdown 语法手册.md', syntaxSample);
+          updateDocs((items) => [...items, item]);
+          selectDocument(item.id);
+        }
+        setMode('read');
+        break;
+      }
       case 'app:save':
         void save();
         break;
@@ -1579,6 +1584,7 @@ export default function App() {
         break;
     }
   }
+  const typography = themeTypography(settings.theme);
   return (
     <div
       className={`app ${focus ? 'focus-mode' : ''} ${!sidebar ? 'sidebar-collapsed' : ''}`}
@@ -1588,38 +1594,34 @@ export default function App() {
           '--editor-size': `${settings.fontSize}px`,
           '--editor-line': settings.lineHeight,
           '--content-width': `${settings.width}px`,
-          '--code-font': settings.codeFont || 'monospace',
+          '--code-font': settings.codeFont || typography.codeFont,
           '--body-font':
             settings.bodyFont ||
-            (settings.serif
-              ? '"Noto Serif CJK SC", "Source Han Serif SC", serif'
-              : '"Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif'),
+            (settings.serif === typography.serif
+              ? typography.bodyFont
+              : settings.serif
+                ? '"Noto Serif CJK SC", "Source Han Serif SC", serif'
+                : '"Noto Sans CJK SC", "Source Han Sans SC", system-ui, sans-serif'),
         } as CSSProperties
       }
     >
       {sidebar && !focus && (
         <aside className="sidebar">
-          <div className="brand">
-            <img src="/assets/app-icon.png" alt="" />
-            <span>
-              {t('墨页')}
-              <small>MARKWRITE</small>
-            </span>
+          <div className="sidebar-header">
+            <span>Markwrite</span>
+            <IconButton
+              title={t('搜索文档')}
+              onClick={() => {
+                setPalette('');
+                setDialog('quickopen');
+              }}
+            >
+              <Search size={15} />
+            </IconButton>
             <IconButton title={t('收起侧栏')} onClick={() => setSidebar(false)}>
-              <PanelLeftClose size={17} />
+              <PanelLeftClose size={16} />
             </IconButton>
           </div>
-          <button
-            className="quick-search"
-            onClick={() => {
-              setPalette('');
-              setDialog('quickopen');
-            }}
-          >
-            <Search size={15} />
-            <span>{t('搜索文档')}</span>
-            <kbd>Ctrl P</kbd>
-          </button>
           <div className="sidebar-navigation">
             <button
               className={sideTab === 'files' ? 'active' : ''}
@@ -1645,158 +1647,34 @@ export default function App() {
           </div>
           <div className="sidebar-content">
             {sideTab === 'files' && (
-              <>
-                <div className="section-caption">
-                  <span>{t('当前打开')}</span>
-                  <IconButton title={t('新建文档 · Ctrl N')} onClick={newDocument}>
-                    <Plus size={15} />
-                  </IconButton>
-                </div>
-                {docs.map((d) => (
-                  <button
-                    key={d.id}
-                    className={`tree-row document-row ${d.id === current.id ? 'selected' : ''}`}
-                    onClick={() => setActiveId(d.id)}
-                    title={d.path || d.name}
-                  >
-                    <FileText size={16} />
-                    <span>{d.name.replace(/\.(md|markdown)$/i, '')}</span>
-                    {d.content !== d.saved && <i className="dirty-dot" />}
-                  </button>
-                ))}
-                <div className="section-caption workspace-caption">
-                  <span>{root ? basename(root) : t('工作文件夹')}</span>
-                  <div>
-                    {root && (
-                      <>
-                        <IconButton
-                          title={t('新建文件夹')}
-                          onClick={() => setNamePrompt({ type: 'folder', value: '' })}
-                        >
-                          <FolderPlus size={14} />
-                        </IconButton>
-                        <IconButton
-                          title={t('新建文件')}
-                          onClick={() => setNamePrompt({ type: 'file', value: '' })}
-                        >
-                          <FilePlus2 size={14} />
-                        </IconButton>
-                        <IconButton title={t('刷新文件树')} onClick={() => void refresh()}>
-                          <RefreshCw size={13} />
-                        </IconButton>
-                      </>
-                    )}
-                  </div>
-                </div>
-                {root ? (
-                  <>
-                    {workspaces.length > 1 && (
-                      <select
-                        className="workspace-switch"
-                        aria-label={t('切换工作区')}
-                        value={root}
-                        onChange={async (e) => {
-                          const next = e.target.value;
-                          try {
-                            const listing = await platform.listFolder(next);
-                            setEntries(listing);
-                            setRoot(next);
-                          } catch (error) {
-                            notify(errorText(error));
-                          }
-                        }}
-                      >
-                        {workspaces.map((path) => (
-                          <option value={path} key={path}>
-                            {basename(path)}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <div className="tree-filter">
-                      <Search size={13} />
-                      <input
-                        aria-label={t('筛选文件名')}
-                        placeholder={t('筛选文件…')}
-                        value={filter}
-                        onChange={(e) => setFilter(e.target.value)}
-                      />
-                    </div>
-                    <FileTree
-                      entries={entries}
-                      active={current.path}
-                      onOpen={(p) => void openPath(p)}
-                      filter={filter}
-                    />
-                    {entries.length === 0 && (
-                      <p className="side-empty">
-                        {t('还没有 Markdown 文档')}
-                        <br />
-                        {t('点击上方 + 新建一篇。')}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <div className="folder-empty">
-                    <FolderOpen size={25} strokeWidth={1.4} />
-                    <p>{t('把整个项目，放在手边')}</p>
-                    <button onClick={() => void openFolder()}>
-                      {t('打开文件夹') + ' '}
-                      <ArrowUpRight size={13} />
-                    </button>
-                  </div>
-                )}
-                {!!recents.length && (
-                  <>
-                    <div className="section-caption">
-                      <span>{t('最近打开')}</span>
-                    </div>
-                    {recents.slice(0, 8).map((recent) => (
-                      <div className="recent-file" key={recent.path}>
-                        <button
-                          className="tree-row"
-                          title={recent.path}
-                          onClick={() => void openPath(recent.path)}
-                        >
-                          <FileText size={14} />
-                          <span>{recent.name}</span>
-                        </button>
-                        <button
-                          className="remove-recent"
-                          aria-label={t('移除最近记录 {0}', undefined, [recent.name])}
-                          onClick={() => {
-                            try {
-                              setRecents(updateRecents(undefined, recent.path));
-                            } catch (e) {
-                              notify(errorText(e));
-                            }
-                          }}
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </>
-                )}
-                <div className="section-caption">
-                  <span>{t('开始探索')}</span>
-                </div>
-                <button
-                  className="tree-row"
-                  onClick={() => {
-                    const existing = docs.find((d) => d.name === 'Markdown 语法手册.md');
-                    if (existing) setActiveId(existing.id);
-                    else {
-                      const d = draft('Markdown 语法手册.md', syntaxSample);
-                      updateDocs((items) => [...items, d]);
-                      setActiveId(d.id);
-                    }
-                  }}
-                >
-                  <BookOpen size={16} />
-                  <span>{t('Markdown 语法手册')}</span>
-                </button>
-              </>
+              <FileNavigator
+                root={root}
+                entries={entries}
+                current={current}
+                drafts={docs.filter((item) => !item.path)}
+                recents={recents}
+                following={settings.followFileParent}
+                loading={folderLoading}
+                error={folderError}
+                onFollow={(followFileParent) =>
+                  setSettings((value) => ({ ...value, followFileParent }))
+                }
+                onFolder={() => void openFolder()}
+                onRefresh={() => void refresh()}
+                onOpen={(path) => void openPath(path)}
+                onDraft={selectDocument}
+                onNewFile={() =>
+                  root ? setNamePrompt({ type: 'file', value: '' }) : newDocument()
+                }
+                onNewFolder={() => setNamePrompt({ type: 'folder', value: '' })}
+                onRemoveRecent={(path) => {
+                  try {
+                    setRecents(updateRecents(undefined, path));
+                  } catch (error) {
+                    notify(errorText(error));
+                  }
+                }}
+              />
             )}
             {sideTab === 'outline' && (
               <>
@@ -1867,7 +1745,7 @@ export default function App() {
                     onClick={() => {
                       const d = docs.find((d) => d.id === hit.path || d.path === hit.path);
                       if (d) {
-                        setActiveId(d.id);
+                        selectDocument(d.id);
                         setTimeout(() => jump(hit.line), 80);
                       } else void openPath(hit.path, hit.line);
                     }}
@@ -1895,13 +1773,6 @@ export default function App() {
               <span>{t('设置')}</span>
               <kbd>Ctrl ,</kbd>
             </button>
-            <div className="local-note">
-              <span className="local-dot" />
-              {t('本地优先 · 安心写作')}
-              <IconButton title={t('快捷键')} onClick={() => setDialog('shortcuts')}>
-                <Keyboard size={15} />
-              </IconButton>
-            </div>
           </div>
           <div
             className="sidebar-resize"
@@ -1918,128 +1789,43 @@ export default function App() {
       )}
       <main className="main">
         {!focus && (
-          <EditingMenu
-            onAction={handleMenuAction}
-            mode={mode}
-            theme={settings.theme}
-            focus={focus}
-          />
-        )}
-        {!focus && (
-          <header className="topbar">
-            <div className="breadcrumb">
-              {!sidebar && (
-                <IconButton title={t('展开侧栏')} onClick={() => setSidebar(true)}>
-                  <PanelLeftOpen size={18} />
-                </IconButton>
-              )}
-              <span>{root ? basename(root) : t('我的文档')}</span>
-              <ChevronRight size={13} />
-              <strong title={current.path}>{current.name}</strong>
-              {!current.path && <span className="draft-label">{t('草稿')}</span>}
-            </div>
-            <div className="top-actions">
-              <div className="mode-switch" aria-label={t('文档模式')}>
-                <button
-                  title={t('即时渲染编辑')}
-                  className={mode === 'live' ? 'active' : ''}
-                  onClick={() => setMode('live')}
-                >
-                  <PenLine size={14} />
-                  <span>{t('编辑')}</span>
-                </button>
-                <button
-                  title={t('Markdown 源码')}
-                  className={mode === 'source' ? 'active' : ''}
-                  onClick={() => setMode('source')}
-                >
-                  <Code2 size={15} />
-                  <span>{t('源码')}</span>
-                </button>
-                <button
-                  title={t('只读模式')}
-                  className={mode === 'read' ? 'active' : ''}
-                  onClick={() => setMode('read')}
-                >
-                  <BookOpen size={14} />
-                  <span>{t('阅读')}</span>
-                </button>
-              </div>
-              <span className="action-divider" />
-              <IconButton title={t('专注模式')} onClick={() => setFocus(true)}>
-                <Focus size={17} />
+          <header className="compact-header">
+            {!sidebar && (
+              <IconButton title={t('展开侧栏')} onClick={() => setSidebar(true)}>
+                <PanelLeftOpen size={16} />
               </IconButton>
-              <div className="menu-anchor">
-                <IconButton title={t('更多操作')} active={menu} onClick={() => setMenu((v) => !v)}>
-                  <MoreHorizontal size={19} />
-                </IconButton>
-                {menu && (
-                  <>
-                    <div className="menu-dismiss" onClick={() => setMenu(false)} />
-                    <div className="dropdown">
-                      <button
-                        onClick={() => {
-                          setMenu(false);
-                          void save();
-                        }}
-                      >
-                        <Save size={15} />
-                        {t('保存')}
-                        <span>Ctrl S</span>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setMenu(false);
-                          void save(current.id, true);
-                        }}
-                      >
-                        <FilePlus2 size={15} />
-                        {t('另存为…')}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setMenu(false);
-                          setNamePrompt({ type: 'rename', value: current.name });
-                        }}
-                      >
-                        <PenLine size={15} />
-                        {t('重命名')}
-                      </button>
-                      <hr />
-                      <button disabled={exporting} onClick={() => openExport('html')}>
-                        <Download size={15} />
-                        {exporting ? t('正在导出…') : t('导出 HTML')}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setMenu(false);
-                          setDialog('settings');
-                        }}
-                      >
-                        <SlidersHorizontal size={15} />
-                        {t('排版与设置')}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setMenu(false);
-                          setDialog('shortcuts');
-                        }}
-                      >
-                        <Keyboard size={15} />
-                        {t('快捷键')}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+            )}
+            <EditingMenu
+              onAction={handleMenuAction}
+              mode={mode}
+              theme={settings.theme}
+              focus={focus}
+            />
+            <label className="compact-mode" title={t('文档模式')}>
+              {mode === 'read' ? (
+                <BookOpen size={14} />
+              ) : mode === 'source' ? (
+                <Code2 size={14} />
+              ) : (
+                <PenLine size={14} />
+              )}
+              <select
+                aria-label={t('文档模式')}
+                value={mode}
+                onChange={(event) => setMode(event.target.value as Mode)}
+              >
+                <option value="read">{t('阅读')}</option>
+                <option value="live">{t('编辑')}</option>
+                <option value="source">{t('源码')}</option>
+              </select>
+            </label>
           </header>
         )}
         {docs.length > 1 && !focus && (
           <div className="tabs">
             {docs.map((d) => (
               <div key={d.id} className={`tab ${d.id === current.id ? 'active' : ''}`}>
-                <button onClick={() => setActiveId(d.id)}>
+                <button onClick={() => selectDocument(d.id)}>
                   <FileText size={13} />
                   <span>{d.name}</span>
                   {d.content !== d.saved && <i className="dirty-dot" />}
@@ -2512,7 +2298,7 @@ export default function App() {
                   else {
                     const f = quickFiles[0];
                     if (f) {
-                      if (f.id) setActiveId(f.id);
+                      if (f.id) selectDocument(f.id);
                       else void openPath(f.path);
                     }
                   }
@@ -2544,7 +2330,7 @@ export default function App() {
                     key={f.path}
                     onClick={() => {
                       setDialog(null);
-                      if (f.id) setActiveId(f.id);
+                      if (f.id) selectDocument(f.id);
                       else void openPath(f.path);
                     }}
                   >
@@ -2596,7 +2382,7 @@ export default function App() {
             }));
             if (added.length) {
               updateDocs((items) => [...items, ...added]);
-              setActiveId(added[0].id);
+              selectDocument(added[0].id);
               setMode(settingsRef.current.defaultMode);
               notify(
                 t('已导入 {0} 个 Markdown 草稿', 'Imported {0} Markdown drafts', [added.length]),
