@@ -1,6 +1,6 @@
 # [下载 / Download Markwrite — Linux & Windows](https://github.com/asoming/markwrite/releases)
 
-**当前版本 / Current release: 0.3.2（预览版，构建验证中 / Preview, validation in progress）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
+**当前版本 / Current release: 0.3.2（预览版 / Preview）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
 
 Choose the Linux `.deb`, Linux portable archive, or Windows x64 installer from the release page above. Features, installation, and conversion limits are described below.
 
@@ -264,7 +264,7 @@ Download an installer or portable package from **[GitHub Releases](https://githu
 
 运行使用系统 WebView2；缺少时安装器会下载 Microsoft 官方引导程序，因此首次安装可能需要网络。安装包当前未做商业代码签名。已有 WebView2 后，本地写作和导出无需联网。
 
-设置中的默认应用按钮会打开 Windows 系统设置，请在那里完成 `.md` 和 `.markdown` 关联。0.3.1 的 Windows 构建、安装、文件关联命令、启动与关闭已通过自动验收；详细记录见下方测试状态。
+设置中的默认应用按钮会打开 Windows 系统设置，请在那里完成 `.md` 和 `.markdown` 关联。0.3.2 的 Windows 构建、安装、文件关联命令、启动与关闭已通过自动验收；详细记录见下方测试状态。
 
 ## 常用快捷键
 
@@ -330,7 +330,9 @@ npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
 
 [Desktop builds 工作流](.github/workflows/desktop.yml) 在 Linux 和 Windows runner 运行前端测试、Rust 测试并打包。Windows 还包含 NSIS 安装、带空格安装路径的文件关联、中文文件参数、窗口出现、系统关闭消息和卸载检查。
 
-0.3.1 功能提交 `663e9a5` 的 [Linux / Windows 构建与安装验收](https://github.com/asoming/markwrite/actions/runs/34582052897) 已全部通过。前端共 126 项测试通过，2 项可选性能诊断跳过；Linux 原生测试 39 项通过、1 项可选性能诊断跳过。Windows 安装、文件关联命令、原生窗口启动/关闭及卸载检查通过。本机另已验证中文和空格路径文档的完整打开、父目录文件树跟随、默认阅读和原生关闭；GIO 默认应用查询与设置在隔离配置中通过验证。这些检查不代表所有设备与使用场景均已覆盖。
+0.3.2 功能提交 `ae35f83` 的 [Linux / Windows 构建与安装验收](https://github.com/asoming/markwrite/actions/runs/34585037701) 已全部通过。两个平台均为前端 134 项测试通过、2 项可选性能诊断跳过；Linux 原生测试 39 项通过、1 项跳过，Windows 原生测试 34 项通过、1 项跳过。Windows NSIS 安装、文件关联命令的路径引用、原生窗口启动/关闭与卸载检查通过。本机最终程序另已验证中文和空格路径文档的完整打开、父目录文件树跟随、默认阅读、会话恢复、正常关闭，以及默认 15% 工具条透明度的保存。本版也修复了窄窗口中的面板与插入工具条遮挡。这些检查不代表所有设备与使用场景均已覆盖。
+
+**English:** The [0.3.2 CI run](https://github.com/asoming/markwrite/actions/runs/34585037701), for functional commit `ae35f83`, passed on Linux and Windows: **134 frontend tests** passed on each platform, with two optional diagnostics skipped; native tests passed **39 on Linux** and **34 on Windows**, with one skipped on each. Windows installer, quoted file-association paths, application startup/shutdown, and uninstall checks passed. Local checks also covered Chinese and space-containing paths, the parent-folder tree, default reading mode, session recovery, normal shutdown, and persistence of the default 15% toolbar transparency. Narrow-window panel and insert-toolbar overlap was fixed.
 
 可选性能诊断：
 
@@ -356,5 +358,3 @@ cargo test --manifest-path src-tauri/Cargo.toml benchmark_workspace_search_100mb
 文档主题的来源、适配方式、字体来源和文件校验值列在 **[public/themes/NOTICE.txt](public/themes/NOTICE.txt)**。Pixyll 衍生样式保留 **[MIT 许可证](public/themes/pixyll/LICENSE.txt)**；随附 Open Sans 使用 **[Apache License 2.0](public/themes/github/Apache-2.0.txt)**，PT Serif、Merriweather、Lato、Vollkorn 各自的 SIL Open Font License 文件保存在对应主题目录，具体链接和版权信息见 NOTICE。分发应用时须一并保留这些文件。
 
 离线 PDF 使用随包提供的 Noto Sans CJK 简体中文常规/粗体字体。来源、提取方式与版权说明保存在 **[public/fonts/NOTICE.txt](public/fonts/NOTICE.txt)**，字体许可证为 **[SIL Open Font License 1.1](public/fonts/OFL.txt)**。分发应用时保留字体及这些许可说明；字体许可只针对字体文件，不因此要求导出的文档采用相同许可证。应用不会将这些字体安装到系统字体目录。
-
-0.3.2 新增浮动工具条、透明度与双语介绍；当前前端 134 项测试通过，本版安装包与原生验收记录待构建完成后更新。
