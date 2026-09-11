@@ -570,6 +570,10 @@ mod tests {
             let destination = base.join("destination");
             fs::create_dir_all(&root).unwrap();
             fs::create_dir(&destination).unwrap();
+            // Picker grants contain canonical paths, including Windows verbatim prefixes.
+            let base = fs::canonicalize(base).unwrap();
+            let root = fs::canonicalize(root).unwrap();
+            let destination = fs::canonicalize(destination).unwrap();
             let state = AppState::default();
             state
                 .access
