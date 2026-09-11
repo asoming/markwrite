@@ -292,7 +292,7 @@ Download an installer or portable package from **[GitHub Releases](https://githu
 
 运行使用系统 WebView2；缺少时安装器会下载 Microsoft 官方引导程序，因此首次安装可能需要网络。安装包当前未做商业代码签名。已有 WebView2 后，本地写作和导出无需联网。
 
-设置中的默认应用按钮会打开 Windows 系统设置，请在那里完成 `.md` 和 `.markdown` 关联。0.3.2 的 Windows 构建、安装、文件关联命令、启动与关闭已通过自动验收；详细记录见下方测试状态。
+设置中的默认应用按钮会打开 Windows 系统设置，请在那里完成 `.md` 和 `.markdown` 关联。此版本的 Windows 构建、安装、文件关联命令、启动与关闭验收记录见下方测试状态。
 
 ## 常用快捷键
 
@@ -358,9 +358,17 @@ npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
 
 [Desktop builds 工作流](.github/workflows/desktop.yml) 在 Linux 和 Windows runner 运行前端测试、Rust 测试并打包。Windows 还包含 NSIS 安装、带空格安装路径的文件关联、中文文件参数、窗口出现、系统关闭消息和卸载检查。
 
-0.3.2 功能提交 `ae35f83` 的 [Linux / Windows 构建与安装验收](https://github.com/asoming/markwrite/actions/runs/34585037701) 已全部通过。两个平台均为前端 134 项测试通过、2 项可选性能诊断跳过；Linux 原生测试 39 项通过、1 项跳过，Windows 原生测试 34 项通过、1 项跳过。Windows NSIS 安装、文件关联命令的路径引用、原生窗口启动/关闭与卸载检查通过。本机最终程序另已验证中文和空格路径文档的完整打开、父目录文件树跟随、默认阅读、会话恢复、正常关闭，以及默认 15% 工具条透明度的保存。本版也修复了窄窗口中的面板与插入工具条遮挡。这些检查不代表所有设备与使用场景均已覆盖。
+0.4.0 在本机通过 **228 项前端测试**（默认跳过 2 项可选诊断）、**61 项 Linux 原生测试**（跳过 1 项可选诊断），TypeScript、生产构建与 Rust 格式检查通过。1MiB/10MiB 编辑诊断另行运行，两项均通过。另已在隐藏的独立显示环境中，验证预先持久化的中英草稿在强制终止程序后完整恢复，保存基线和未保存状态均保留；这不代表真实键入、断电或写入中断测试。此版的 [Linux / Windows 构建与安装验收](https://github.com/asoming/markwrite/actions/runs/34603110391) 全部通过，其中 Windows 通过 **54 项原生测试**（跳过 1 项可选诊断），并通过安装、带空格路径的文件关联命令、中文参数解析、启动、正常关闭和卸载检查。
 
-**English:** The [0.3.2 CI run](https://github.com/asoming/markwrite/actions/runs/34585037701), for functional commit `ae35f83`, passed on Linux and Windows: **134 frontend tests** passed on each platform, with two optional diagnostics skipped; native tests passed **39 on Linux** and **34 on Windows**, with one skipped on each. Windows installer, quoted file-association paths, application startup/shutdown, and uninstall checks passed. Local checks also covered Chinese and space-containing paths, the parent-folder tree, default reading mode, session recovery, normal shutdown, and persistence of the default 15% toolbar transparency. Narrow-window panel and insert-toolbar overlap was fixed.
+Linux 原生发布版另已验证：只打开一篇文档时，WebKit 后台 Worker 能读取同目录另外两篇磁盘文档，正确显示它们的反向链接和中英文标签；测试文档保持不变。测试使用正式构建的协议和 CSP，在隐藏的独立显示环境中操作。
+
+真实 Chrome 验证了表格输入/撤销/重做、浏览器组合输入事件、图片尺寸/拖动/阅读预览、8 页 A5 PDF 和 DOCX 输出。使用真实工具面板和 Worker 的 1,000/10,000 篇合成文档测试中，切换标签/反链/当前文档没有重新解析全文，各只读取一次工作区快照；改一篇只增加一次解析，列表首批 100 项。该夹具以内存代替磁盘扫描，不代表原生启动、实际磁盘或所有设备的耗时。
+
+**English:** Local validation passed **228 frontend tests** (two optional diagnostics skipped), **61 native Linux tests** (one optional diagnostic skipped), TypeScript, the production build, and Rust formatting. Both opt-in 1MiB/10MiB editing diagnostics also passed. An isolated native process-kill check also recovered a preseeded persisted bilingual draft with its saved baseline and dirty state intact; this was not a typing, power-loss, or interrupted-save test. [Linux / Windows build and installer checks](https://github.com/asoming/markwrite/actions/runs/34603110391) passed. Windows passed **54 native tests** (one optional diagnostic skipped), installer and uninstaller checks, file association commands with spaces, Chinese filename argument parsing, native startup, and normal close checks.
+
+The native Linux release also passed a WebKit worker check under its production protocol and CSP: with one document open, it indexed two other documents on disk and displayed their backlinks and bilingual tags without changing the files. The check ran on a hidden, isolated display.
+
+Real Chrome checks covered table edits and undo/redo, browser composition events, image dimensions/dragging/reading previews, an eight-page A5 PDF, and DOCX output. With the real tool panel and worker indexing 1,000/10,000 synthetic documents, tab/current-file changes did not reparse the documents or reread the workspace snapshot; a single edit reparsed only one document, with 100 rows initially rendered. Workspace disk reads were mocked, so this does not benchmark native startup or filesystem speed.
 
 可选性能诊断：
 
