@@ -39,3 +39,7 @@ CI 在 Windows 原生 runner 中运行前端测试、Rust 测试并构建 NSIS �
 不是兼容性证明。实际安装、启动、关闭、系统文件对话框、中文输入法候选、
 拖放、DPI 缩放及 PDF / DOCX 在目标阅读器中的效果仍需 Windows 桌面验收。
 Linux 上的验证结果不能代替这些检查。
+
+## 0.2.0 已验证记录
+
+[CI 运行](https://github.com/asoming/markwrite/actions/runs/34575537706) 已通过 Windows 原生测试、NSIS 构建、静默安装、安装后的窗口启动/关闭和卸载命令检查。下载 [v0.2.0 安装包](https://github.com/asoming/markwrite/releases/tag/v0.2.0)。这不替代目标电脑的中文输入法、缩放、拖放、文件关联及手动安装向导验收。

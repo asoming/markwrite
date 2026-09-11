@@ -2,7 +2,9 @@
 
 面向 Linux 和 Windows 的本地 Markdown 写作工具。使用 **Tauri 2 + React + TypeScript + Rust + CodeMirror 6**。
 
-当前版本 **0.2.0 功能预览**。通过菜单排版、插入表格和公式，也可以直接编写 Markdown。已扩展文档管理、恢复、导出与可选服务连接；具体实现与验收状态见 [功能矩阵](docs/FEATURE_MATRIX.md)。Windows CI 正在验证，真实输入法和长期使用验收尚未完成。
+第一次使用可以看 [中文上手指南](docs/QUICKSTART.zh-CN.md)：直接输入文字，通过菜单设置格式、插入表格与导出文档。
+
+当前版本 **0.2.0 功能预览**。通过菜单排版、插入表格和公式，也可以直接编写 Markdown。已扩展文档管理、恢复、导出与可选服务连接；具体实现与验收状态见 [功能矩阵](docs/FEATURE_MATRIX.md)。Linux 与 Windows 构建和测试已通过；真实输入法和长期使用验收尚未完成。
 
 <img src="public/assets/app-icon.png" width="100" alt="墨页应用图标" />
 
@@ -38,7 +40,7 @@
 
 ## 安装与启动
 
-从 [GitHub 发布页](https://github.com/asoming/markwrite/releases) 下载已发布的 Linux `.deb` 或便携包，以页面中的实际资产为准。当前 Windows CI 进行中；NSIS 安装包只有在对应提交的构建与启动关闭检查成功后才计为已验证，下载方式见 [Windows 说明](docs/WINDOWS.md)。
+从 [v0.2.0 发布页](https://github.com/asoming/markwrite/releases/tag/v0.2.0) 下载 Linux `.deb`、便携包或 Windows `x64-setup.exe`。Windows 安装、启动、关闭和卸载已通过 [CI 检查](https://github.com/asoming/markwrite/actions/runs/34575537706)，安装要求见 [Windows 说明](docs/WINDOWS.md)。
 
 Linux 便携包解压到固定位置后：
 
