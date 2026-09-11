@@ -3,6 +3,7 @@ import {
   documentReferences,
   fileName,
   pathKey,
+  resolveDocumentLink,
   wikiTargets,
   withoutExtension,
   type IndexedDocument,
@@ -47,23 +48,21 @@ export function deriveGraph(documents: IndexedDocument[], currentPath?: string):
   const resolveReference = (target: string, wiki: boolean, from: string) => {
     if (wiki) return wikiTargets(target, from, unique);
     if (
-      (/^[a-z][a-z0-9+.-]*:/i.test(target) && !/^[a-z]:[\\/]/i.test(target)) ||
-      target.startsWith('//')
+      /^[a-z][a-z0-9+.-]*:/i.test(target) &&
+      !/^[a-z]:[\\/]/i.test(target) &&
+      !/^file:\/\//i.test(target)
     )
       return null;
-    let decoded: string;
+    let path: string;
     try {
-      decoded = decodeURIComponent(target.split('#')[0]);
+      path = resolveDocumentLink(from, target).path;
     } catch {
       return [];
     }
-    if (!decoded) return [byPath.get(pathKey(from))!];
-    const base = from.replace(/\\/g, '/').replace(/[^/]+$/, '');
-    const absolute = /^(?:[/\\]|[a-z]:[\\/])/i.test(decoded);
-    const document = byPath.get(pathKey(absolute ? decoded : base + decoded));
-    if (document) return [document];
     // Attachments and web links are not document nodes.
-    if (/\.[^./\\]+$/.test(decoded) && !/\.(?:md|markdown)$/i.test(decoded)) return null;
+    if (/\.[^./\\]+$/.test(path) && !/\.(?:md|markdown)$/i.test(path)) return null;
+    const document = byPath.get(pathKey(path));
+    if (document) return [document];
     return [];
   };
   for (const source of unique) {

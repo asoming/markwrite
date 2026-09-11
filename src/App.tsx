@@ -54,6 +54,11 @@ import { findTable, changeTable, type TableAction } from './editor/table';
 import * as platform from './lib/platform';
 import { getHeadings, renderMarkdown, hydrateDiagrams, escapeHtml } from './lib/markdown';
 import { defaultSettings, readSession, writeSession, flushSession } from './lib/recovery';
+import {
+  createWindowCloseHandler,
+  flushStableCloseSnapshot,
+  hasUnsavedWork,
+} from './lib/closeGuard';
 import { welcome, syntaxSample } from './lib/sample';
 import type { Document, DiskFile, FileEntry, Mode, SearchHit, Settings } from './lib/types';
 import katexCss from 'katex/dist/katex.min.css?inline';
@@ -77,6 +82,7 @@ import {
   updateRecents,
   wikiTargets,
   relativeDocument,
+  resolveDocumentLink,
 } from './lib/workspace';
 
 const uid = () => crypto.randomUUID();
@@ -364,7 +370,7 @@ export default function App() {
   const saving = useRef(new Set<string>());
   const searchRequest = useRef<string>('');
   const composing = useRef(false);
-  const exitAfterSave = useRef(false);
+  const exitAfterSave = useRef<Document[] | null>(null);
   const current = docs.find((d) => d.id === activeId) || docs[0];
   const currentRef = useRef(current);
   currentRef.current = current;
@@ -720,15 +726,18 @@ export default function App() {
       return;
     }
     if (href.startsWith('#')) return;
-    const path = source?.path;
-    if (!path || /^[a-z]+:/i.test(href)) {
-      notify('请先保存文档，再打开相对链接。');
-      return;
-    }
     try {
-      const decoded = decodeURIComponent(href.split('#')[0]);
-      const normalized = path.replace(/\\/g, '/');
-      await openPath(`${normalized.slice(0, normalized.lastIndexOf('/'))}/${decoded}`);
+      const target = resolveDocumentLink(source?.path, href);
+      await openPath(target.path);
+      if (target.fragment)
+        setTimeout(() => {
+          const selected = currentRef.current;
+          if (!selected.path || pathKey(selected.path) !== pathKey(target.path)) return;
+          const heading = getHeadings(selected.content).find(
+            (h) => h.id === target.fragment || h.text === target.fragment,
+          );
+          if (heading) jump(heading.line);
+        }, 100);
     } catch (e) {
       notify(`无法打开链接：${errorText(e)}`);
     }
@@ -1027,29 +1036,21 @@ export default function App() {
     let disposed = false;
     if (platform.desktop)
       void import('@tauri-apps/api/window').then(async ({ getCurrentWindow }) => {
-        const fn = await getCurrentWindow().onCloseRequested(async (event) => {
-          if (exitAfterSave.current) return;
-          if (saving.current.size) {
-            event.preventDefault();
-            notify('正在完成文件操作，请稍后再关闭。');
-            return;
-          }
-          if (
-            docsRef.current.some(
-              (d) => d.content !== d.saved || d.status === 'conflict' || d.status === 'error',
-            )
-          ) {
-            event.preventDefault();
-            setCloseTarget('app');
-            setDialog('close');
-          } else
-            try {
-              await flushSession(docsRef.current, activeId, settings, root);
-            } catch {
-              event.preventDefault();
-              notify('无法保存会话，请先另存文档。');
-            }
-        });
+        const fn = await getCurrentWindow().onCloseRequested(
+          createWindowCloseHandler({
+            documents: () => docsRef.current,
+            saving: () => saving.current.size > 0,
+            authorization: exitAfterSave,
+            flush: (snapshot) => flushSession(snapshot, activeId, settings, root),
+            onBusy: () => notify('正在完成文件操作，请稍后再关闭。'),
+            onUnsaved: () => {
+              setCloseTarget('app');
+              setDialog('close');
+            },
+            onChanged: () => notify('关闭期间文档发生了变化，已保留窗口，请再次关闭。'),
+            onError: () => notify('无法保存会话，请先另存文档。'),
+          }),
+        );
         if (disposed) fn();
         else unlisten = fn;
       });
@@ -1205,21 +1206,41 @@ export default function App() {
           )
             return;
         }
+      let windowToClose;
       try {
-        await flushSession(docsRef.current, activeId, settings, root);
+        const { getCurrentWindow } = await import('@tauri-apps/api/window');
+        windowToClose = getCurrentWindow();
+      } catch (error) {
+        notify(`无法准备关闭窗口：${errorText(error)}`);
+        return;
+      }
+      let snapshot: Document[] | null;
+      try {
+        snapshot = await flushStableCloseSnapshot({
+          documents: () => docsRef.current,
+          saving: () => saving.current.size > 0,
+          flush: (documents) => flushSession(documents, activeId, settings, root),
+        });
       } catch {
         notify('草稿保存失败，请先另存文件。');
         return;
       }
-      exitAfterSave.current = true;
-      const { getCurrentWindow } = await import('@tauri-apps/api/window');
-      try {
-        await getCurrentWindow().close();
-      } catch (error) {
-        exitAfterSave.current = false;
-        notify(`无法关闭窗口：${errorText(error)}`);
+      if (!snapshot || (!keepDraft && hasUnsavedWork(snapshot))) {
+        notify('关闭期间文档发生了变化，已保留窗口，请再次关闭。');
         return;
       }
+      // Preserve the explicit keep-draft choice only for the snapshot just persisted.
+      // A later native close event revalidates it after the close IPC completes.
+      exitAfterSave.current = snapshot;
+      setDialog(null);
+      try {
+        await windowToClose.close();
+      } catch (error) {
+        exitAfterSave.current = null;
+        notify(`无法关闭窗口：${errorText(error)}`);
+      }
+      // Do not clear a fresh unsaved-work dialog opened by that native event.
+      return;
     } else if (closeTarget) {
       if (!keepDraft && !(await save(closeTarget))) return;
       const latest = docsRef.current.find((d) => d.id === closeTarget);

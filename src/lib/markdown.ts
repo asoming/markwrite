@@ -109,6 +109,13 @@ function math(text: string, displayMode: boolean) {
 }
 md.use({
   renderer: {
+    link(token) {
+      if (!/^file:\/\//i.test(token.href)) return false;
+      const title = token.title ? ` title="${escapeHtml(token.title)}"` : '';
+      // DOMPurify intentionally blocks file: in generic URL attributes. Carry only
+      // explicit local-document links through an inert attribute, then restore on anchors.
+      return `<a data-local-href="${escapeHtml(token.href)}"${title}>${this.parser.parseInline(token.tokens)}</a>`;
+    },
     html(token) {
       return DOMPurify.sanitize(token.text, {
         USE_PROFILES: { html: true },
@@ -152,8 +159,13 @@ export function renderMarkdown(source: string): string {
     }
   });
   template.content.querySelectorAll('a').forEach((a) => {
+    const local = a.getAttribute('data-local-href');
+    if (local && /^file:\/\//i.test(local)) a.setAttribute('href', local);
     a.rel = 'noreferrer noopener';
   });
+  template.content
+    .querySelectorAll('[data-local-href]')
+    .forEach((node) => node.removeAttribute('data-local-href'));
   return template.innerHTML;
 }
 let diagramCounter = 0;

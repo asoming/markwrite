@@ -3,8 +3,43 @@ import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import LinkGraph, { deriveGraph } from '../src/components/LinkGraph';
+import { relativeDocument } from '../src/lib/workspace';
 
 describe('local document relationship graph', () => {
+  it('resolves cross-drive file URIs against canonical extended Windows paths', () => {
+    const from = String.raw`\\?\C:\Notes\文章.md`,
+      to = String.raw`\\?\D:\资料\100% #目标.md`;
+    const graph = deriveGraph(
+      [
+        {
+          path: from,
+          content: `[目标](<${relativeDocument(from, to)}>)\n\n[图片](file:///D:/photo.png) [网页](http://example.com/a.md) [安全网页](https://example.com/b.md) [邮件](mailto:writer@example.com)`,
+        },
+        { path: to, content: `[返回](<${relativeDocument(to, from)}>)` },
+      ],
+      from,
+    );
+    expect(graph.neighbors).toMatchObject([{ document: { path: to }, incoming: 1, outgoing: 1 }]);
+    expect(graph.broken).toEqual([]);
+  });
+  it('resolves UNC shared-folder links and ignores local non-Markdown attachments', () => {
+    const from = String.raw`\\?\UNC\SERVER\First\文章.md`,
+      to = String.raw`\\server\Second\目标.md`;
+    const graph = deriveGraph(
+      [
+        {
+          path: from,
+          content: `[目标](<${relativeDocument(from, to)}>) [再次](//server/Second/目标.md) [附件](file://server/Second/photo.pdf)`,
+        },
+        { path: to, content: '[返回](file://SERVER/First/%E6%96%87%E7%AB%A0.md)' },
+        { path: String.raw`\\server\Second\photo.pdf`, content: '' },
+      ],
+      String.raw`\\server\first\文章.md`,
+    );
+    expect(graph.neighbors).toMatchObject([{ document: { path: to }, incoming: 1, outgoing: 2 }]);
+    expect(graph.broken).toEqual([]);
+    expect(graph.repeatedReferences).toBe(1);
+  });
   it('resolves wiki aliases and relative Markdown links, retaining both directions', () => {
     const graph = deriveGraph(
       [

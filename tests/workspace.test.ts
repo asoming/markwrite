@@ -4,6 +4,7 @@ import {
   documentReferences,
   pathKey,
   relativeDocument,
+  resolveDocumentLink,
   updateRecents,
   readRecents,
   wikiTargets,
@@ -51,6 +52,73 @@ describe('document navigation', () => {
     expect(pathKey('C:\\笔记\\子目录\\..\\甲.md')).toBe('c:/笔记/甲.md');
     expect(pathKey('/Notes/a.md')).not.toBe(pathKey('/notes/a.md'));
     expect(relativeDocument('C:\\笔记\\a.md', 'C:\\笔记\\子目录\\b.md')).toBe('子目录/b.md');
+  });
+  it('matches canonical extended Windows paths and UNC shares without changing native records', () => {
+    const drive = String.raw`\\?\C:\笔记\子目录\..\甲.md`;
+    const share = String.raw`\\?\UNC\SERVER\Notes\folder\..\甲.md`;
+    expect(pathKey(drive)).toBe(pathKey(String.raw`c:\笔记\甲.md`));
+    expect(pathKey(share)).toBe(pathKey(String.raw`\\server\notes\甲.md`));
+    expect(pathKey('C:/../../note.md')).toBe('c:/note.md');
+    expect(pathKey('//Server/Notes/../../note.md')).toBe('//server/notes/note.md');
+    expect(drive).toBe(String.raw`\\?\C:\笔记\子目录\..\甲.md`);
+  });
+  it('resolves same-volume links with case-insensitive folders and preserves extended paths', () => {
+    const from = String.raw`\\?\C:\Notes\文章.md`;
+    const to = String.raw`c:\notes\子目录\100% #问题.md`;
+    const href = relativeDocument(from, to);
+    expect(href).toBe('子目录/100%25 %23问题.md');
+    const resolved = resolveDocumentLink(from, href + '#章节');
+    expect(resolved.path).toBe(String.raw`\\?\C:\Notes\子目录\100% #问题.md`);
+    expect(pathKey(resolved.path)).toBe(pathKey(to));
+    expect(resolved.fragment).toBe('章节');
+  });
+  it('uses portable file URIs across drives and different network shares', () => {
+    const from = String.raw`\\?\C:\Notes\文章.md`;
+    const destination = String.raw`\\?\D:\资料\100% #目标.md`;
+    const href = relativeDocument(from, destination);
+    expect(href).toBe('file:///D:/%E8%B5%84%E6%96%99/100%25%20%23%E7%9B%AE%E6%A0%87.md');
+    expect(pathKey(resolveDocumentLink(from, href).path)).toBe(pathKey(destination));
+    const unc = relativeDocument(
+      String.raw`\\Server\First\from.md`,
+      String.raw`\\server\Second\子目录\目标.md`,
+    );
+    expect(unc).toBe('file://server/Second/%E5%AD%90%E7%9B%AE%E5%BD%95/%E7%9B%AE%E6%A0%87.md');
+    expect(pathKey(resolveDocumentLink(from, unc).path)).toBe('//server/second/子目录/目标.md');
+  });
+  it('matches relative, absolute, and cross-drive backlinks against canonical Windows records', () => {
+    const from = String.raw`\\?\C:\Notes\甲.md`,
+      target = String.raw`\\?\D:\Notes\乙.md`;
+    const docs = [
+      { path: from, content: '[乙](<' + relativeDocument(from, target) + '>)\n\n[[D:/Notes/乙]]' },
+      { path: target, content: '' },
+    ];
+    expect(backlinks(target, docs).map((doc) => doc.path)).toEqual([from]);
+    expect(wikiTargets('D:/notes/乙', from, docs).map((doc) => doc.path)).toEqual([target]);
+    expect(wikiTargets('../notes/甲', from, docs).map((doc) => doc.path)).toEqual([from]);
+  });
+  it('preserves file links through sanitized rendering and never turns images into local loads', () => {
+    const href = relativeDocument('C:/from.md', 'D:/Notes/目标.md');
+    const host = document.createElement('div');
+    host.innerHTML = renderMarkdown(
+      `[**文件**](<${href}>)\n\n[危险](javascript:alert)\n\n![本地图片](file:///D:/secret.png)`,
+    );
+    expect(host.querySelector('a')?.getAttribute('href')).toBe(href);
+    expect(host.querySelector('a strong')?.textContent).toBe('文件');
+    expect(host.querySelectorAll('a')[1].getAttribute('href')).toBeNull();
+    expect(host.querySelector('img')?.getAttribute('src')).toBeNull();
+    expect(host.querySelector('[data-local-href]')).toBeNull();
+    expect(
+      resolveDocumentLink('C:/from.md', host.querySelector('a')!.getAttribute('href')!).path,
+    ).toBe('D:/Notes/目标.md');
+  });
+  it('rejects malformed and executable links and keeps Linux path case intact', () => {
+    expect(() => resolveDocumentLink('/notes/a.md', 'javascript:alert(1)')).toThrow();
+    expect(() => resolveDocumentLink('/notes/a.md', 'file:///tmp/a%00.md')).toThrow();
+    expect(() => resolveDocumentLink('/notes/a.md', 'bad%ZZ.md')).toThrow();
+    expect(() => resolveDocumentLink(undefined, '../relative.md')).toThrow();
+    expect(() => resolveDocumentLink('C:/from.md', 'D:relative.md')).toThrow();
+    expect(resolveDocumentLink('/Notes/a.md', '../Other/B.md').path).toBe('/Other/B.md');
+    expect(relativeDocument('/Notes/a.md', '/notes/B.md')).toBe('../notes/B.md');
   });
   it('caps and removes recent records without opening or creating files', () => {
     for (let i = 0; i < 35; i++) updateRecents(`/notes/${i}.md`);
