@@ -10,7 +10,7 @@ cat > "$markwrite_entry" <<ENTRY
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=墨页 Markwrite
+Name=Markwrite
 Comment=本地优先的 Markdown 编辑器
 Exec="$markwrite_dir/scripts/launch.sh" %F
 Icon=$markwrite_dir/public/assets/app-icon.png

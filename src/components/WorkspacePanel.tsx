@@ -1,3 +1,4 @@
+import { t, useI18n } from '../lib/i18n';
 import { useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { X, RefreshCw, FolderOpen, FileText, Trash2 } from 'lucide-react';
@@ -44,6 +45,7 @@ const labels: Record<WorkspaceTab, string> = {
 };
 const error = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export default function WorkspacePanel(p: Props) {
+  const { language } = useI18n();
   const [loading, setLoading] = useState(false),
     [problem, setProblem] = useState('');
   const [revision, setRevision] = useState(0);
@@ -149,7 +151,7 @@ export default function WorkspacePanel(p: Props) {
       p.tab === 'attachments' &&
       attachments.some((a) => selected.includes(a.path) && isReferenced(a))
     ) {
-      setProblem('所选图片已有文档引用，请刷新后重新选择。');
+      setProblem(t('所选图片已有文档引用，请刷新后重新选择。'));
       setConfirmTrash(false);
       return;
     }
@@ -163,7 +165,7 @@ export default function WorkspacePanel(p: Props) {
         d.content !== d.saved,
     );
     if (unsaved) {
-      setProblem(`请先保存“${unsaved.name}”的修改，再移到回收站。`);
+      setProblem(t('请先保存“{0}”的修改，再移到回收站。', undefined, [unsaved.name]));
       setConfirmTrash(false);
       return;
     }
@@ -171,7 +173,7 @@ export default function WorkspacePanel(p: Props) {
       if (p.tab === 'attachments' && p.root) {
         const fresh = await invoke<Attachment[]>('attachment_inventory', { path: p.root });
         if (fresh.some((a) => selected.includes(a.path) && isReferenced(a)))
-          throw new Error('附件引用刚刚变化，请刷新列表后重新选择。');
+          throw new Error(t('附件引用刚刚变化，请刷新列表后重新选择。'));
       }
       const result = await invoke<{ moved: string[]; failures: { path: string; error: string }[] }>(
         'trash_entries',
@@ -183,30 +185,32 @@ export default function WorkspacePanel(p: Props) {
       if (result.failures.length)
         setProblem(result.failures.map((f) => `${fileName(f.path)}：${f.error}`).join('\n'));
       if (result.moved.length)
-        p.onNotify(`已将 ${result.moved.length} 项移到系统回收站，可从回收站恢复。`);
+        p.onNotify(
+          t('已将 {0} 项移到系统回收站，可从回收站恢复。', undefined, [result.moved.length]),
+        );
     });
     setConfirmTrash(false);
   }
   return (
-    <aside className="workspace-panel" aria-label="文档工具面板">
+    <aside className="workspace-panel" aria-label={t('文档工具面板')}>
       <div className="workspace-title">
-        <strong>{labels[p.tab]}</strong>
-        <button aria-label="刷新面板" onClick={() => setRevision((v) => v + 1)}>
+        <strong>{t(labels[p.tab])}</strong>
+        <button aria-label={t('刷新面板')} onClick={() => setRevision((v) => v + 1)}>
           <RefreshCw size={15} />
         </button>
-        <button aria-label="关闭工具面板" onClick={p.onClose}>
+        <button aria-label={t('关闭工具面板')} onClick={p.onClose}>
           <X size={16} />
         </button>
       </div>
       <div className="workspace-tabs">
         {(Object.keys(labels) as WorkspaceTab[]).map((tab) => (
           <button key={tab} className={p.tab === tab ? 'active' : ''} onClick={() => p.onTab(tab)}>
-            {labels[tab]}
+            {t(labels[tab])}
           </button>
         ))}
       </div>
       <div className="workspace-body">
-        {loading && <p role="status">正在读取…</p>}
+        {loading && <p role="status">{t('正在读取…')}</p>}
         {problem && (
           <p className="panel-error" role="alert">
             {problem}
@@ -214,18 +218,19 @@ export default function WorkspacePanel(p: Props) {
         )}
         {!desktop && (
           <p className="panel-note">
-            浏览器可查看已打开文档的链接与标签。本地历史、回收站与 Git 请在桌面版使用。
+            {t('浏览器可查看已打开文档的链接与标签。本地历史、回收站与 Git 请在桌面版使用。')}
           </p>
         )}
         {p.tab === 'history' && (
           <>
             <p className="panel-note">
-              每篇文档最多保留 50 个版本，历史总空间最多
-              200MB。恢复后可继续编辑，保存时会保留被替换版本。
+              {t(
+                '每篇文档最多保留 50 个版本，历史总空间最多 200MB。恢复后可继续编辑，保存时会保留被替换版本。',
+              )}
             </p>
-            {!p.current.path && <p>先将草稿保存为文件，之后的修改会记录在这里。</p>}
+            {!p.current.path && <p>{t('先将草稿保存为文件，之后的修改会记录在这里。')}</p>}
             {!loading && !history.length && p.current.path && (
-              <p>还没有历史版本。保存修改后会自动记录。</p>
+              <p>{t('还没有历史版本。保存修改后会自动记录。')}</p>
             )}
             {history.map((h) => (
               <button
@@ -239,19 +244,19 @@ export default function WorkspacePanel(p: Props) {
                   )
                 }
               >
-                <span>{new Date(h.createdAt).toLocaleString()}</span>
+                <span>{new Date(h.createdAt).toLocaleString(language)}</span>
                 <small>{Math.ceil(h.size / 1024)} KB</small>
               </button>
             ))}
             {selectedHistory && selectedHistory.path === p.current.path && (
               <>
-                <h4>历史版本与当前内容</h4>
+                <h4>{t('历史版本与当前内容')}</h4>
                 <DiffView before={p.current.content} after={selectedHistory.content} />
                 <button
                   className="primary panel-wide"
                   onClick={() => p.onRestore(selectedHistory.content)}
                 >
-                  恢复到编辑器（可撤销）
+                  {t('恢复到编辑器（可撤销）')}
                 </button>
               </>
             )}
@@ -259,9 +264,11 @@ export default function WorkspacePanel(p: Props) {
         )}
         {p.tab === 'backlinks' && (
           <>
-            <p className="panel-note">引用当前文档的页面。工作区未保存的文字也参与索引。</p>
+            <p className="panel-note">{t('引用当前文档的页面。工作区未保存的文字也参与索引。')}</p>
             {!loading && !incoming.length && (
-              <p>还没有其他文档链接到这里。可通过“插入链接”选择工作区文档，或输入 [[文档名]]。</p>
+              <p>
+                {t('还没有其他文档链接到这里。可通过“插入链接”选择工作区文档，或输入 [[文档名]]。')}
+              </p>
             )}
             {incoming.map((d) => (
               <button className="panel-list-item" key={d.path} onClick={() => p.onOpen(d.path)}>
@@ -269,10 +276,10 @@ export default function WorkspacePanel(p: Props) {
                 <span>{d.name || fileName(d.path)}</span>
               </button>
             ))}
-            <h4>本文链接</h4>
+            <h4>{t('本文链接')}</h4>
             {documentReferences(p.current.content).links.map((l, i) => (
               <p className="panel-note" key={i}>
-                {l.wiki ? '双链' : '链接'} · {l.target}
+                {l.wiki ? t('双链') : t('链接')} · {l.target}
               </p>
             ))}
           </>
@@ -287,8 +294,8 @@ export default function WorkspacePanel(p: Props) {
         {p.tab === 'tags' && (
           <>
             <input
-              aria-label="检索标签"
-              placeholder="输入标签名…"
+              aria-label={t('检索标签')}
+              placeholder={t('输入标签名…')}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             />
@@ -311,16 +318,16 @@ export default function WorkspacePanel(p: Props) {
                 </details>
               ))}
             {!loading && !tags.length && (
-              <p>在正文中写下 #标签 即可归类。代码中的 # 不会被算作标签。</p>
+              <p>{t('在正文中写下 #标签 即可归类。代码中的 # 不会被算作标签。')}</p>
             )}
           </>
         )}
         {p.tab === 'attachments' && (
           <>
             <p className="panel-note">
-              展示工作文件夹中的图片。清理只允许选择未被引用的图片，并移到系统回收站。
+              {t('展示工作文件夹中的图片。清理只允许选择未被引用的图片，并移到系统回收站。')}
             </p>
-            {!p.root && <p>请先打开工作文件夹。</p>}
+            {!p.root && <p>{t('请先打开工作文件夹。')}</p>}
             {attachments.map((a) => {
               const referenced = isReferenced(a);
               return (
@@ -334,7 +341,7 @@ export default function WorkspacePanel(p: Props) {
                   <span>
                     {fileName(a.path)}
                     <small>
-                      {(a.size / 1024).toFixed(1)} KB · {referenced ? '已引用' : '未引用'}
+                      {(a.size / 1024).toFixed(1)} KB · {referenced ? t('已引用') : t('未引用')}
                       {a.references.length ? ` · ${a.references.map(fileName).join('、')}` : ''}
                     </small>
                   </span>
@@ -343,20 +350,23 @@ export default function WorkspacePanel(p: Props) {
             })}
             {!!selected.length && (
               <button className="danger panel-wide" onClick={() => setConfirmTrash(true)}>
-                预览清理 {selected.length} 张图片
+                {t('预览清理') + ' '}
+                {selected.length} {' ' + t('张图片')}
               </button>
             )}
-            {!loading && p.root && !attachments.length && <p>没有发现本地图片附件。</p>}
+            {!loading && p.root && !attachments.length && <p>{t('没有发现本地图片附件。')}</p>}
           </>
         )}
         {p.tab === 'files' && (
           <>
             <p className="panel-note">
-              可批量移到回收站。文件夹重命名会更新打开文档的路径，不会自动改写其他文档中的链接。
+              {t(
+                '可批量移到回收站。文件夹重命名会更新打开文档的路径，不会自动改写其他文档中的链接。',
+              )}
             </p>
             <input
-              aria-label="管理文件筛选"
-              placeholder="筛选文件或文件夹…"
+              aria-label={t('管理文件筛选')}
+              placeholder={t('筛选文件或文件夹…')}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             />
@@ -377,7 +387,7 @@ export default function WorkspacePanel(p: Props) {
                     disabled={!desktop}
                     onClick={() => setRename({ path: f.path, name: f.name })}
                   >
-                    重命名
+                    {t('重命名')}
                   </button>
                 </div>
               ))}
@@ -394,13 +404,13 @@ export default function WorkspacePanel(p: Props) {
                 }}
               >
                 <input
-                  aria-label="新名称"
+                  aria-label={t('新名称')}
                   value={rename.name}
                   onChange={(e) => setRename({ ...rename, name: e.target.value })}
                 />
-                <button type="submit">确定</button>
+                <button type="submit">{t('确定')}</button>
                 <button type="button" onClick={() => setRename(undefined)}>
-                  取消
+                  {t('取消')}
                 </button>
               </form>
             )}
@@ -410,19 +420,19 @@ export default function WorkspacePanel(p: Props) {
                 disabled={!desktop || loading}
                 onClick={() => setConfirmTrash(true)}
               >
-                <Trash2 size={14} /> 移到回收站…
+                <Trash2 size={14} /> {' ' + t('移到回收站…')}
               </button>
             )}
-            {!p.root && <p>请先打开工作文件夹。</p>}
+            {!p.root && <p>{t('请先打开工作文件夹。')}</p>}
           </>
         )}
         {p.tab === 'git' && (
           <>
-            {!p.root && <p>请先打开一个工作文件夹。</p>}
-            {git && !git.available && <p>未找到 Git。请先安装 Git 并重新启动墨页。</p>}
+            {!p.root && <p>{t('请先打开一个工作文件夹。')}</p>}
+            {git && !git.available && <p>{t('未找到 Git。请先安装 Git 并重新启动墨页。')}</p>}
             {git?.available && !git.repository && (
               <>
-                <p>这个文件夹还没有 Git 仓库。</p>
+                <p>{t('这个文件夹还没有 Git 仓库。')}</p>
                 <button
                   onClick={() =>
                     void run(async () => {
@@ -431,23 +441,24 @@ export default function WorkspacePanel(p: Props) {
                     })
                   }
                 >
-                  在当前文件夹初始化 Git
+                  {t('在当前文件夹初始化 Git')}
                 </button>
               </>
             )}
             {git?.repository && (
               <>
                 <p>
-                  分支：<strong>{git.branch || '尚无提交'}</strong>
+                  {t('分支：')}
+                  <strong>{git.branch || t('尚无提交')}</strong>
                 </p>
                 <p className="panel-note">
-                  只提交明确选择的文件，不会自动推送到远程。冲突文件须编辑解决后再提交。
+                  {t('只提交明确选择的文件，不会自动推送到远程。冲突文件须编辑解决后再提交。')}
                 </p>
                 {git.entries.map((entry) => (
                   <div className="git-row" key={entry.path}>
                     <input
                       type="checkbox"
-                      aria-label={`提交 ${entry.path}`}
+                      aria-label={t('提交 {0}', undefined, [entry.path])}
                       checked={selected.includes(entry.path)}
                       onChange={() => toggle(entry.path)}
                     />
@@ -468,15 +479,15 @@ export default function WorkspacePanel(p: Props) {
                     </button>
                   </div>
                 ))}
-                {!git.entries.length && <p>工作区没有改动。</p>}
+                {!git.entries.length && <p>{t('工作区没有改动。')}</p>}
                 {gitDiff && (
-                  <pre className="git-diff" aria-label="Git 差异">
+                  <pre className="git-diff" aria-label={t('Git 差异')}>
                     {gitDiff}
                   </pre>
                 )}
                 <textarea
-                  aria-label="提交说明"
-                  placeholder="描述这次修改…"
+                  aria-label={t('提交说明')}
+                  placeholder={t('描述这次修改…')}
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                 />
@@ -490,32 +501,33 @@ export default function WorkspacePanel(p: Props) {
                         paths: selected,
                         message,
                       });
-                      p.onNotify(`已创建本地提交 ${id.slice(0, 8)}`);
+                      p.onNotify(t('已创建本地提交 {0}', undefined, [id.slice(0, 8)]));
                       setMessage('');
                       setGitDiff('');
                       setRevision((v) => v + 1);
                     })
                   }
                 >
-                  提交选中的 {selected.length} 个文件
+                  {t('提交选中的') + ' '}
+                  {selected.length} {' ' + t('个文件')}
                 </button>
               </>
             )}
           </>
         )}
         {confirmTrash && (
-          <div className="trash-confirm" role="alertdialog" aria-label="确认移到回收站">
-            <h4>确认移到回收站？</h4>
+          <div className="trash-confirm" role="alertdialog" aria-label={t('确认移到回收站')}>
+            <h4>{t('确认移到回收站？')}</h4>
             <ul>
               {selected.map((path) => (
                 <li key={path}>{fileName(path)}</li>
               ))}
             </ul>
-            <p>可从系统回收站恢复。其他文档里的引用不会自动修改。</p>
+            <p>{t('可从系统回收站恢复。其他文档里的引用不会自动修改。')}</p>
             <div className="panel-actions">
-              <button onClick={() => setConfirmTrash(false)}>取消</button>
+              <button onClick={() => setConfirmTrash(false)}>{t('取消')}</button>
               <button className="danger" disabled={loading} onClick={() => void trash()}>
-                确认移到回收站
+                {t('确认移到回收站')}
               </button>
             </div>
           </div>

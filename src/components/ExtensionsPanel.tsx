@@ -1,3 +1,4 @@
+import { t, useI18n } from '../lib/i18n';
 import { useState } from 'react';
 import {
   loadExtensions,
@@ -14,6 +15,7 @@ export default function ExtensionsPanel({
   onInsert: (markdown: string) => void;
   onError: (text: string) => void;
 }) {
+  useI18n();
   const [packs, setPacks] = useState(loadExtensions),
     [candidate, setCandidate] = useState<ExtensionPack>();
   const [json, setJson] = useState(JSON.stringify(starterExtension, null, 2));
@@ -22,15 +24,17 @@ export default function ExtensionsPanel({
       saveExtensions(next);
       setPacks(next);
     } catch (error) {
-      onError(`无法保存扩展：${String(error)}`);
+      onError(t('无法保存扩展：{0}', undefined, [String(error)]));
     }
   }
   return (
     <div className="extensions-panel">
       <p className="panel-note">
-        导入可复用的文字片段与自定义行内标记。片段可使用 {'{{selection}}'}{' '}
-        代表选中文字。语法规则只定义成对标记和高亮颜色，原文仍是普通
-        Markdown；停用扩展即可显示原始标记。扩展不执行代码，也不能读取文件或联网。
+        {t('导入可复用的文字片段与自定义行内标记。片段可使用') + ' '}
+        {'{{selection}}'}{' '}
+        {t(
+          '代表选中文字。语法规则只定义成对标记和高亮颜色，原文仍是普通 Markdown；停用扩展即可显示原始标记。扩展不执行代码，也不能读取文件或联网。',
+        )}
       </p>
       {packs.map((pack, i) => (
         <section className="extension-card" key={i}>
@@ -50,9 +54,9 @@ export default function ExtensionsPanel({
                 download(JSON.stringify(pack, null, 2), pack.name + '.json', 'application/json')
               }
             >
-              导出
+              {t('导出')}
             </button>
-            <button onClick={() => save(packs.filter((_, n) => n !== i))}>移除</button>
+            <button onClick={() => save(packs.filter((_, n) => n !== i))}>{t('移除')}</button>
           </header>
           <p>{pack.description}</p>
           <div className="snippet-buttons">
@@ -60,7 +64,7 @@ export default function ExtensionsPanel({
               <button
                 key={`syntax-${rule.name}`}
                 disabled={!pack.enabled}
-                title={`${rule.open}文字${rule.close}`}
+                title={t('{0}文字{1}', undefined, [rule.open, rule.close])}
                 onClick={() => onInsert(rule.open + '{{selection}}' + rule.close)}
               >
                 {rule.name} · {rule.open}
@@ -76,13 +80,13 @@ export default function ExtensionsPanel({
       ))}
       {!packs.length && (
         <button className="primary panel-wide" onClick={() => save([starterExtension])}>
-          启用写作模板与高亮语法
+          {t('启用写作模板与高亮语法')}
         </button>
       )}
       <details>
-        <summary>导入 / 自定义扩展</summary>
+        <summary>{t('导入 / 自定义扩展')}</summary>
         <label className="panel-file">
-          选择 JSON 文件
+          {t('选择 JSON 文件')}
           <input
             type="file"
             accept="application/json,.json"
@@ -90,7 +94,7 @@ export default function ExtensionsPanel({
               const f = e.target.files?.[0];
               if (f)
                 try {
-                  if (f.size > 250_000) throw new Error('扩展文件最多 250KB。');
+                  if (f.size > 250_000) throw new Error(t('扩展文件最多 250KB。'));
                   const text = await f.text();
                   setJson(text);
                   setCandidate(parseExtension(text));
@@ -101,7 +105,7 @@ export default function ExtensionsPanel({
           />
         </label>
         <textarea
-          aria-label="扩展 JSON"
+          aria-label={t('扩展 JSON')}
           value={json}
           onChange={(e) => {
             setJson(e.target.value);
@@ -119,20 +123,26 @@ export default function ExtensionsPanel({
             }
           }}
         >
-          检查并预览
+          {t('检查并预览')}
         </button>
       </details>
       {candidate && (
         <div className="extension-preview">
-          <h4>将安装：{candidate.name}</h4>
+          <h4>
+            {t('将安装：')}
+            {candidate.name}
+          </h4>
           <p>{candidate.description}</p>
           {candidate.inlineSyntax?.map((rule) => (
             <p className="panel-note" key={rule.name}>
               <strong>{rule.name}</strong>：
               <code>
-                {rule.open}文字{rule.close}
+                {rule.open}
+                {t('文字')}
+                {rule.close}
               </code>
-              ，颜色 {rule.color}
+              {t('，颜色') + ' '}
+              {rule.color}
             </p>
           ))}
           {candidate.snippets.map((s, i) => (
@@ -148,7 +158,7 @@ export default function ExtensionsPanel({
               setCandidate(undefined);
             }}
           >
-            安装扩展
+            {t('安装扩展')}
           </button>
         </div>
       )}

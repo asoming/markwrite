@@ -1,0 +1,106 @@
+/* App-wide original palettes; document rules are shared by reading and live editing. */
+:root[data-theme='light'],
+:root[data-theme='github'],
+:root[data-theme='newsprint'],
+:root[data-theme='pixyll'],
+:root[data-theme='whitey'] {
+  color-scheme: light;
+}
+:root[data-theme='github'] {
+  --paper: #ffffff;
+  --sidebar: #f6f8fa;
+  --ink: #24292f;
+  --muted: #57606a;
+  --border: #d0d7de;
+  --accent: #0969da;
+  --accent-bg: #ddf0ff;
+  --hover: #eaeef2;
+  --code: #f6f8fa;
+  --overlay: #24292f38;
+  --shadow: 0 20px 70px #24292f24;
+}
+:root[data-theme='newsprint'] {
+  --paper: #f4f0e6;
+  --sidebar: #ebe5d9;
+  --ink: #37332d;
+  --muted: #756d60;
+  --border: #d9d0bf;
+  --accent: #88643c;
+  --accent-bg: #e8dfcc;
+  --hover: #e8e1d3;
+  --code: #ebe5d9;
+  --overlay: #332b2438;
+  --shadow: 0 20px 70px #332b2424;
+}
+:root[data-theme='night'] {
+  color-scheme: dark;
+  --paper: #18212b;
+  --sidebar: #131b24;
+  --ink: #dce5ee;
+  --muted: #9dabbc;
+  --border: #344251;
+  --accent: #8ecbdf;
+  --accent-bg: #253b49;
+  --hover: #253240;
+  --code: #202d3a;
+  --overlay: #0009;
+  --shadow: 0 20px 70px #0006;
+}
+:root[data-theme='pixyll'] {
+  --paper: #fefdfb;
+  --sidebar: #f3f0f3;
+  --ink: #35343b;
+  --muted: #787280;
+  --border: #e0dbe3;
+  --accent: #82629a;
+  --accent-bg: #eee6f3;
+  --hover: #ece8ee;
+  --code: #f3f0f3;
+  --overlay: #352d3f38;
+  --shadow: 0 20px 70px #352d3f24;
+}
+:root[data-theme='whitey'] {
+  --paper: #ffffff;
+  --sidebar: #f5f6f6;
+  --ink: #3d4447;
+  --muted: #707a7e;
+  --border: #dfe4e4;
+  --accent: #337d78;
+  --accent-bg: #e2f0ed;
+  --hover: #edf1f0;
+  --code: #f5f6f6;
+  --overlay: #283b3938;
+  --shadow: 0 20px 70px #283b3924;
+}
+:root[data-theme='github'] :is(.markdown-body h1, .markdown-body h2, .cm-h1, .cm-h2) {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.35em;
+}
+:root[data-theme='newsprint'] :is(.markdown-body h1, .cm-h1) {
+  letter-spacing: 0.015em;
+  border-bottom: 2px solid var(--ink);
+  padding-bottom: 0.35em;
+}
+:root[data-theme='newsprint'] :is(.markdown-body blockquote, .cm-quote) {
+  font-style: italic;
+}
+:root[data-theme='pixyll'] :is(.markdown-body h1, .markdown-body h2, .cm-h1, .cm-h2) {
+  font-family: 'Noto Sans CJK SC', system-ui, sans-serif;
+  letter-spacing: -0.035em;
+  font-weight: 700;
+}
+:root[data-theme='whitey'] :is(.markdown-body h1, .cm-h1) {
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.45em;
+}
+:root[data-theme='whitey'] :is(.markdown-body blockquote, .cm-quote) {
+  background: transparent;
+  border-left-color: var(--border);
+}
+:root[data-theme='night'] :is(.markdown-body a, .cm-link) {
+  text-decoration-color: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+:root[data-theme] .markdown-body code {
+  font-family: var(--code-font, 'Cascadia Code', 'JetBrains Mono', monospace);
+}

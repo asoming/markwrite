@@ -1,3 +1,4 @@
+import { t, useI18n, setLanguage } from './lib/i18n';
 import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react';
 import {
   FileText,
@@ -18,7 +19,6 @@ import {
   ArrowUpRight,
   Command,
   Focus,
-  Sun,
   Moon,
   FilePlus2,
   FolderPlus,
@@ -75,6 +75,10 @@ import DiffView from './components/DiffView';
 import ExtensionsPanel from './components/ExtensionsPanel';
 import AiPanel from './components/AiPanel';
 import TransferPanel from './components/TransferPanel';
+import SettingsPanel from './components/SettingsPanel';
+import ImportPanel from './components/ImportPanel';
+import { resolveTheme, themeIsDark, themeTypography } from './lib/themes';
+import { defaultMarkdownStatus, requestMarkdownDefault } from './lib/nativeSettings';
 import {
   fileName,
   pathKey,
@@ -103,6 +107,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const canceled = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
 configureInlineSyntax(loadExtensions());
 const recovered = readSession();
+setLanguage(recovered?.settings.language || 'zh-CN');
 const initialDocs = recovered?.docs.length ? recovered.docs : [draft('开始写作.md', welcome)];
 function IconButton({
   title,
@@ -193,7 +198,7 @@ function Modal({
             <h2>{title}</h2>
             {subtitle && <p>{subtitle}</p>}
           </div>
-          <IconButton title="关闭对话框" onClick={onClose}>
+          <IconButton title={t('关闭对话框')} onClick={onClose}>
             <X size={18} />
           </IconButton>
         </div>
@@ -269,6 +274,7 @@ function FileTree({
   );
 }
 export default function App() {
+  useI18n();
   const [docs, setDocs] = useState<Document[]>(initialDocs);
   const docsRef = useRef(docs);
   docsRef.current = docs;
@@ -278,10 +284,11 @@ export default function App() {
       : initialDocs[0].id,
   );
   const [settings, setSettings] = useState<Settings>(recovered?.settings || defaultSettings);
+  useEffect(() => setLanguage(settings.language), [settings.language]);
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const [syntaxRevision, setSyntaxRevision] = useState(0);
-  const [mode, setMode] = useState<Mode>('live');
+  const [mode, setMode] = useState<Mode>(settings.defaultMode);
   const [sidebar, setSidebar] = useState(true);
   const [sideTab, setSideTab] = useState<'files' | 'outline' | 'search'>('files');
   const [root, setRoot] = useState<string | undefined>(
@@ -315,6 +322,7 @@ export default function App() {
     | 'ai'
     | 'export'
     | 'transfer'
+    | 'import'
     | null
   >(null);
   const [palette, setPalette] = useState('');
@@ -415,11 +423,12 @@ export default function App() {
     setSelection(!!editor.current && !editor.current.state.selection.main.empty);
   }
   function addDisk(file: DiskFile) {
+    setMode(settingsRef.current.defaultMode);
     if (file.path)
       try {
         setRecents(updateRecents(file.path));
       } catch {
-        notify('最近文件列表暂时无法保存。');
+        notify(t('最近文件列表暂时无法保存。'));
       }
     const existing = docsRef.current.find((d) => d.path && pathKey(d.path) === pathKey(file.path));
     if (existing) {
@@ -483,8 +492,10 @@ export default function App() {
       (d) => d.id === path || (d.path && pathKey(d.path) === pathKey(path)),
     );
     try {
-      if (existing) setActiveId(existing.id);
-      else addDisk(await platform.readFile(path));
+      if (existing) {
+        setActiveId(existing.id);
+        setMode(settingsRef.current.defaultMode);
+      } else addDisk(await platform.readFile(path));
       if (line) setTimeout(() => jump(line), 80);
     } catch (e) {
       notify(errorText(e));
@@ -531,8 +542,10 @@ export default function App() {
           if (errorText(error).includes('CONFLICT:')) migrationConflict = errorText(error);
           notify(
             migrationConflict
-              ? '附件迁移时磁盘文件被外部修改，当前内容已保留，请比较版本。'
-              : `文档已保存，附件迁移未完成：${errorText(error)}。内嵌图片仍保留，保存时会重试。`,
+              ? t('附件迁移时磁盘文件被外部修改，当前内容已保留，请比较版本。')
+              : t('文档已保存，附件迁移未完成：{0}。内嵌图片仍保留，保存时会重试。', undefined, [
+                  errorText(error),
+                ]),
           );
         }
       }
@@ -587,7 +600,7 @@ export default function App() {
       setDiskConflict({ ...disk, documentId: d.id });
       setDialog('conflict');
     } catch (e) {
-      notify(`${errorText(e)} 可使用“另存为”保留当前内容。`);
+      notify(t('{0} 可使用“另存为”保留当前内容。', undefined, [errorText(e)]));
     }
   }
   function removeDoc(id: string) {
@@ -639,7 +652,7 @@ export default function App() {
     const range = { from: view.state.selection.main.from, to: view.state.selection.main.to };
     const original = view.state.doc.toString();
     if (file.size > 20 * 1024 * 1024) {
-      notify('图片超过 20MB，请先压缩。');
+      notify(t('图片超过 20MB，请先压缩。'));
       return;
     }
     try {
@@ -648,7 +661,7 @@ export default function App() {
         file,
       );
       if (currentRef.current.id !== d.id || editor.current?.state.doc.toString() !== original) {
-        notify('图片已处理，请回到原文档后重新插入。');
+        notify(t('图片已处理，请回到原文档后重新插入。'));
         return;
       }
       view.dispatch(
@@ -668,7 +681,7 @@ export default function App() {
     if (!view) return;
     const change = changeTable(current.content, position.line, position.column, action);
     if (!change) {
-      notify('至少保留一列、一行正文；表头不能作为正文行删除。');
+      notify(t('至少保留一列、一行正文；表头不能作为正文行删除。'));
       return;
     }
     view.dispatch({ changes: change, selection: { anchor: change.from }, userEvent: 'input' });
@@ -719,7 +732,10 @@ export default function App() {
               if (h) jump(h.line);
             }, 100);
         } else if (candidates.length) setLinkChoices(candidates);
-        else notify(`链接目标“${target}”不存在。请创建对应文档，或检查名称和工作文件夹。`);
+        else
+          notify(
+            t('链接目标“{0}”不存在。请创建对应文档，或检查名称和工作文件夹。', undefined, [target]),
+          );
       } catch (error) {
         notify(errorText(error));
       }
@@ -739,7 +755,7 @@ export default function App() {
           if (heading) jump(heading.line);
         }, 100);
     } catch (e) {
-      notify(`无法打开链接：${errorText(e)}`);
+      notify(t('无法打开链接：{0}', undefined, [errorText(e)]));
     }
   }
   async function doExport(format: 'html' | 'pdf' | 'docx' | 'publish' = 'html') {
@@ -752,7 +768,7 @@ export default function App() {
     try {
       await hydrateDiagrams(node);
       for (const img of node.querySelectorAll<HTMLImageElement>('img[data-asset]')) {
-        if (!current.path) throw new Error('图片路径无法解析，请先保存文档或打开所在文件夹。');
+        if (!current.path) throw new Error(t('图片路径无法解析，请先保存文档或打开所在文件夹。'));
         img.src = await platform.assetData(current.path, img.dataset.asset!);
         img.removeAttribute('data-asset');
         img.classList.remove('pending-image');
@@ -760,16 +776,19 @@ export default function App() {
       if (format !== 'html' && format !== 'publish') {
         const { exportDocument } = await import('./lib/export');
         if (await exportDocument(format, node, current.name, { template: exportOptions.template }))
-          notify(`${format.toUpperCase()} 已导出`);
+          notify(t('{0} 已导出', undefined, [format.toUpperCase()]));
         return;
       }
       const unsupported = [...node.querySelectorAll('.math-error,.diagram-error,img[data-asset]')];
-      if (unsupported.length) throw new Error('存在未能渲染的公式、图表或图片，请修正后再导出。');
+      if (unsupported.length)
+        throw new Error(t('存在未能渲染的公式、图表或图片，请修正后再导出。'));
       if (exportOptions.toc) {
         const nav = document.createElement('nav');
         nav.className = 'export-toc';
         nav.innerHTML =
-          '<h2>目录</h2>' +
+          '<h2>' +
+          t('目录', 'Contents') +
+          '</h2>' +
           getHeadings(current.content)
             .map(
               (h) =>
@@ -787,7 +806,7 @@ export default function App() {
         ];
         for (const url of urls.filter((u) => !u.startsWith('data:'))) {
           const response = await fetch(url);
-          if (!response.ok) throw new Error('无法嵌入公式字体。');
+          if (!response.ok) throw new Error(t('无法嵌入公式字体。'));
           const blob = await response.blob();
           const data = await new Promise<string>((resolve) => {
             const r = new FileReader();
@@ -813,9 +832,9 @@ export default function App() {
         return;
       }
       if (await platform.exportHtml(html, current.name.replace(/\.(md|markdown)$/i, '') + '.html'))
-        notify('HTML 已导出，可离线查看');
+        notify(t('HTML 已导出，可离线查看'));
     } catch (e) {
-      if (!canceled(e)) notify(`导出未完成：${errorText(e)}`);
+      if (!canceled(e)) notify(t('导出未完成：{0}', undefined, [errorText(e)]));
     } finally {
       setExporting(false);
     }
@@ -823,7 +842,7 @@ export default function App() {
   async function submitName() {
     if (!namePrompt) return;
     if (saving.current.has(current.id)) {
-      notify('文档正在保存，请稍后再重命名。');
+      notify(t('文档正在保存，请稍后再重命名。'));
       return;
     }
     try {
@@ -859,8 +878,7 @@ export default function App() {
   useEffect(() => {
     const media = matchMedia('(prefers-color-scheme: dark)');
     const apply = () => {
-      document.documentElement.dataset.theme =
-        settings.theme === 'system' ? (media.matches ? 'dark' : 'light') : settings.theme;
+      document.documentElement.dataset.theme = resolveTheme(settings.theme, media.matches);
     };
     apply();
     for (const [name, value] of Object.entries(settings.customColors || {}))
@@ -877,7 +895,7 @@ export default function App() {
       try {
         await flushSession(docsRef.current, activeId, settings, root);
       } catch {
-        notify('草稿恢复空间不足。请立即保存到文件，避免丢失当前修改。');
+        notify(t('草稿恢复空间不足。请立即保存到文件，避免丢失当前修改。'));
       }
     }, 300);
     return () => clearTimeout(timer);
@@ -885,7 +903,7 @@ export default function App() {
   useEffect(() => {
     const timer = setInterval(() => {
       void flushSession(docsRef.current, activeId, settings, root).catch(() =>
-        notify('草稿恢复副本写入失败，请立即保存文档并检查磁盘空间。'),
+        notify(t('草稿恢复副本写入失败，请立即保存文档并检查磁盘空间。')),
       );
     }, 3000);
     return () => clearInterval(timer);
@@ -958,14 +976,14 @@ export default function App() {
           )
             continue;
           if (latest.content !== latest.saved)
-            patch(d.id, { status: 'conflict', error: '磁盘文件已修改，请比较版本。' });
+            patch(d.id, { status: 'conflict', error: t('磁盘文件已修改，请比较版本。') });
           else patch(d.id, { ...file, saved: file.content, status: 'clean' });
         } catch {
           const latest = docsRef.current.find((item) => item.id === d.id);
           if (latest && latest.status !== 'error' && !saving.current.has(d.id))
             patch(d.id, {
               status: 'error',
-              error: '原文件无法访问或已被移动。当前文字已保留，可另存为。',
+              error: t('原文件无法访问或已被移动。当前文字已保留，可另存为。'),
             });
         }
       }
@@ -1042,13 +1060,13 @@ export default function App() {
             saving: () => saving.current.size > 0,
             authorization: exitAfterSave,
             flush: (snapshot) => flushSession(snapshot, activeId, settings, root),
-            onBusy: () => notify('正在完成文件操作，请稍后再关闭。'),
+            onBusy: () => notify(t('正在完成文件操作，请稍后再关闭。')),
             onUnsaved: () => {
               setCloseTarget('app');
               setDialog('close');
             },
-            onChanged: () => notify('关闭期间文档发生了变化，已保留窗口，请再次关闭。'),
-            onError: () => notify('无法保存会话，请先另存文档。'),
+            onChanged: () => notify(t('关闭期间文档发生了变化，已保留窗口，请再次关闭。')),
+            onError: () => notify(t('无法保存会话，请先另存文档。')),
           }),
         );
         if (disposed) fn();
@@ -1128,24 +1146,34 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler, true);
   }, [dialog, mode, insertDialog, namePrompt]);
   const commands = [
-    { label: '新建文档', hint: 'Ctrl N', icon: <FilePlus2 size={18} />, run: newDocument },
+    { label: t('新建文档'), hint: 'Ctrl N', icon: <FilePlus2 size={18} />, run: newDocument },
     {
-      label: '打开 Markdown 文件',
+      label: t('打开 Markdown 文件'),
       hint: 'Ctrl O',
       icon: <FileText size={18} />,
       run: () => void openFiles(),
     },
-    { label: '打开文件夹', hint: '', icon: <FolderOpen size={18} />, run: () => void openFolder() },
-    { label: '保存文档', hint: 'Ctrl S', icon: <Save size={18} />, run: () => void save() },
     {
-      label: '另存为…',
+      label: t('打开文件夹'),
+      hint: '',
+      icon: <FolderOpen size={18} />,
+      run: () => void openFolder(),
+    },
+    { label: t('保存文档'), hint: 'Ctrl S', icon: <Save size={18} />, run: () => void save() },
+    {
+      label: t('另存为…'),
       hint: '',
       icon: <Save size={18} />,
       run: () => void save(current.id, true),
     },
-    { label: '导出 HTML', hint: '', icon: <Download size={18} />, run: () => openExport('html') },
     {
-      label: '查找与替换',
+      label: t('导出 HTML'),
+      hint: '',
+      icon: <Download size={18} />,
+      run: () => openExport('html'),
+    },
+    {
+      label: t('查找与替换'),
       hint: 'Ctrl F',
       icon: <Search size={18} />,
       run: () => {
@@ -1154,23 +1182,26 @@ export default function App() {
       },
     },
     {
-      label: focus ? '退出专注模式' : '进入专注模式',
+      label: focus ? t('退出专注模式') : t('进入专注模式'),
       hint: '',
       icon: <Focus size={18} />,
       run: () => setFocus((v) => !v),
     },
     {
-      label: '切换浅色 / 深色主题',
+      label: t('切换浅色 / 深色主题'),
       hint: '',
       icon: <Moon size={18} />,
       run: () =>
         setSettings((s) => ({
           ...s,
-          theme: document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark',
+          theme: themeIsDark(s.theme, matchMedia('(prefers-color-scheme: dark)').matches)
+            ? 'light'
+            : 'dark',
+          customColors: undefined,
         })),
     },
     {
-      label: '设置',
+      label: t('设置'),
       hint: 'Ctrl ,',
       icon: <SettingsIcon size={18} />,
       run: () => setTimeout(() => setDialog('settings'), 0),
@@ -1186,7 +1217,7 @@ export default function App() {
   ].filter((e) => e.name.toLowerCase().includes(palette.toLowerCase()));
   async function finishClose(keepDraft: boolean) {
     if (saving.current.size) {
-      notify('正在完成文件操作，请稍后再关闭。');
+      notify(t('正在完成文件操作，请稍后再关闭。'));
       return;
     }
     if (closeTarget === 'app') {
@@ -1211,7 +1242,7 @@ export default function App() {
         const { getCurrentWindow } = await import('@tauri-apps/api/window');
         windowToClose = getCurrentWindow();
       } catch (error) {
-        notify(`无法准备关闭窗口：${errorText(error)}`);
+        notify(t('无法准备关闭窗口：{0}', undefined, [errorText(error)]));
         return;
       }
       let snapshot: Document[] | null;
@@ -1222,11 +1253,11 @@ export default function App() {
           flush: (documents) => flushSession(documents, activeId, settings, root),
         });
       } catch {
-        notify('草稿保存失败，请先另存文件。');
+        notify(t('草稿保存失败，请先另存文件。'));
         return;
       }
       if (!snapshot || (!keepDraft && hasUnsavedWork(snapshot))) {
-        notify('关闭期间文档发生了变化，已保留窗口，请再次关闭。');
+        notify(t('关闭期间文档发生了变化，已保留窗口，请再次关闭。'));
         return;
       }
       // Preserve the explicit keep-draft choice only for the snapshot just persisted.
@@ -1237,7 +1268,7 @@ export default function App() {
         await windowToClose.close();
       } catch (error) {
         exitAfterSave.current = null;
-        notify(`无法关闭窗口：${errorText(error)}`);
+        notify(t('无法关闭窗口：{0}', undefined, [errorText(error)]));
       }
       // Do not clear a fresh unsaved-work dialog opened by that native event.
       return;
@@ -1292,7 +1323,7 @@ export default function App() {
       target = insertDialog;
     if (!view || !target) return;
     if (current.id !== target.documentId || view.state.doc.toString() !== target.source) {
-      notify('原文已改变，请重新选择插入位置。');
+      notify(t('原文已改变，请重新选择插入位置。'));
       return;
     }
     const text = target.kind === 'table' && !target.table ? '\n\n' + markdown + '\n\n' : markdown;
@@ -1306,7 +1337,7 @@ export default function App() {
     if (platform.desktop) return; // Native drag/drop is authorized and delivered by Rust.
     for (const file of files) {
       if (file.size > 32 * 1024 * 1024) {
-        notify(`${file.name} 超过 32MB，未打开。`);
+        notify(t('{0} 超过 32MB，未打开。', undefined, [file.name]));
         continue;
       }
       try {
@@ -1315,10 +1346,10 @@ export default function App() {
         updateDocs((items) => [...items, d]);
         setActiveId(d.id);
       } catch {
-        notify(`${file.name} 不是有效 UTF-8 文件。`);
+        notify(t('{0} 不是有效 UTF-8 文件。', undefined, [file.name]));
       }
     }
-    notify('已作为草稿打开，按 Ctrl S 选择保存位置。');
+    notify(t('已作为草稿打开，按 Ctrl S 选择保存位置。'));
   }
   async function renameGuarded(path: string, name: string) {
     const affected = docsRef.current
@@ -1329,7 +1360,7 @@ export default function App() {
       )
       .map((d) => d.id);
     if (affected.some((id) => saving.current.has(id)))
-      throw new Error('文档正在保存，请稍后再重命名。');
+      throw new Error(t('文档正在保存，请稍后再重命名。'));
     affected.forEach((id) => saving.current.add(id));
     try {
       const next = await platform.renameFile(path, name);
@@ -1389,7 +1420,13 @@ export default function App() {
       return;
     }
     if (action.startsWith('theme:')) {
-      setSettings((s) => ({ ...s, theme: action.slice(6) as Settings['theme'] }));
+      const theme = action.slice(6) as Settings['theme'];
+      setSettings((s) => ({
+        ...s,
+        theme,
+        serif: themeTypography(theme).serif,
+        customColors: undefined,
+      }));
       return;
     }
     switch (action) {
@@ -1398,6 +1435,9 @@ export default function App() {
         break;
       case 'app:open':
         void openFiles();
+        break;
+      case 'app:import':
+        setDialog('import');
         break;
       case 'app:folder':
         void openFolder();
@@ -1562,9 +1602,10 @@ export default function App() {
           <div className="brand">
             <img src="/assets/app-icon.png" alt="" />
             <span>
-              墨页<small>MARKWRITE</small>
+              {t('墨页')}
+              <small>MARKWRITE</small>
             </span>
-            <IconButton title="收起侧栏" onClick={() => setSidebar(false)}>
+            <IconButton title={t('收起侧栏')} onClick={() => setSidebar(false)}>
               <PanelLeftClose size={17} />
             </IconButton>
           </div>
@@ -1576,7 +1617,7 @@ export default function App() {
             }}
           >
             <Search size={15} />
-            <span>搜索文档</span>
+            <span>{t('搜索文档')}</span>
             <kbd>Ctrl P</kbd>
           </button>
           <div className="sidebar-navigation">
@@ -1585,17 +1626,17 @@ export default function App() {
               onClick={() => setSideTab('files')}
             >
               <Files size={15} />
-              文档
+              {t('文档')}
             </button>
             <button
               className={sideTab === 'outline' ? 'active' : ''}
               onClick={() => setSideTab('outline')}
             >
               <ListTree size={15} />
-              大纲
+              {t('大纲')}
             </button>
             <IconButton
-              title="全文搜索 · Ctrl Shift F"
+              title={t('全文搜索 · Ctrl Shift F')}
               active={sideTab === 'search'}
               onClick={() => setSideTab('search')}
             >
@@ -1606,8 +1647,8 @@ export default function App() {
             {sideTab === 'files' && (
               <>
                 <div className="section-caption">
-                  <span>当前打开</span>
-                  <IconButton title="新建文档 · Ctrl N" onClick={newDocument}>
+                  <span>{t('当前打开')}</span>
+                  <IconButton title={t('新建文档 · Ctrl N')} onClick={newDocument}>
                     <Plus size={15} />
                   </IconButton>
                 </div>
@@ -1624,23 +1665,23 @@ export default function App() {
                   </button>
                 ))}
                 <div className="section-caption workspace-caption">
-                  <span>{root ? basename(root) : '工作文件夹'}</span>
+                  <span>{root ? basename(root) : t('工作文件夹')}</span>
                   <div>
                     {root && (
                       <>
                         <IconButton
-                          title="新建文件夹"
+                          title={t('新建文件夹')}
                           onClick={() => setNamePrompt({ type: 'folder', value: '' })}
                         >
                           <FolderPlus size={14} />
                         </IconButton>
                         <IconButton
-                          title="新建文件"
+                          title={t('新建文件')}
                           onClick={() => setNamePrompt({ type: 'file', value: '' })}
                         >
                           <FilePlus2 size={14} />
                         </IconButton>
-                        <IconButton title="刷新文件树" onClick={() => void refresh()}>
+                        <IconButton title={t('刷新文件树')} onClick={() => void refresh()}>
                           <RefreshCw size={13} />
                         </IconButton>
                       </>
@@ -1652,7 +1693,7 @@ export default function App() {
                     {workspaces.length > 1 && (
                       <select
                         className="workspace-switch"
-                        aria-label="切换工作区"
+                        aria-label={t('切换工作区')}
                         value={root}
                         onChange={async (e) => {
                           const next = e.target.value;
@@ -1675,8 +1716,8 @@ export default function App() {
                     <div className="tree-filter">
                       <Search size={13} />
                       <input
-                        aria-label="筛选文件名"
-                        placeholder="筛选文件…"
+                        aria-label={t('筛选文件名')}
+                        placeholder={t('筛选文件…')}
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
                       />
@@ -1689,25 +1730,26 @@ export default function App() {
                     />
                     {entries.length === 0 && (
                       <p className="side-empty">
-                        还没有 Markdown 文档
+                        {t('还没有 Markdown 文档')}
                         <br />
-                        点击上方 + 新建一篇。
+                        {t('点击上方 + 新建一篇。')}
                       </p>
                     )}
                   </>
                 ) : (
                   <div className="folder-empty">
                     <FolderOpen size={25} strokeWidth={1.4} />
-                    <p>把整个项目，放在手边</p>
+                    <p>{t('把整个项目，放在手边')}</p>
                     <button onClick={() => void openFolder()}>
-                      打开文件夹 <ArrowUpRight size={13} />
+                      {t('打开文件夹') + ' '}
+                      <ArrowUpRight size={13} />
                     </button>
                   </div>
                 )}
                 {!!recents.length && (
                   <>
                     <div className="section-caption">
-                      <span>最近打开</span>
+                      <span>{t('最近打开')}</span>
                     </div>
                     {recents.slice(0, 8).map((recent) => (
                       <div className="recent-file" key={recent.path}>
@@ -1721,7 +1763,7 @@ export default function App() {
                         </button>
                         <button
                           className="remove-recent"
-                          aria-label={`移除最近记录 ${recent.name}`}
+                          aria-label={t('移除最近记录 {0}', undefined, [recent.name])}
                           onClick={() => {
                             try {
                               setRecents(updateRecents(undefined, recent.path));
@@ -1737,7 +1779,7 @@ export default function App() {
                   </>
                 )}
                 <div className="section-caption">
-                  <span>开始探索</span>
+                  <span>{t('开始探索')}</span>
                 </div>
                 <button
                   className="tree-row"
@@ -1752,14 +1794,14 @@ export default function App() {
                   }}
                 >
                   <BookOpen size={16} />
-                  <span>Markdown 语法手册</span>
+                  <span>{t('Markdown 语法手册')}</span>
                 </button>
               </>
             )}
             {sideTab === 'outline' && (
               <>
                 <div className="section-caption">
-                  <span>文档结构</span>
+                  <span>{t('文档结构')}</span>
                   <span>{headings.length}</span>
                 </div>
                 {headings.length ? (
@@ -1776,9 +1818,9 @@ export default function App() {
                   ))
                 ) : (
                   <p className="side-empty">
-                    用 # 写下第一个标题，
+                    {t('用 # 写下第一个标题，')}
                     <br />
-                    大纲就会出现在这里。
+                    {t('大纲就会出现在这里。')}
                   </p>
                 )}
               </>
@@ -1786,8 +1828,8 @@ export default function App() {
             {sideTab === 'search' && (
               <>
                 <div className="section-caption">
-                  <span>搜索内容</span>
-                  <span>{searching ? '搜索中…' : `${hits.length} 条`}</span>
+                  <span>{t('搜索内容')}</span>
+                  <span>{searching ? t('搜索中…') : t('{0} 条', undefined, [hits.length])}</span>
                   {searching && (
                     <button
                       onClick={() => {
@@ -1796,7 +1838,7 @@ export default function App() {
                         if (platform.desktop) void invoke('cancel_search', {}).catch(() => {});
                       }}
                     >
-                      取消
+                      {t('取消')}
                     </button>
                   )}
                 </div>
@@ -1804,18 +1846,20 @@ export default function App() {
                   <Search size={14} />
                   <input
                     autoFocus
-                    placeholder="在文档中搜索…"
-                    aria-label="全文搜索关键词"
+                    placeholder={t('在文档中搜索…')}
+                    aria-label={t('全文搜索关键词')}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
                   {query && (
-                    <button aria-label="清除搜索" onClick={() => setQuery('')}>
+                    <button aria-label={t('清除搜索')} onClick={() => setQuery('')}>
                       <X size={12} />
                     </button>
                   )}
                 </div>
-                <p className="search-scope">{root ? '当前文件夹与打开的文档' : '当前打开的文档'}</p>
+                <p className="search-scope">
+                  {root ? t('当前文件夹与打开的文档') : t('当前打开的文档')}
+                </p>
                 {hits.map((hit, i) => (
                   <button
                     key={`${hit.path}-${hit.line}-${i}`}
@@ -1837,9 +1881,9 @@ export default function App() {
                 ))}
                 {query && !hits.length && !searching && (
                   <p className="side-empty">
-                    没有找到匹配内容。
+                    {t('没有找到匹配内容。')}
                     <br />
-                    试试更短的关键词。
+                    {t('试试更短的关键词。')}
                   </p>
                 )}
               </>
@@ -1848,13 +1892,13 @@ export default function App() {
           <div className="sidebar-bottom">
             <button onClick={() => setDialog('settings')}>
               <SettingsIcon size={16} />
-              <span>设置</span>
+              <span>{t('设置')}</span>
               <kbd>Ctrl ,</kbd>
             </button>
             <div className="local-note">
               <span className="local-dot" />
-              本地优先 · 安心写作
-              <IconButton title="快捷键" onClick={() => setDialog('shortcuts')}>
+              {t('本地优先 · 安心写作')}
+              <IconButton title={t('快捷键')} onClick={() => setDialog('shortcuts')}>
                 <Keyboard size={15} />
               </IconButton>
             </div>
@@ -1885,48 +1929,48 @@ export default function App() {
           <header className="topbar">
             <div className="breadcrumb">
               {!sidebar && (
-                <IconButton title="展开侧栏" onClick={() => setSidebar(true)}>
+                <IconButton title={t('展开侧栏')} onClick={() => setSidebar(true)}>
                   <PanelLeftOpen size={18} />
                 </IconButton>
               )}
-              <span>{root ? basename(root) : '我的文档'}</span>
+              <span>{root ? basename(root) : t('我的文档')}</span>
               <ChevronRight size={13} />
               <strong title={current.path}>{current.name}</strong>
-              {!current.path && <span className="draft-label">草稿</span>}
+              {!current.path && <span className="draft-label">{t('草稿')}</span>}
             </div>
             <div className="top-actions">
-              <div className="mode-switch" aria-label="文档模式">
+              <div className="mode-switch" aria-label={t('文档模式')}>
                 <button
-                  title="即时渲染编辑"
+                  title={t('即时渲染编辑')}
                   className={mode === 'live' ? 'active' : ''}
                   onClick={() => setMode('live')}
                 >
                   <PenLine size={14} />
-                  <span>编辑</span>
+                  <span>{t('编辑')}</span>
                 </button>
                 <button
-                  title="Markdown 源码"
+                  title={t('Markdown 源码')}
                   className={mode === 'source' ? 'active' : ''}
                   onClick={() => setMode('source')}
                 >
                   <Code2 size={15} />
-                  <span>源码</span>
+                  <span>{t('源码')}</span>
                 </button>
                 <button
-                  title="只读模式"
+                  title={t('只读模式')}
                   className={mode === 'read' ? 'active' : ''}
                   onClick={() => setMode('read')}
                 >
                   <BookOpen size={14} />
-                  <span>阅读</span>
+                  <span>{t('阅读')}</span>
                 </button>
               </div>
               <span className="action-divider" />
-              <IconButton title="专注模式" onClick={() => setFocus(true)}>
+              <IconButton title={t('专注模式')} onClick={() => setFocus(true)}>
                 <Focus size={17} />
               </IconButton>
               <div className="menu-anchor">
-                <IconButton title="更多操作" active={menu} onClick={() => setMenu((v) => !v)}>
+                <IconButton title={t('更多操作')} active={menu} onClick={() => setMenu((v) => !v)}>
                   <MoreHorizontal size={19} />
                 </IconButton>
                 {menu && (
@@ -1940,7 +1984,8 @@ export default function App() {
                         }}
                       >
                         <Save size={15} />
-                        保存<span>Ctrl S</span>
+                        {t('保存')}
+                        <span>Ctrl S</span>
                       </button>
                       <button
                         onClick={() => {
@@ -1949,7 +1994,7 @@ export default function App() {
                         }}
                       >
                         <FilePlus2 size={15} />
-                        另存为…
+                        {t('另存为…')}
                       </button>
                       <button
                         onClick={() => {
@@ -1958,12 +2003,12 @@ export default function App() {
                         }}
                       >
                         <PenLine size={15} />
-                        重命名
+                        {t('重命名')}
                       </button>
                       <hr />
                       <button disabled={exporting} onClick={() => openExport('html')}>
                         <Download size={15} />
-                        {exporting ? '正在导出…' : '导出 HTML'}
+                        {exporting ? t('正在导出…') : t('导出 HTML')}
                       </button>
                       <button
                         onClick={() => {
@@ -1972,7 +2017,7 @@ export default function App() {
                         }}
                       >
                         <SlidersHorizontal size={15} />
-                        排版与设置
+                        {t('排版与设置')}
                       </button>
                       <button
                         onClick={() => {
@@ -1981,7 +2026,7 @@ export default function App() {
                         }}
                       >
                         <Keyboard size={15} />
-                        快捷键
+                        {t('快捷键')}
                       </button>
                     </div>
                   </>
@@ -1999,12 +2044,15 @@ export default function App() {
                   <span>{d.name}</span>
                   {d.content !== d.saved && <i className="dirty-dot" />}
                 </button>
-                <IconButton title={`关闭 ${d.name}`} onClick={() => requestClose(d.id)}>
+                <IconButton
+                  title={t('关闭 {0}', undefined, [d.name])}
+                  onClick={() => requestClose(d.id)}
+                >
                   <X size={12} />
                 </IconButton>
               </div>
             ))}
-            <IconButton title="新建文档" onClick={newDocument}>
+            <IconButton title={t('新建文档')} onClick={newDocument}>
               <Plus size={15} />
             </IconButton>
           </div>
@@ -2014,20 +2062,20 @@ export default function App() {
             <AlertCircle size={16} />
             <span>
               {current.status === 'conflict'
-                ? '磁盘上的文件发生了变化，自动保存已暂停。'
-                : current.error || '保存失败，当前内容已保留。'}
+                ? t('磁盘上的文件发生了变化，自动保存已暂停。')
+                : current.error || t('保存失败，当前内容已保留。')}
             </span>
             <button
               onClick={() => (current.status === 'conflict' ? void showConflict() : void save())}
             >
-              {current.status === 'conflict' ? '比较版本' : '重试保存'}
+              {current.status === 'conflict' ? t('比较版本') : t('重试保存')}
             </button>
-            <button onClick={() => void save(current.id, true)}>另存为</button>
+            <button onClick={() => void save(current.id, true)}>{t('另存为')}</button>
           </div>
         )}
         {current.content.length > 300_000 && mode === 'live' && (
           <div className="performance-note">
-            当前文档较大，已暂停即时渲染以保证编辑响应。仍可使用源码和阅读模式。
+            {t('当前文档较大，已暂停即时渲染以保证编辑响应。仍可使用源码和阅读模式。')}
           </div>
         )}
         <div className="document-workspace">
@@ -2070,29 +2118,32 @@ export default function App() {
             )}
             {mode !== 'read' && activeTable && (
               <div className="table-actions" onMouseDown={(e) => e.preventDefault()}>
-                <span>表格</span>
-                <button onClick={() => launchInsert('table')}>可视化编辑</button>
-                <button onClick={() => editTable('addRow')}>添加行</button>
-                <button onClick={() => editTable('addColumn')}>添加列</button>
-                <button onClick={() => editTable('removeRow')}>删除行</button>
-                <button onClick={() => editTable('removeColumn')}>删除列</button>
+                <span>{t('表格')}</span>
+                <button onClick={() => launchInsert('table')}>{t('可视化编辑')}</button>
+                <button onClick={() => editTable('addRow')}>{t('添加行')}</button>
+                <button onClick={() => editTable('addColumn')}>{t('添加列')}</button>
+                <button onClick={() => editTable('removeRow')}>{t('删除行')}</button>
+                <button onClick={() => editTable('removeColumn')}>{t('删除列')}</button>
               </div>
             )}
             {mode !== 'read' && selection && (
               <div className="format-bar" onMouseDown={(e) => e.preventDefault()}>
-                <IconButton title="粗体" onClick={() => handleMenuAction('format:bold')}>
+                <IconButton title={t('粗体')} onClick={() => handleMenuAction('format:bold')}>
                   <Bold size={15} />
                 </IconButton>
-                <IconButton title="斜体" onClick={() => handleMenuAction('format:italic')}>
+                <IconButton title={t('斜体')} onClick={() => handleMenuAction('format:italic')}>
                   <Italic size={15} />
                 </IconButton>
-                <IconButton title="插入链接" onClick={() => launchInsert('link')}>
+                <IconButton title={t('插入链接')} onClick={() => launchInsert('link')}>
                   <LinkIcon size={15} />
                 </IconButton>
-                <IconButton title="行内代码" onClick={() => handleMenuAction('format:inlineCode')}>
+                <IconButton
+                  title={t('行内代码')}
+                  onClick={() => handleMenuAction('format:inlineCode')}
+                >
                   <Code2 size={15} />
                 </IconButton>
-                <IconButton title="引用" onClick={() => handleMenuAction('format:quote')}>
+                <IconButton title={t('引用')} onClick={() => handleMenuAction('format:quote')}>
                   <Quote size={15} />
                 </IconButton>
               </div>
@@ -2102,7 +2153,7 @@ export default function App() {
             <div className="compare-pane">
               <div className="workspace-title">
                 <select
-                  aria-label="对照文档"
+                  aria-label={t('对照文档')}
                   value={compareId}
                   onChange={(e) => setCompareId(e.target.value)}
                 >
@@ -2112,7 +2163,7 @@ export default function App() {
                     </option>
                   ))}
                 </select>
-                <button aria-label="关闭并排对照" onClick={() => setCompareId(null)}>
+                <button aria-label={t('关闭并排对照')} onClick={() => setCompareId(null)}>
                   <X size={16} />
                 </button>
               </div>
@@ -2148,7 +2199,8 @@ export default function App() {
         {focus && (
           <button className="exit-focus" onClick={() => setFocus(false)}>
             <ArrowLeft size={14} />
-            退出专注 <kbd>Esc</kbd>
+            {t('退出专注') + ' '}
+            <kbd>Esc</kbd>
           </button>
         )}
         {!focus && (
@@ -2156,7 +2208,7 @@ export default function App() {
             <button
               className={`save-state ${current.status}`}
               onClick={() => void save()}
-              title={current.path || '选择位置保存为 Markdown 文件'}
+              title={current.path || t('选择位置保存为 Markdown 文件')}
             >
               {current.status === 'clean' ? (
                 <Check size={13} />
@@ -2169,28 +2221,33 @@ export default function App() {
               )}
               {
                 {
-                  clean: current.path ? '已保存' : '草稿已暂存',
-                  dirty: '未保存',
-                  saving: '保存中…',
-                  error: '保存失败',
-                  conflict: '文件冲突',
+                  clean: current.path ? t('已保存') : t('草稿已暂存'),
+                  dirty: t('未保存'),
+                  saving: t('保存中…'),
+                  error: t('保存失败'),
+                  conflict: t('文件冲突'),
                 }[current.status]
               }
             </button>
             <div className="status-right">
-              <span>{words.toLocaleString()} 字</span>
+              <span>
+                {words.toLocaleString()} {' ' + t('字')}
+              </span>
               <i />
               <span>
-                行 {position.line}，列 {position.column}
+                {t('行') + ' '}
+                {position.line}
+                {t('，列') + ' '}
+                {position.column}
               </span>
               <i />
               <span>UTF-8{current.bom ? ' BOM' : ''}</span>
               <span>{current.crlf ? 'CRLF' : 'LF'}</span>
-              <button title="排版设置" onClick={() => setDialog('settings')}>
+              <button title={t('排版设置')} onClick={() => setDialog('settings')}>
                 {settings.fontSize}px
               </button>
               <IconButton
-                title="打开命令面板 · Ctrl K"
+                title={t('打开命令面板 · Ctrl K')}
                 onClick={() => {
                   setPalette('');
                   setDialog('commands');
@@ -2226,8 +2283,8 @@ export default function App() {
       )}
       {!!linkChoices.length && (
         <Modal
-          title="选择链接目标"
-          subtitle="存在同名文档，请选择要打开的文件。"
+          title={t('选择链接目标')}
+          subtitle={t('存在同名文档，请选择要打开的文件。')}
           onClose={() => setLinkChoices([])}
         >
           {linkChoices.map((d) => (
@@ -2247,8 +2304,8 @@ export default function App() {
       )}
       {dialog === 'transfer' && transfer && (
         <Modal
-          title={transfer.kind === 'image' ? '上传图片到图床' : '发布文档'}
-          subtitle="连接你自己的服务，明确发送后才会联网"
+          title={transfer.kind === 'image' ? t('上传图片到图床') : t('发布文档')}
+          subtitle={t('连接你自己的服务，明确发送后才会联网')}
           onClose={() => setDialog(null)}
         >
           <TransferPanel
@@ -2259,7 +2316,7 @@ export default function App() {
               const view = editor.current;
               if (!view) return;
               if (current.id !== transfer.id || current.content !== transfer.source) {
-                notify('原文已变化，请复制链接后在目标位置插入。');
+                notify(t('原文已变化，请复制链接后在目标位置插入。'));
                 return;
               }
               setMode('live');
@@ -2276,33 +2333,35 @@ export default function App() {
       )}
       {dialog === 'about' && (
         <Modal
-          title="墨页 · Markwrite"
-          subtitle="本地优先的 Markdown 写作工具"
+          title={t('墨页 · Markwrite')}
+          subtitle={t('本地优先的 Markdown 写作工具')}
           onClose={() => setDialog(null)}
         >
           <p>
-            通过菜单设置格式、插入表格和公式，也可以直接使用
-            Markdown。源码、编辑与阅读共用同一份正文。
+            {t(
+              '通过菜单设置格式、插入表格和公式，也可以直接使用 Markdown。源码、编辑与阅读共用同一份正文。',
+            )}
           </p>
           <p>
-            本版本提供历史、反向链接、附件管理、Git、PDF 与 Word 导出。扩展使用可检查的文字片段；AI
-            仅在你主动选择文字并配置服务后工作。
+            {t(
+              '本版本提供历史、反向链接、附件管理、Git、PDF 与 Word 导出。扩展使用可检查的文字片段；AI 仅在你主动选择文字并配置服务后工作。',
+            )}
           </p>
           <p className="panel-note">
-            Linux 与 Windows 构建；输入法、显示缩放和长期写作的真机验证记录见项目文档。
+            {t('Linux 与 Windows 构建；输入法、显示缩放和长期写作的真机验证记录见项目文档。')}
           </p>
           <button
             className="primary-button"
             onClick={() => void platform.openExternal('https://github.com/asoming/markwrite')}
           >
-            查看项目与更新
+            {t('查看项目与更新')}
           </button>
         </Modal>
       )}
       {dialog === 'extensions' && (
         <Modal
-          title="编辑扩展"
-          subtitle="管理模板和可复用片段"
+          title={t('编辑扩展')}
+          subtitle={t('管理模板和可复用片段')}
           wide
           onClose={() => setDialog(null)}
         >
@@ -2330,8 +2389,8 @@ export default function App() {
       )}
       {dialog === 'ai' && (
         <Modal
-          title="AI 写作助手"
-          subtitle="选择文字 → 预览修改 → 接受或舍弃"
+          title={t('AI 写作助手')}
+          subtitle={t('选择文字 → 预览修改 → 接受或舍弃')}
           wide
           onClose={() => setDialog(null)}
         >
@@ -2342,7 +2401,7 @@ export default function App() {
                 view = editor.current;
               if (!snapshot || !view) return;
               if (current.id !== snapshot.id || current.content !== snapshot.source) {
-                notify('原文已变化，请重新选择内容生成建议。');
+                notify(t('原文已变化，请重新选择内容生成建议。'));
                 return;
               }
               setMode('live');
@@ -2360,22 +2419,24 @@ export default function App() {
       )}
       {dialog === 'export' && (
         <Modal
-          title={`导出 ${exportFormat === 'docx' ? 'Word 文档' : exportFormat.toUpperCase()}`}
-          subtitle="使用当前编辑内容，无需先覆盖原文档"
+          title={t('导出 {0}', undefined, [
+            exportFormat === 'docx' ? t('Word 文档') : exportFormat.toUpperCase(),
+          ])}
+          subtitle={t('使用当前编辑内容，无需先覆盖原文档')}
           onClose={() => setDialog(null)}
         >
           <div className="settings-extra">
             <label>
-              排版模板{' '}
+              {t('排版模板')}{' '}
               <select
                 value={exportOptions.template}
                 onChange={(e) =>
                   setExportOptions((v) => ({ ...v, template: e.target.value as typeof v.template }))
                 }
               >
-                <option value="standard">标准文档</option>
-                <option value="academic">学术阅读</option>
-                <option value="compact">紧凑笔记</option>
+                <option value="standard">{t('标准文档')}</option>
+                <option value="academic">{t('学术阅读')}</option>
+                <option value="compact">{t('紧凑笔记')}</option>
               </select>
             </label>
             {exportFormat === 'html' && (
@@ -2386,26 +2447,28 @@ export default function App() {
                     checked={exportOptions.toc}
                     onChange={(e) => setExportOptions((v) => ({ ...v, toc: e.target.checked }))}
                   />{' '}
-                  包含文档目录
+                  {t('包含文档目录')}
                 </label>
                 <label>
-                  外观{' '}
+                  {t('外观')}{' '}
                   <select
                     value={exportOptions.theme}
                     onChange={(e) => setExportOptions((v) => ({ ...v, theme: e.target.value }))}
                   >
-                    <option value="light">浅色</option>
-                    <option value="dark">深色</option>
+                    <option value="light">{t('浅色')}</option>
+                    <option value="dark">{t('深色')}</option>
                   </select>
                 </label>
               </>
             )}
             <p className="panel-note">
-              本地图片、公式和图表会嵌入导出文件。未加载的网络图片或语法错误会提示处理，不会悄悄丢弃。
+              {t(
+                '本地图片、公式和图表会嵌入导出文件。未加载的网络图片或语法错误会提示处理，不会悄悄丢弃。',
+              )}
             </p>
           </div>
           <div className="modal-actions">
-            <button onClick={() => setDialog(null)}>取消</button>
+            <button onClick={() => setDialog(null)}>{t('取消')}</button>
             <button
               className="primary-button"
               disabled={exporting}
@@ -2414,7 +2477,7 @@ export default function App() {
                 void doExport(exportFormat);
               }}
             >
-              选择位置并导出
+              {t('选择位置并导出')}
             </button>
           </div>
         </Modal>
@@ -2422,16 +2485,16 @@ export default function App() {
       {toast && (
         <div className="toast" role="status">
           <span>{toast}</span>
-          <button aria-label="关闭提示" onClick={() => setToast('')}>
+          <button aria-label={t('关闭提示')} onClick={() => setToast('')}>
             <X size={15} />
           </button>
         </div>
       )}
       {(dialog === 'commands' || dialog === 'quickopen') && (
         <Modal
-          title={dialog === 'commands' ? '想做些什么？' : '跳转到文档'}
+          title={dialog === 'commands' ? t('想做些什么？') : t('跳转到文档')}
           subtitle={
-            dialog === 'commands' ? '所有操作，都在这里。' : '搜索已打开的文档和工作文件夹。'
+            dialog === 'commands' ? t('所有操作，都在这里。') : t('搜索已打开的文档和工作文件夹。')
           }
           onClose={() => setDialog(null)}
         >
@@ -2439,8 +2502,8 @@ export default function App() {
             <Search size={19} />
             <input
               autoFocus
-              aria-label={dialog === 'commands' ? '搜索操作' : '搜索文件'}
-              placeholder={dialog === 'commands' ? '搜索操作…' : '输入文件名…'}
+              aria-label={dialog === 'commands' ? t('搜索操作') : t('搜索文件')}
+              placeholder={dialog === 'commands' ? t('搜索操作…') : t('输入文件名…')}
               value={palette}
               onChange={(e) => setPalette(e.target.value)}
               onKeyDown={(e) => {
@@ -2488,264 +2551,81 @@ export default function App() {
                     <FileText size={17} />
                     <span>
                       {f.name}
-                      <small>{f.id ? '已打开' : f.path}</small>
+                      <small>{f.id ? t('已打开') : f.path}</small>
                     </span>
                     <ChevronRight size={14} />
                   </button>
                 ))}
             {dialog === 'quickopen' && !quickFiles.length && (
-              <p className="empty-results">没有找到文档，试试其他关键词。</p>
+              <p className="empty-results">{t('没有找到文档，试试其他关键词。')}</p>
             )}
           </div>
           <div className="palette-footer">
             <span>
-              <kbd>Enter</kbd> 执行首项
+              <kbd>Enter</kbd> {' ' + t('执行首项')}
             </span>
             <span>
-              <kbd>Tab</kbd> 切换操作
+              <kbd>Tab</kbd> {' ' + t('切换操作')}
             </span>
           </div>
         </Modal>
       )}
       {dialog === 'settings' && (
-        <Modal
-          title="让写作更合你的习惯"
-          subtitle="设置保存在本机，即时生效。"
+        <SettingsPanel
+          settings={settings}
+          onChange={setSettings}
           onClose={() => setDialog(null)}
-        >
-          <div className="settings-section">
-            <h3>外观</h3>
-            <div className="theme-options">
-              {(
-                [
-                  { value: 'light', label: '浅色', icon: <Sun size={20} /> },
-                  { value: 'dark', label: '深色', icon: <Moon size={20} /> },
-                  { value: 'system', label: '跟随系统', icon: <SlidersHorizontal size={20} /> },
-                ] as const
-              ).map((t) => (
-                <button
-                  key={t.value}
-                  className={settings.theme === t.value ? 'selected' : ''}
-                  onClick={() => setSettings((s) => ({ ...s, theme: t.value }))}
-                >
-                  {t.icon}
-                  {t.label}
-                  {settings.theme === t.value && <Check size={13} />}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="settings-section">
-            <h3>正文排版</h3>
-            <label className="setting-row">
-              <span>字号</span>
-              <input
-                aria-label="正文字号"
-                type="range"
-                min="13"
-                max="24"
-                value={settings.fontSize}
-                onChange={(e) => setSettings((s) => ({ ...s, fontSize: Number(e.target.value) }))}
-              />
-              <output>{settings.fontSize}px</output>
-            </label>
-            <label className="setting-row">
-              <span>行高</span>
-              <input
-                aria-label="正文行高"
-                type="range"
-                min="1.4"
-                max="2.3"
-                step="0.1"
-                value={settings.lineHeight}
-                onChange={(e) => setSettings((s) => ({ ...s, lineHeight: Number(e.target.value) }))}
-              />
-              <output>{settings.lineHeight.toFixed(1)}</output>
-            </label>
-            <label className="setting-row">
-              <span>正文宽度</span>
-              <input
-                aria-label="正文宽度"
-                type="range"
-                min="560"
-                max="1100"
-                step="20"
-                value={settings.width}
-                onChange={(e) => setSettings((s) => ({ ...s, width: Number(e.target.value) }))}
-              />
-              <output>{settings.width}px</output>
-            </label>
-            <label className="setting-row">
-              <span>字体风格</span>
-              <select
-                value={settings.serif ? 'serif' : 'sans'}
-                onChange={(e) => setSettings((s) => ({ ...s, serif: e.target.value === 'serif' }))}
-              >
-                <option value="sans">清晰黑体</option>
-                <option value="serif">书卷宋体</option>
-              </select>
-            </label>
-          </div>
-          <div className="settings-section settings-extra">
-            <h3>字体与阅读预设</h3>
-            <label>
-              正文字体{' '}
-              <input
-                aria-label="正文字体名称"
-                placeholder="留空使用系统字体"
-                value={settings.bodyFont || ''}
-                onChange={(e) => setSettings((v) => ({ ...v, bodyFont: e.target.value }))}
-              />
-            </label>
-            <label>
-              代码字体{' '}
-              <input
-                aria-label="代码字体名称"
-                value={settings.codeFont || ''}
-                onChange={(e) => setSettings((v) => ({ ...v, codeFont: e.target.value }))}
-              />
-            </label>
-            <div className="snippet-buttons">
-              <button
-                onClick={() =>
-                  setSettings((v) => ({
-                    ...v,
-                    fontSize: 17,
-                    lineHeight: 1.9,
-                    width: 760,
-                    serif: false,
-                  }))
-                }
-              >
-                日常写作
-              </button>
-              <button
-                onClick={() =>
-                  setSettings((v) => ({
-                    ...v,
-                    fontSize: 19,
-                    lineHeight: 2,
-                    width: 720,
-                    serif: true,
-                  }))
-                }
-              >
-                长文阅读
-              </button>
-              <button
-                onClick={() =>
-                  setSettings((v) => ({
-                    ...v,
-                    fontSize: 15,
-                    lineHeight: 1.6,
-                    width: 1000,
-                    serif: false,
-                  }))
-                }
-              >
-                技术文档
-              </button>
-            </div>
-            <details>
-              <summary>自定义主题颜色</summary>
-              {(['paper', 'ink', 'accent'] as const).map((key) => (
-                <label className="setting-row" key={key}>
-                  <span>{{ paper: '背景', ink: '正文', accent: '强调色' }[key]}</span>
-                  <input
-                    type="color"
-                    aria-label={`自定义${key}`}
-                    value={
-                      settings.customColors?.[key] ||
-                      { paper: '#fcfcfd', ink: '#24272e', accent: '#4361d9' }[key]
-                    }
-                    onChange={(e) =>
-                      setSettings((v) => ({
-                        ...v,
-                        customColors: {
-                          paper: '#fcfcfd',
-                          ink: '#24272e',
-                          accent: '#4361d9',
-                          ...v.customColors,
-                          [key]: e.target.value,
-                        },
-                      }))
-                    }
-                  />
-                </label>
-              ))}
-              <button onClick={() => setSettings((v) => ({ ...v, customColors: undefined }))}>
-                恢复主题原色
-              </button>
-            </details>
-          </div>
-          <div className="settings-section">
-            <h3>文件与保存</h3>
-            <label className="setting-row">
-              <span>图片保存方式</span>
-              <select
-                aria-label="图片保存方式"
-                value={settings.attachmentMode}
-                onChange={(e) =>
-                  setSettings((v) => ({
-                    ...v,
-                    attachmentMode: e.target.value as Settings['attachmentMode'],
-                  }))
-                }
-              >
-                <option value="relative">文档旁的 assets 文件夹</option>
-                <option value="embedded">内嵌到 Markdown</option>
-              </select>
-            </label>
-            <p className="settings-note">
-              目录扫描排除隐藏目录、.git、node_modules、target 和符号链接；搜索最多显示 500
-              条匹配，可随时取消。
-            </p>
-            <label className="setting-row">
-              <span>
-                自动保存<small>停止输入后，保存已有路径的文档</small>
-              </span>
-              <input
-                aria-label="自动保存"
-                type="checkbox"
-                className="switch"
-                checked={settings.autosave}
-                onChange={(e) => setSettings((s) => ({ ...s, autosave: e.target.checked }))}
-              />
-            </label>
-            <p className="settings-note">
-              新文档先保留为本地草稿。按 Ctrl S 选择位置后，才会写入 Markdown 文件。
-            </p>
-          </div>
-          <div className="modal-footer">
-            <button className="text-button" onClick={() => setSettings(defaultSettings)}>
-              恢复默认设置
-            </button>
-            <button className="primary-button" onClick={() => setDialog(null)}>
-              完成
-            </button>
-          </div>
-        </Modal>
+          defaultAppAvailable={platform.desktop}
+          onCheckDefaultApp={async () => (await defaultMarkdownStatus()).isDefault}
+          onDefaultApp={async () => {
+            const result = await requestMarkdownDefault();
+            if (result.platform === 'windows') return { status: 'settings-opened' };
+            if (result.isDefault) return { status: 'set' };
+            throw new Error(result.message);
+          }}
+        />
+      )}
+      {dialog === 'import' && (
+        <ImportPanel
+          onClose={() => setDialog(null)}
+          onImport={(imported) => {
+            const added = imported.map((item) => ({
+              ...draft(item.name, item.content),
+              saved: '',
+              status: 'dirty' as const,
+            }));
+            if (added.length) {
+              updateDocs((items) => [...items, ...added]);
+              setActiveId(added[0].id);
+              setMode(settingsRef.current.defaultMode);
+              notify(
+                t('已导入 {0} 个 Markdown 草稿', 'Imported {0} Markdown drafts', [added.length]),
+              );
+            }
+            setDialog(null);
+          }}
+        />
       )}
       {dialog === 'shortcuts' && (
         <Modal
-          title="双手留在键盘上"
-          subtitle="也可以通过菜单使用这些操作。"
+          title={t('双手留在键盘上')}
+          subtitle={t('也可以通过菜单使用这些操作。')}
           onClose={() => setDialog(null)}
         >
           <div className="shortcut-list">
             {[
-              ['新建文档', 'Ctrl N'],
-              ['打开文件', 'Ctrl O'],
-              ['保存文档', 'Ctrl S'],
-              ['快速打开', 'Ctrl P'],
-              ['命令面板', 'Ctrl K'],
-              ['查找与替换', 'Ctrl F'],
-              ['全文搜索', 'Ctrl Shift F'],
-              ['撤销 / 重做', 'Ctrl Z / Ctrl Shift Z'],
-              ['关闭文档', 'Ctrl W'],
-              ['显示 / 隐藏侧栏', 'Ctrl \\'],
-              ['设置', 'Ctrl ,'],
-              ['退出专注模式', 'Esc'],
+              [t('新建文档'), 'Ctrl N'],
+              [t('打开文件'), 'Ctrl O'],
+              [t('保存文档'), 'Ctrl S'],
+              [t('快速打开'), 'Ctrl P'],
+              [t('命令面板'), 'Ctrl K'],
+              [t('查找与替换'), 'Ctrl F'],
+              [t('全文搜索'), 'Ctrl Shift F'],
+              [t('撤销 / 重做'), 'Ctrl Z / Ctrl Shift Z'],
+              [t('关闭文档'), 'Ctrl W'],
+              [t('显示 / 隐藏侧栏'), 'Ctrl \\'],
+              [t('设置'), 'Ctrl ,'],
+              [t('退出专注模式'), 'Esc'],
             ].map(([label, key]) => (
               <div key={label}>
                 <span>{label}</span>
@@ -2758,17 +2638,17 @@ export default function App() {
       {dialog === 'conflict' && diskConflict && (
         <Modal
           wide
-          title="文件出现了两个版本"
-          subtitle="当前编辑内容没有被覆盖。比较后选择要保留的版本。"
+          title={t('文件出现了两个版本')}
+          subtitle={t('当前编辑内容没有被覆盖。比较后选择要保留的版本。')}
           onClose={() => setDialog(null)}
         >
           <div className="conflict-compare">
             <section>
-              <h3>当前编辑内容</h3>
+              <h3>{t('当前编辑内容')}</h3>
               <pre>{docs.find((d) => d.id === diskConflict.documentId)?.content}</pre>
             </section>
             <section>
-              <h3>磁盘上的内容</h3>
+              <h3>{t('磁盘上的内容')}</h3>
               <pre>{diskConflict.content}</pre>
             </section>
           </div>
@@ -2790,7 +2670,7 @@ export default function App() {
                 setDialog(null);
               }}
             >
-              采用磁盘版本
+              {t('采用磁盘版本')}
             </button>
             <button
               onClick={() => {
@@ -2798,7 +2678,7 @@ export default function App() {
                 void save(diskConflict.documentId, true);
               }}
             >
-              当前内容另存为
+              {t('当前内容另存为')}
             </button>
             <button
               className="primary-button"
@@ -2809,18 +2689,18 @@ export default function App() {
                 await save(id);
               }}
             >
-              保留当前版本并保存
+              {t('保留当前版本并保存')}
             </button>
           </div>
         </Modal>
       )}
       {dialog === 'close' && (
         <Modal
-          title={closeTarget === 'app' ? '退出前，保留你的文字' : '这篇文档还有未保存的修改'}
+          title={closeTarget === 'app' ? t('退出前，保留你的文字') : t('这篇文档还有未保存的修改')}
           subtitle={
             closeTarget === 'app'
-              ? '可以先保存文件，或保留草稿，下次继续。'
-              : '保存到文件后再关闭，或明确放弃这次修改。'
+              ? t('可以先保存文件，或保留草稿，下次继续。')
+              : t('保存到文件后再关闭，或明确放弃这次修改。')
           }
           onClose={() => setDialog(null)}
         >
@@ -2828,17 +2708,19 @@ export default function App() {
             <FileText size={25} />
             <span>
               {closeTarget === 'app'
-                ? `${docs.filter((d) => d.content !== d.saved).length} 篇文档有未保存修改`
+                ? t('{0} 篇文档有未保存修改', undefined, [
+                    docs.filter((d) => d.content !== d.saved).length,
+                  ])
                 : docs.find((d) => d.id === closeTarget)?.name}
             </span>
           </div>
           <div className="modal-footer">
-            <button onClick={() => setDialog(null)}>取消</button>
+            <button onClick={() => setDialog(null)}>{t('取消')}</button>
             <button onClick={() => void finishClose(true)}>
-              {closeTarget === 'app' ? '保留草稿并退出' : '放弃修改'}
+              {closeTarget === 'app' ? t('保留草稿并退出') : t('放弃修改')}
             </button>
             <button className="primary-button" onClick={() => void finishClose(false)}>
-              {closeTarget === 'app' ? '保存文件并退出' : '保存并关闭'}
+              {closeTarget === 'app' ? t('保存文件并退出') : t('保存并关闭')}
             </button>
           </div>
         </Modal>
@@ -2847,23 +2729,23 @@ export default function App() {
         <Modal
           title={
             namePrompt.type === 'rename'
-              ? '重命名文档'
+              ? t('重命名文档')
               : namePrompt.type === 'folder'
-                ? '新建文件夹'
-                : '新建文档'
+                ? t('新建文件夹')
+                : t('新建文档')
           }
           subtitle={
             namePrompt.type === 'rename'
-              ? '其他文档中的相对链接不会自动修改。'
-              : `创建于 ${root || '当前工作区'}`
+              ? t('其他文档中的相对链接不会自动修改。')
+              : t('创建于 {0}', undefined, [root || t('当前工作区')])
           }
           onClose={() => setNamePrompt(null)}
         >
           <input
             className="name-input"
             autoFocus
-            aria-label="名称"
-            placeholder="输入名称…"
+            aria-label={t('名称')}
+            placeholder={t('输入名称…')}
             value={namePrompt.value}
             onChange={(e) => setNamePrompt({ ...namePrompt, value: e.target.value })}
             onKeyDown={(e) => {
@@ -2871,31 +2753,31 @@ export default function App() {
             }}
           />
           <div className="modal-footer">
-            <button onClick={() => setNamePrompt(null)}>取消</button>
+            <button onClick={() => setNamePrompt(null)}>{t('取消')}</button>
             <button
               className="primary-button"
               disabled={!namePrompt.value.trim()}
               onClick={() => void submitName()}
             >
-              确定
+              {t('确定')}
             </button>
           </div>
         </Modal>
       )}
       {mode !== 'read' && !focus && (
         <div className="insert-dock">
-          <IconButton title="插入二级标题" onClick={() => insert('\n## ', '', '新标题')}>
+          <IconButton title={t('插入二级标题')} onClick={() => insert('\n## ', '', '新标题')}>
             <Heading2 size={16} />
           </IconButton>
-          <IconButton title="插入表格" onClick={() => launchInsert('table')}>
+          <IconButton title={t('插入表格')} onClick={() => launchInsert('table')}>
             <Table size={16} />
           </IconButton>
-          <IconButton title="插入图片" onClick={chooseImage}>
+          <IconButton title={t('插入图片')} onClick={chooseImage}>
             <ImageIcon size={16} />
           </IconButton>
           <span />
           <IconButton
-            title="撤销"
+            title={t('撤销')}
             onClick={() => {
               if (editor.current) undo(editor.current);
             }}
@@ -2903,7 +2785,7 @@ export default function App() {
             <Undo2 size={15} />
           </IconButton>
           <IconButton
-            title="重做"
+            title={t('重做')}
             onClick={() => {
               if (editor.current) redo(editor.current);
             }}

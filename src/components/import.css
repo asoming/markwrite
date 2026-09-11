@@ -1,0 +1,79 @@
+.import-panel {
+  max-height: calc(100dvh - 48px);
+  overflow: auto;
+}
+.import-select {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 22px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  margin-top: 24px;
+}
+.import-select > svg {
+  color: var(--accent);
+  flex: none;
+}
+.import-select > div {
+  flex: 1;
+}
+.import-select p,
+.import-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.import-select button {
+  white-space: nowrap;
+}
+.import-note {
+  margin: 12px 0 20px;
+}
+.import-preview > label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  font-size: 13px;
+}
+.import-preview select {
+  max-width: 65%;
+}
+.import-preview pre {
+  background: var(--sidebar);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  max-height: 280px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 12px/1.8 var(--code-font, monospace);
+}
+.import-preview details,
+.import-errors {
+  font-size: 12px;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+.import-errors {
+  padding: 12px;
+  background: var(--sidebar);
+  border-radius: 8px;
+}
+.import-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+@media (max-width: 600px) {
+  .import-select {
+    flex-wrap: wrap;
+    padding: 14px;
+  }
+  .import-select > div {
+    flex-basis: 70%;
+  }
+}

@@ -80,13 +80,49 @@ jobs:
         run: |
           $setup = Get-ChildItem 'src-tauri/target/release/bundle/nsis/*-setup.exe' | Select-Object -First 1
           if (-not $setup) { throw 'NSIS installer was not generated' }
-          $installDir = Join-Path $env:RUNNER_TEMP 'markwrite-install-smoke'
+          $installDir = Join-Path $env:RUNNER_TEMP 'Markwrite Install Smoke'
           $install = Start-Process -FilePath $setup.FullName -ArgumentList '/S', "/D=$installDir" -Wait -PassThru
           if ($install.ExitCode -ne 0) { throw "NSIS installation failed: $($install.ExitCode)" }
           $installedExe = Join-Path $installDir 'markwrite.exe'
           if (-not (Test-Path $installedExe)) { throw 'Installed application is missing' }
           "MARKWRITE_SMOKE_EXE=$installedExe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "MARKWRITE_SMOKE_DIR=$installDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Verify Windows file association quoting
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $classKey = 'HKCU:\Software\Classes\Markwrite.Markdown'
+          $command = (Get-Item -LiteralPath "$classKey\shell\open\command").GetValue('')
+          $expected = '"{0}" "%1"' -f $env:MARKWRITE_SMOKE_EXE
+          if ($command -cne $expected) { throw "File association command must quote both executable and document: $command" }
+          foreach ($extension in @('.md', '.markdown')) {
+            $programId = (Get-Item -LiteralPath "HKCU:\Software\Classes\$extension").GetValue('')
+            if ($programId -cne 'Markwrite.Markdown') { throw "Unexpected ProgID for ${extension}: $programId" }
+          }
+          Add-Type @'
+          using System;
+          using System.Runtime.InteropServices;
+          public static class AssociationCommandLine {
+            [DllImport("shell32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+            private static extern IntPtr CommandLineToArgvW(string commandLine, out int argc);
+            [DllImport("kernel32.dll")] private static extern IntPtr LocalFree(IntPtr memory);
+            public static string[] Parse(string commandLine) {
+              int argc;
+              IntPtr argv = CommandLineToArgvW(commandLine, out argc);
+              if (argv == IntPtr.Zero) throw new System.ComponentModel.Win32Exception();
+              try {
+                var result = new string[argc];
+                for (int i = 0; i < argc; i++) result[i] = Marshal.PtrToStringUni(Marshal.ReadIntPtr(argv, i * IntPtr.Size));
+                return result;
+              } finally { LocalFree(argv); }
+            }
+          }
+          '@
+          $document = Join-Path $env:RUNNER_TEMP 'Notes with spaces\中文 document.md'
+          $arguments = [AssociationCommandLine]::Parse($command.Replace('%1', $document))
+          if ($arguments.Length -ne 2 -or $arguments[0] -cne $env:MARKWRITE_SMOKE_EXE -or $arguments[1] -cne $document) {
+            throw 'The registered open command does not preserve a complete document filename'
+          }
       - name: Windows launch and close smoke test
         if: runner.os == 'Windows'
         shell: pwsh

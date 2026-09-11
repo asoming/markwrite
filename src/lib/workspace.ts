@@ -80,6 +80,9 @@ function fileUri(path: LocalPath) {
   if (path.windows) return `file:///${path.root}${path.parts.map(encode).join('/')}`;
   return 'file://' + path.root + path.parts.map(encode).join('/');
 }
+export function documentFileUri(path: string) {
+  return fileUri(parsePath(keyPath(path)));
+}
 export function relativeDocument(from: string, to: string) {
   const a = parsePath(keyPath(from)),
     b = parsePath(keyPath(to));

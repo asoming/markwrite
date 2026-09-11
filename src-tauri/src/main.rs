@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod ai;
 mod history;
+mod imports;
+mod native_settings;
 mod session;
 mod storage;
 mod transfer;
@@ -356,19 +358,34 @@ fn image_type(path: &Path) -> Result<&'static str, String> {
         _ => Err("仅支持 PNG、JPEG、GIF、WebP、AVIF 图片。".into()),
     }
 }
-#[tauri::command]
-async fn read_asset(
-    document_path: String,
-    asset: String,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
-    let doc = state.check(Path::new(&document_path))?;
-    let parent = doc.parent().ok_or("文档目录无效")?;
-    let decoded = percent_encoding::percent_decode_str(&asset)
+fn local_asset_reference(asset: &str) -> Result<String, String> {
+    let decoded = percent_encoding::percent_decode_str(asset)
         .decode_utf8()
         .map_err(|e| e.to_string())?;
+    // Reject URL, device and UNC references before canonicalize can contact a network share.
+    // Relative references on a user-selected network document remain in that selected context.
+    if decoded.is_empty()
+        || decoded.chars().any(char::is_control)
+        || decoded.contains(':')
+        || decoded.starts_with("//")
+        || decoded.starts_with('\\')
+        || decoded.starts_with("/\\")
+    {
+        return Err("仅可读取文档目录或已打开工作文件夹中的本地图片。".into());
+    }
+    Ok(decoded.into_owned())
+}
+fn read_scoped_asset(
+    document_path: &Path,
+    asset: &str,
+    state: &AppState,
+) -> Result<String, String> {
+    use std::io::Read;
+    let decoded = local_asset_reference(asset)?;
+    let doc = state.check(document_path)?;
+    let parent = doc.parent().ok_or("文档目录无效")?;
     let p = parent
-        .join(decoded.as_ref())
+        .join(decoded)
         .canonicalize()
         .map_err(|e| e.to_string())?;
     let access = state.access.lock().map_err(|e| e.to_string())?;
@@ -376,15 +393,31 @@ async fn read_asset(
         return Err("图片位于尚未打开的目录。".into());
     }
     let mime = image_type(&p)?;
-    let size = fs::metadata(&p).map_err(|e| e.to_string())?.len();
-    if size > 20 * 1024 * 1024 {
+    drop(access);
+    let file = fs::File::open(p).map_err(|e| e.to_string())?;
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
+    if !metadata.is_file() || metadata.len() > 20 * 1024 * 1024 {
         return Err("图片超过 20MB。".into());
     }
-    let bytes = fs::read(p).map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    file.take(20 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
+    if bytes.len() > 20 * 1024 * 1024 {
+        return Err("图片超过 20MB。".into());
+    }
     Ok(format!(
         "data:{mime};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
     ))
+}
+#[tauri::command]
+async fn read_asset(
+    document_path: String,
+    asset: String,
+    state: State<'_, AppState>,
+) -> Result<String, String> {
+    read_scoped_asset(Path::new(&document_path), &asset, &state)
 }
 #[tauri::command]
 async fn attach_image(
@@ -601,6 +634,9 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             choose_files,
+            imports::choose_import_files,
+            native_settings::default_markdown_status,
+            native_settings::request_markdown_default,
             choose_folder,
             list_folder,
             read_document,
@@ -681,6 +717,67 @@ mod native_tests {
                 .unwrap();
             assert!(state.check(&base.join("allowed/link.md")).is_err());
         }
+        fs::remove_dir_all(base).unwrap();
+    }
+    #[test]
+    fn asset_references_reject_network_and_device_paths_before_io() {
+        for reference in [
+            "//server/share/private.png",
+            r"\\server\share\private.png",
+            r"\\?\C:\private.png",
+            "%5c%5cserver/share/private.png",
+            "%2f%2fserver/share/private.png",
+            "https%3a//example.com/image.png",
+            "file:///etc/private.png",
+            r"C:\private.png",
+            "image.png:stream",
+        ] {
+            assert!(local_asset_reference(reference).is_err(), "{reference}");
+        }
+        assert_eq!(
+            local_asset_reference("assets/a%20b.png").unwrap(),
+            "assets/a b.png"
+        );
+    }
+    #[test]
+    fn html_image_scope_is_its_directory_or_an_explicit_workspace() {
+        let base = std::env::temp_dir().join(format!(
+            "markwrite-html-scope-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let document = base.join("selected/document.html");
+        fs::create_dir_all(document.parent().unwrap().join("assets")).unwrap();
+        fs::create_dir_all(base.join("workspace")).unwrap();
+        fs::write(&document, "<img src='assets/a b.png'>").unwrap();
+        fs::write(base.join("selected/assets/a b.png"), b"PNG").unwrap();
+        fs::write(base.join("private.png"), b"private").unwrap();
+        fs::write(base.join("workspace/shared.png"), b"shared").unwrap();
+        let state = AppState::default();
+        assert!(read_scoped_asset(&document, "assets/a%20b.png", &state).is_err());
+        state.allow_file(&document).unwrap();
+        assert!(read_scoped_asset(&document, "assets/a%20b.png", &state).is_ok());
+        assert!(read_scoped_asset(&document, "../private.png", &state).is_err());
+        assert!(read_scoped_asset(&document, "../workspace/shared.png", &state).is_err());
+        state
+            .access
+            .lock()
+            .unwrap()
+            .roots
+            .insert(base.join("workspace").canonicalize().unwrap());
+        assert!(read_scoped_asset(&document, "../workspace/shared.png", &state).is_ok());
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(base.join("private.png"), base.join("selected/link.png"))
+                .unwrap();
+            assert!(read_scoped_asset(&document, "link.png", &state).is_err());
+        }
+        assert_eq!(
+            fs::read_to_string(&document).unwrap(),
+            "<img src='assets/a b.png'>"
+        );
         fs::remove_dir_all(base).unwrap();
     }
 }

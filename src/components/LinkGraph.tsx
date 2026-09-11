@@ -1,3 +1,4 @@
+import { t, useI18n } from '../lib/i18n';
 import { useId, useMemo } from 'react';
 import {
   documentReferences,
@@ -116,7 +117,7 @@ const truncate = (value: string, length: number) => {
   return letters.length > length ? letters.slice(0, length - 1).join('') + '…' : value;
 };
 const direction = ({ incoming, outgoing }: GraphNeighbor) =>
-  incoming && outgoing ? '互相引用' : incoming ? '引用本文' : '本文引用';
+  incoming && outgoing ? t('互相引用') : incoming ? t('引用本文') : t('本文引用');
 
 type Props = {
   documents: IndexedDocument[];
@@ -124,23 +125,27 @@ type Props = {
   onOpen: (path: string) => void;
 };
 export default function LinkGraph({ documents, currentPath, onOpen }: Props) {
+  useI18n();
   const graph = useMemo(() => deriveGraph(documents, currentPath), [documents, currentPath]);
   const markerId = `link-arrow-${useId().replace(/\W/g, '')}`;
   if (!graph.current)
-    return <p className="linkgraph-empty">打开一篇文档，查看它与工作区的关系。</p>;
+    return <p className="linkgraph-empty">{t('打开一篇文档，查看它与工作区的关系。')}</p>;
   const visible = graph.neighbors.slice(0, 20);
   const points = visible.map((neighbor, index) => {
     const angle = -Math.PI / 2 + (index * Math.PI * 2) / visible.length;
     return { neighbor, x: 180 + 132 * Math.cos(angle), y: 180 + 132 * Math.sin(angle), angle };
   });
   return (
-    <section className="linkgraph" aria-label="当前文档关系">
-      <p className="linkgraph-note">只展示当前文档的直接关系，箭头指向被引用的文档。</p>
+    <section className="linkgraph" aria-label={t('当前文档关系')}>
+      <p className="linkgraph-note">{t('只展示当前文档的直接关系，箭头指向被引用的文档。')}</p>
       <svg
         className="linkgraph-diagram"
         viewBox="0 0 360 360"
         role="group"
-        aria-label={`${displayName(graph.current)}的关系图，${graph.neighbors.length}篇相关文档`}
+        aria-label={t('{0}的关系图，{1}篇相关文档', undefined, [
+          displayName(graph.current),
+          graph.neighbors.length,
+        ])}
       >
         <defs>
           <marker
@@ -180,7 +185,7 @@ export default function LinkGraph({ documents, currentPath, onOpen }: Props) {
             {truncate(displayName(graph.current), 7)}
           </text>
           <text x="180" y="195" textAnchor="middle" className="current-caption">
-            当前文档
+            {t('当前文档')}
           </text>
         </g>
         {points.map(({ neighbor, x, y }) => (
@@ -189,7 +194,10 @@ export default function LinkGraph({ documents, currentPath, onOpen }: Props) {
             key={neighbor.document.path}
             role="button"
             tabIndex={0}
-            aria-label={`打开 ${neighbor.document.name || fileName(neighbor.document.path)}，${direction(neighbor)}`}
+            aria-label={t('打开 {0}，{1}', undefined, [
+              neighbor.document.name || fileName(neighbor.document.path),
+              direction(neighbor),
+            ])}
             onClick={() => onOpen(neighbor.document.path)}
             onKeyDown={(event) => {
               if (event.key === 'Enter' || event.key === ' ') {
@@ -210,15 +218,17 @@ export default function LinkGraph({ documents, currentPath, onOpen }: Props) {
         ))}
       </svg>
       {!graph.neighbors.length && (
-        <p className="linkgraph-empty">还没有确定的关联文档。插入文档链接后，关系会出现在这里。</p>
+        <p className="linkgraph-empty">
+          {t('还没有确定的关联文档。插入文档链接后，关系会出现在这里。')}
+        </p>
       )}
       {!!graph.neighbors.length && (
         <>
           <p className="linkgraph-summary">
-            {graph.neighbors.length} 篇相关文档
-            {graph.neighbors.length > 20 ? ' · 图中显示前 20 篇，完整列表见下方' : ''}
+            {graph.neighbors.length} {' ' + t('篇相关文档')}
+            {graph.neighbors.length > 20 ? t(' · 图中显示前 20 篇，完整列表见下方') : ''}
           </p>
-          <ul className="linkgraph-list" aria-label="相关文档列表">
+          <ul className="linkgraph-list" aria-label={t('相关文档列表')}>
             {graph.neighbors.map((neighbor) => (
               <li key={neighbor.document.path}>
                 <button
@@ -239,19 +249,24 @@ export default function LinkGraph({ documents, currentPath, onOpen }: Props) {
       {!!(graph.broken.length || graph.ambiguous.length) && (
         <details className="linkgraph-issues" open>
           <summary>
-            本文链接：{graph.broken.length} 处未解析 · {graph.ambiguous.length} 处同名待选择
+            {t('本文链接：')}
+            {graph.broken.length} {' ' + t('处未解析 ·') + ' '}
+            {graph.ambiguous.length} {' ' + t('处同名待选择')}
           </summary>
           {graph.broken.map((target, index) => (
             <p key={`broken-${index}`}>
               <code>{target}</code>
-              <small>当前索引中找不到目标文档</small>
+              <small>{t('当前索引中找不到目标文档')}</small>
             </p>
           ))}
           {graph.ambiguous.map(({ target, candidates }, index) => (
             <div key={`ambiguous-${index}`}>
               <p>
                 <code>{target}</code>
-                <small>有 {candidates.length} 个同名目标，尚未计入连线</small>
+                <small>
+                  {t('有') + ' '}
+                  {candidates.length} {' ' + t('个同名目标，尚未计入连线')}
+                </small>
               </p>
               {candidates.map((path) => (
                 <button key={path} onClick={() => onOpen(path)} title={path}>
@@ -264,8 +279,8 @@ export default function LinkGraph({ documents, currentPath, onOpen }: Props) {
       )}
       {!!(graph.repeatedReferences || graph.selfReferences) && (
         <p className="linkgraph-note">
-          {graph.repeatedReferences} 处重复引用已合并 · {graph.selfReferences}{' '}
-          处本文锚点或自引用未画入关系图
+          {graph.repeatedReferences} {' ' + t('处重复引用已合并 ·') + ' '}
+          {graph.selfReferences} {t('处本文锚点或自引用未画入关系图')}
         </p>
       )}
     </section>

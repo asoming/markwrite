@@ -1,3 +1,4 @@
+import { t, getLanguage } from '../lib/i18n';
 import {
   StateField,
   Facet,
@@ -25,6 +26,7 @@ const composing = StateField.define({
 });
 
 class TaskCheckbox extends WidgetType {
+  readonly language = getLanguage();
   constructor(
     readonly checked: boolean,
     readonly position: number,
@@ -32,14 +34,18 @@ class TaskCheckbox extends WidgetType {
     super();
   }
   eq(other: TaskCheckbox) {
-    return this.checked === other.checked && this.position === other.position;
+    return (
+      this.language === other.language &&
+      this.checked === other.checked &&
+      this.position === other.position
+    );
   }
   toDOM(view: EditorView) {
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.className = 'cm-task-checkbox';
     input.checked = this.checked;
-    input.setAttribute('aria-label', this.checked ? '标记为未完成' : '标记为完成');
+    input.setAttribute('aria-label', this.checked ? t('标记为未完成') : t('标记为完成'));
     input.addEventListener('mousedown', (e) => e.preventDefault());
     input.addEventListener('change', () => {
       view.dispatch({
@@ -67,6 +73,7 @@ class Bullet extends WidgetType {
   }
 }
 class InlineMath extends WidgetType {
+  readonly language = getLanguage();
   constructor(
     readonly formula: string,
     readonly position: number,
@@ -74,13 +81,17 @@ class InlineMath extends WidgetType {
     super();
   }
   eq(other: InlineMath) {
-    return this.formula === other.formula && this.position === other.position;
+    return (
+      this.language === other.language &&
+      this.formula === other.formula &&
+      this.position === other.position
+    );
   }
   toDOM(view: EditorView) {
     const span = document.createElement('span');
     span.className = 'cm-inline-math';
-    span.title = '点击编辑公式';
-    span.setAttribute('aria-label', `公式 ${this.formula}`);
+    span.title = t('点击编辑公式');
+    span.setAttribute('aria-label', t('公式 {0}', undefined, [this.formula]));
     try {
       span.innerHTML = katex.renderToString(this.formula, {
         displayMode: false,
@@ -92,7 +103,7 @@ class InlineMath extends WidgetType {
     } catch {
       span.classList.add('math-error');
       span.textContent = this.formula;
-      span.title = '公式语法有误，点击修改';
+      span.title = t('公式语法有误，点击修改');
     }
     span.addEventListener('mousedown', (event) => {
       event.preventDefault();
@@ -106,6 +117,7 @@ class InlineMath extends WidgetType {
   }
 }
 class CustomInline extends WidgetType {
+  readonly language = getLanguage();
   constructor(
     readonly text: string,
     readonly name: string,
@@ -117,6 +129,7 @@ class CustomInline extends WidgetType {
   }
   eq(other: CustomInline) {
     return (
+      this.language === other.language &&
       this.text === other.text &&
       this.name === other.name &&
       this.color === other.color &&
@@ -128,7 +141,7 @@ class CustomInline extends WidgetType {
     const mark = document.createElement('mark');
     mark.className = 'cm-custom-syntax';
     mark.textContent = this.text;
-    mark.title = `${this.name} · 点击编辑`;
+    mark.title = t('{0} · 点击编辑', undefined, [this.name]);
     mark.style.backgroundColor = this.color;
     mark.style.color = syntaxInk(this.color);
     mark.addEventListener('mousedown', (event) => {
@@ -146,6 +159,7 @@ class CustomInline extends WidgetType {
   }
 }
 class RenderedBlock extends WidgetType {
+  readonly language = getLanguage();
   constructor(
     readonly raw: string,
     readonly path: string,
@@ -154,20 +168,25 @@ class RenderedBlock extends WidgetType {
     super();
   }
   eq(other: RenderedBlock) {
-    return this.raw === other.raw && this.path === other.path && this.position === other.position;
+    return (
+      this.language === other.language &&
+      this.raw === other.raw &&
+      this.path === other.path &&
+      this.position === other.position
+    );
   }
   toDOM(view: EditorView) {
     const element = document.createElement('div');
     element.className = 'live-block markdown-body';
     element.innerHTML = renderMarkdown(this.raw);
-    element.title = '点击编辑 Markdown 源码';
+    element.title = t('点击编辑 Markdown 源码');
     if (element.querySelector('table')) {
       const tools = document.createElement('div');
       tools.className = 'live-block-tools';
       const button = document.createElement('button');
-      button.textContent = '编辑表格';
+      button.textContent = t('编辑表格');
       button.type = 'button';
-      button.title = '在表格窗口直接编辑单元格';
+      button.title = t('在表格窗口直接编辑单元格');
       button.addEventListener('mousedown', (event) => event.preventDefault());
       button.addEventListener('click', () =>
         view.dom.dispatchEvent(
@@ -206,13 +225,13 @@ class RenderedBlock extends WidgetType {
         try {
           url = new URL(source);
         } catch {
-          image.title = '网络图片地址无效，点击正文检查链接';
+          image.title = t('网络图片地址无效，点击正文检查链接');
           continue;
         }
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'remote-image-load';
-        button.textContent = `加载网络图片（将访问 ${url.hostname}）`;
+        button.textContent = t('加载网络图片（将访问 {0}）', undefined, [url.hostname]);
         button.addEventListener('click', () => {
           image.referrerPolicy = 'no-referrer';
           image.onload = () => {
@@ -221,7 +240,7 @@ class RenderedBlock extends WidgetType {
             view.requestMeasure();
           };
           image.onerror = () => {
-            button.textContent = '图片加载失败，点击重试';
+            button.textContent = t('图片加载失败，点击重试');
             view.requestMeasure();
           };
           image.src = url.href;
@@ -237,7 +256,7 @@ class RenderedBlock extends WidgetType {
           image.onload = () => view.requestMeasure();
         })
         .catch(() => {
-          image.title = '图片不可用，点击检查路径';
+          image.title = t('图片不可用，点击检查路径');
         });
     }
     return element;

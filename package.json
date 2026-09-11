@@ -1,7 +1,7 @@
 {
   "name": "markwrite",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -28,11 +28,14 @@
     "dompurify": "^3.2.0",
     "katex": "^0.16.11",
     "lucide-react": "^0.468.0",
+    "mammoth": "^1.12.2",
     "marked": "^15.0.0",
     "mermaid": "^11.4.0",
     "pdfmake": "^0.2.20",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "turndown": "^7.2.4",
+    "turndown-plugin-gfm": "^1.0.2"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",
@@ -40,6 +43,7 @@
     "@types/pdfmake": "^0.2.12",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@types/turndown": "^5.0.6",
     "@vitejs/plugin-react": "^4.3.0",
     "jsdom": "^26.0.0",
     "prettier": "3.9.6",

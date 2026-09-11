@@ -1,4 +1,5 @@
 import type { Document, Settings } from './types';
+import { isTheme } from './themes';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 const KEY = 'markwrite.session.v1';
 let nativeSession: string | null = null;
@@ -10,6 +11,8 @@ export async function prepareSession() {
 }
 export const defaultSettings: Settings = {
   theme: 'system',
+  language: 'zh-CN',
+  defaultMode: 'read',
   fontSize: 17,
   lineHeight: 1.9,
   width: 760,
@@ -35,7 +38,15 @@ export function readSession(): {
       return null;
     return {
       ...value,
-      settings: { ...defaultSettings, ...value.settings },
+      settings: {
+        ...defaultSettings,
+        ...value.settings,
+        theme: isTheme(value.settings?.theme) ? value.settings.theme : defaultSettings.theme,
+        language: value.settings?.language === 'en' ? 'en' : 'zh-CN',
+        defaultMode: ['read', 'live', 'source'].includes(value.settings?.defaultMode)
+          ? value.settings.defaultMode
+          : defaultSettings.defaultMode,
+      },
       docs: value.docs.map((d: Document) => ({
         ...d,
         status:

@@ -1,5 +1,7 @@
+import { t, useI18n } from './lib/i18n';
 import { useEffect, useRef, useMemo } from 'react';
 import { renderMarkdown, hydrateDiagrams } from './lib/markdown';
+import type { Theme } from './lib/types';
 import { assetData } from './lib/platform';
 export default function Reader({
   content,
@@ -11,11 +13,12 @@ export default function Reader({
   content: string;
   path?: string;
   onLink: (href: string) => void;
-  theme?: string;
+  theme?: Theme;
   revision?: number;
 }) {
+  const { language } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
-  const html = useMemo(() => renderMarkdown(content), [content, revision]);
+  const html = useMemo(() => renderMarkdown(content), [content, revision, language]);
   useEffect(() => {
     const root = ref.current;
     if (!root) return;
@@ -29,12 +32,12 @@ export default function Reader({
         try {
           hostname = new URL(source).hostname;
         } catch {
-          img.title = '图片地址无效，请编辑链接地址。';
+          img.title = t('图片地址无效，请编辑链接地址。');
           continue;
         }
         const button = document.createElement('button');
         button.className = 'remote-image-load';
-        button.textContent = `加载网络图片（将访问 ${hostname}）`;
+        button.textContent = t('加载网络图片（将访问 {0}）', undefined, [hostname]);
         button.onclick = () => {
           img.referrerPolicy = 'no-referrer';
           img.src = source;
@@ -43,14 +46,14 @@ export default function Reader({
             button.remove();
           };
           img.onerror = () => {
-            button.textContent = '图片加载失败，点击重试';
+            button.textContent = t('图片加载失败，点击重试');
           };
         };
         img.after(button);
         continue;
       }
       if (!path) {
-        img.title = '图片需要打开原文件夹后才能显示';
+        img.title = t('图片需要打开原文件夹后才能显示');
         continue;
       }
       void assetData(path, img.dataset.asset!)
@@ -61,13 +64,13 @@ export default function Reader({
           }
         })
         .catch(() => {
-          img.title = '图片不可用或未授权加载';
+          img.title = t('图片不可用或未授权加载');
         });
     }
     return () => {
       cancelled = true;
     };
-  }, [html, path, theme]);
+  }, [html, path, theme, language]);
   return (
     <div className="reader-scroll">
       <article

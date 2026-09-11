@@ -11,7 +11,8 @@
         "installMode": "currentUser",
         "languages": ["SimpChinese", "English"],
         "displayLanguageSelector": true,
-        "startMenuFolder": "Markwrite"
+        "startMenuFolder": "Markwrite",
+        "installerHooks": "../packaging/windows-hooks.nsh"
       }
     }
   }

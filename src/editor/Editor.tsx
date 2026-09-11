@@ -1,3 +1,4 @@
+import { t, useI18n } from '../lib/i18n';
 import { useEffect, useRef } from 'react';
 import { Compartment, EditorState, Transaction } from '@codemirror/state';
 import {
@@ -8,7 +9,14 @@ import {
   placeholder,
 } from '@codemirror/view';
 import { history, historyKeymap, defaultKeymap, indentWithTab } from '@codemirror/commands';
-import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+import {
+  search,
+  searchKeymap,
+  highlightSelectionMatches,
+  searchPanelOpen,
+  closeSearchPanel,
+  openSearchPanel,
+} from '@codemirror/search';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language';
@@ -35,6 +43,36 @@ export function releaseEditor(id: string) {
 const modeCompartment = new Compartment();
 const pathCompartment = new Compartment();
 const parsingCompartment = new Compartment();
+const interfaceCompartment = new Compartment();
+function interfaceExtensions(language: 'zh-CN' | 'en') {
+  return [
+    placeholder(t('从一个标题，或一个想法开始…')),
+    EditorView.contentAttributes.of({ 'aria-label': t('Markdown 编辑器'), spellcheck: 'false' }),
+    EditorState.phrases.of(
+      language === 'en'
+        ? {}
+        : {
+            Find: '查找',
+            Replace: '替换',
+            next: '下一处',
+            previous: '上一处',
+            all: '全选匹配',
+            'match case': '区分大小写',
+            regexp: '正则表达式',
+            'by word': '完整单词',
+            replace: '替换',
+            'replace all': '全部替换',
+            close: '关闭',
+            'Go to line': '跳转到行',
+            go: '跳转',
+            'current match': '当前匹配',
+            'on line': '所在行',
+            'replaced $ matches': '已替换 $ 处匹配',
+            'replaced match on line $': '已替换第 $ 行匹配',
+          },
+    ),
+  ];
+}
 const syntaxExtensions = () => [
   syntaxHighlighting(defaultHighlightStyle),
   markdown({ base: markdownLanguage, codeLanguages: languages }),
@@ -67,6 +105,7 @@ export default function Editor({
   onEditTable?: (range: { from: number; to: number }) => void;
   onLink?: (href: string) => void;
 }) {
+  const { language } = useI18n();
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const callbacks = useRef({
@@ -128,11 +167,10 @@ export default function Editor({
             ...searchKeymap,
             indentWithTab,
           ]),
-          placeholder('从一个标题，或一个想法开始…'),
+          interfaceCompartment.of(interfaceExtensions(language)),
           modeCompartment.of(liveMode.of(mode === 'live')),
           pathCompartment.of(documentPath.of(path || '')),
           livePreview,
-          EditorView.contentAttributes.of({ 'aria-label': 'Markdown 编辑器', spellcheck: 'false' }),
           EditorView.domEventHandlers({
             keydown: (event) => {
               plainPaste =
@@ -238,6 +276,26 @@ export default function Editor({
       view.current = null;
     };
   }, [id]); // One document session owns its state and undo stack, independently of React renders.
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor) return;
+    const panelOpen = searchPanelOpen(editor.state);
+    const focused = document.activeElement;
+    // The built-in search panel reads its phrases only when mounted. Its query state
+    // remains in the editor while the panel is reopened with the new language.
+    if (panelOpen) closeSearchPanel(editor);
+    editor.dispatch({
+      effects: [
+        interfaceCompartment.reconfigure(interfaceExtensions(language)),
+        syntaxChanged.of(null),
+      ],
+    });
+    if (panelOpen) {
+      openSearchPanel(editor);
+      if (focused instanceof HTMLElement && focused.isConnected && !editor.dom.contains(focused))
+        focused.focus();
+    }
+  }, [language, id]);
   useEffect(() => {
     const editor = view.current;
     if (!editor) return;

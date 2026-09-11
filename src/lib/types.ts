@@ -1,4 +1,7 @@
 export type Mode = 'live' | 'source' | 'read';
+export type Language = 'zh-CN' | 'en';
+export type Theme =
+  'light' | 'dark' | 'system' | 'github' | 'newsprint' | 'night' | 'pixyll' | 'whitey';
 export type FileEntry = { name: string; path: string; directory: boolean; children?: FileEntry[] };
 export type DiskFile = {
   path: string;
@@ -21,7 +24,9 @@ export type Document = {
   error?: string;
 };
 export type Settings = {
-  theme: 'light' | 'dark' | 'system';
+  theme: Theme;
+  language: Language;
+  defaultMode: Mode;
   fontSize: number;
   lineHeight: number;
   width: number;

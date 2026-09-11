@@ -9,3 +9,4 @@ output/playwright/
 *.tsbuildinfo
 src-tauri/gen/
 bin/
+docs/

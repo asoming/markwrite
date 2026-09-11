@@ -4,6 +4,7 @@ import katex from 'katex';
 import type { Heading } from './types';
 import type { ExtensionPack } from './extensions';
 import { setInlineSyntax, inlineSyntaxRules, inlineMatch, syntaxInk } from './syntax';
+import { t } from './i18n';
 
 export function configureInlineSyntax(packs: readonly ExtensionPack[]) {
   const count = setInlineSyntax(packs);
@@ -104,7 +105,7 @@ function math(text: string, displayMode: boolean) {
     });
     return `<span class="math-rendered" data-tex="${encodeURIComponent(text)}" data-display="${displayMode}">${html}</span>`;
   } catch {
-    return `<code class="math-error" title="公式语法有误">${escapeHtml(text)}</code>`;
+    return `<code class="math-error" title="${t('公式语法有误', 'Invalid formula syntax')}">${escapeHtml(text)}</code>`;
   }
 }
 md.use({
@@ -124,7 +125,7 @@ md.use({
       });
     },
     checkbox(token) {
-      return `<span class="task-check ${token.checked ? 'checked' : ''}" aria-label="${token.checked ? '已完成' : '未完成'}">${token.checked ? '✓' : ''}</span>`;
+      return `<span class="task-check ${token.checked ? 'checked' : ''}" aria-label="${token.checked ? t('已完成', 'Complete') : t('未完成', 'Incomplete')}">${token.checked ? '✓' : ''}</span>`;
     },
     code(token) {
       if (token.lang === 'mermaid')
@@ -154,7 +155,7 @@ export function renderMarkdown(source: string): string {
     if (!/^data:image\/(png|jpe?g|gif|webp|avif|bmp);base64,/i.test(src)) {
       img.removeAttribute('src');
       img.dataset.asset = src;
-      img.alt = img.alt || '图片';
+      img.alt = img.alt || t('图片');
       img.classList.add('pending-image');
     }
   });
@@ -199,7 +200,7 @@ export async function hydrateDiagrams(root: HTMLElement) {
     } catch {
       if (root.contains(node)) {
         node.classList.add('diagram-error');
-        node.title = '图表语法有误，请检查源码';
+        node.title = t('图表语法有误，请检查源码', 'Invalid diagram syntax. Check the source.');
       }
     }
   }

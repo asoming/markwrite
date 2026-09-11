@@ -1,3 +1,4 @@
+import { t, useI18n } from '../lib/i18n';
 import { useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { desktop } from '../lib/platform';
@@ -9,10 +10,11 @@ export default function AiPanel({
   selection: string;
   onApply: (replacement: string) => void;
 }) {
+  useI18n();
   const [endpoint, setEndpoint] = useState(''),
     [model, setModel] = useState(''),
     [apiKey, setApiKey] = useState(''),
-    [instruction, setInstruction] = useState('润色这段文字，保留原意与 Markdown 格式。');
+    [instruction, setInstruction] = useState(t('润色这段文字，保留原意与 Markdown 格式。'));
   const [result, setResult] = useState(''),
     [loading, setLoading] = useState(false),
     [error, setError] = useState('');
@@ -35,27 +37,32 @@ export default function AiPanel({
   return (
     <div className="ai-panel">
       <p className="panel-note">
-        只发送下面选中的文字和操作说明。点击“发送并预览”才会联系你配置的服务；密钥仅保留到此窗口关闭。支持兼容
-        Chat Completions 的远程服务和本机模型。
+        {t(
+          '只发送下面选中的文字和操作说明。点击“发送并预览”才会联系你配置的服务；密钥仅保留到此窗口关闭。支持兼容 Chat Completions 的远程服务和本机模型。',
+        )}
       </p>
       <label>
-        API 完整地址
+        {t('API 完整地址')}
         <input
-          aria-label="AI API 地址"
-          placeholder="https://服务地址/v1/chat/completions"
+          aria-label={t('AI API 地址')}
+          placeholder={t('https://服务地址/v1/chat/completions')}
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}
         />
       </label>
       <div className="ai-credentials">
         <label>
-          模型
-          <input aria-label="AI 模型" value={model} onChange={(e) => setModel(e.target.value)} />
+          {t('模型')}
+          <input
+            aria-label={t('AI 模型')}
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+          />
         </label>
         <label>
-          API 密钥（本机服务可留空）
+          {t('API 密钥（本机服务可留空）')}
           <input
-            aria-label="AI API 密钥"
+            aria-label={t('AI API 密钥')}
             type="password"
             autoComplete="off"
             value={apiKey}
@@ -64,31 +71,36 @@ export default function AiPanel({
         </label>
       </div>
       <label>
-        操作说明
+        {t('操作说明')}
         <textarea
-          aria-label="AI 操作说明"
+          aria-label={t('AI 操作说明')}
           rows={2}
           value={instruction}
           onChange={(e) => setInstruction(e.target.value)}
         />
       </label>
       <details open>
-        <summary>将发送的选区 · {selection.length} 字符</summary>
-        <pre className="ai-selection">{selection || '请关闭此窗口，在正文中选择文字后重试。'}</pre>
+        <summary>
+          {t('将发送的选区 ·') + ' '}
+          {selection.length} {' ' + t('字符')}
+        </summary>
+        <pre className="ai-selection">
+          {selection || t('请关闭此窗口，在正文中选择文字后重试。')}
+        </pre>
       </details>
       {error && (
         <p className="panel-error" role="alert">
           {error}
         </p>
       )}
-      {!desktop && <p>请在桌面版使用模型连接。</p>}
+      {!desktop && <p>{t('请在桌面版使用模型连接。')}</p>}
       <div className="panel-actions">
         <button
           className="primary"
           disabled={!desktop || !selection || !endpoint || !model || loading}
           onClick={() => void submit()}
         >
-          {loading ? '正在生成…' : '发送并预览修改'}
+          {loading ? t('正在生成…') : t('发送并预览修改')}
         </button>
         {loading && (
           <button
@@ -97,18 +109,18 @@ export default function AiPanel({
               setLoading(false);
             }}
           >
-            停止等待
+            {t('停止等待')}
           </button>
         )}
       </div>
       {result && (
         <>
-          <h4>修改预览</h4>
+          <h4>{t('修改预览')}</h4>
           <DiffView before={selection} after={result} />
           <div className="panel-actions">
-            <button onClick={() => setResult('')}>舍弃</button>
+            <button onClick={() => setResult('')}>{t('舍弃')}</button>
             <button className="primary" onClick={() => onApply(result)}>
-              接受修改（可撤销）
+              {t('接受修改（可撤销）')}
             </button>
           </div>
         </>

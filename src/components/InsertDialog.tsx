@@ -1,3 +1,4 @@
+import { t, useI18n } from '../lib/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { X, Plus, Minus } from 'lucide-react';
 import {
@@ -35,6 +36,7 @@ export default function InsertDialog({
   onChooseImage?: () => void;
   documents?: { name: string; path: string }[];
 }) {
+  useI18n();
   const [label, setLabel] = useState(initialText);
   const [address, setAddress] = useState('');
   const [text, setText] = useState(
@@ -89,20 +91,20 @@ export default function InsertDialog({
     if (kind === 'link' || kind === 'image') {
       const url = address.trim();
       if (!url) {
-        setError('请填写地址或相对路径。');
+        setError(t('请填写地址或相对路径。'));
         return;
       }
       if (/[<>\r\n]/.test(url) || /^\s*(?:javascript|vbscript|data):/i.test(url)) {
-        setError('请使用网页地址或本地相对路径。');
+        setError(t('请使用网页地址或本地相对路径。'));
         return;
       }
       onInsert(
-        `${kind === 'image' ? '!' : ''}[${escapeLabel(label || (kind === 'image' ? '图片' : url))}](<${url}>)`,
+        `${kind === 'image' ? '!' : ''}[${escapeLabel(label || (kind === 'image' ? t('图片') : url))}](<${url}>)`,
       );
     } else if (kind === 'table') onInsert(tableMarkdown(table));
     else if (kind === 'math') {
       if (!text.trim()) {
-        setError('请选择或填写一个公式。');
+        setError(t('请选择或填写一个公式。'));
         return;
       }
       onInsert(
@@ -118,7 +120,7 @@ export default function InsertDialog({
           .map((s) => s.trim())
           .filter(Boolean);
         if (!steps.length) {
-          setError('请填写至少一个步骤。');
+          setError(t('请填写至少一个步骤。'));
           return;
         }
         code =
@@ -192,14 +194,19 @@ export default function InsertDialog({
       >
         <header>
           <div>
-            <h2 id="insert-dialog-title">{names[kind]}</h2>
+            <h2 id="insert-dialog-title">{t(names[kind])}</h2>
             <p>
               {kind === 'table'
-                ? '直接填写单元格，支持从 Excel / 表格粘贴。'
-                : '填写内容即可插入，也可以随时切换到源码调整。'}
+                ? t('直接填写单元格，支持从 Excel / 表格粘贴。')
+                : t('填写内容即可插入，也可以随时切换到源码调整。')}
             </p>
           </div>
-          <button type="button" className="icon-button" aria-label="关闭插入窗口" onClick={onClose}>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={t('关闭插入窗口')}
+            onClick={onClose}
+          >
             <X size={18} />
           </button>
         </header>
@@ -207,12 +214,12 @@ export default function InsertDialog({
           <>
             {kind === 'image' && onChooseImage && (
               <button type="button" className="insert-file-button" onClick={onChooseImage}>
-                选择本地图片…
+                {t('选择本地图片…')}
               </button>
             )}
             {kind === 'link' && documents.length > 0 && (
               <label>
-                链接到文档
+                {t('链接到文档')}
                 <select
                   value=""
                   onChange={(event) => {
@@ -223,7 +230,7 @@ export default function InsertDialog({
                     }
                   }}
                 >
-                  <option value="">选择已打开的文档</option>
+                  <option value="">{t('选择已打开的文档')}</option>
                   {documents.map((doc) => (
                     <option key={doc.path} value={doc.path}>
                       {doc.name}
@@ -233,26 +240,26 @@ export default function InsertDialog({
               </label>
             )}
             <label>
-              {kind === 'link' ? '显示文字' : '图片说明'}
+              {kind === 'link' ? t('显示文字') : t('图片说明')}
               <input
                 value={label}
                 onChange={(event) => setLabel(event.target.value)}
-                placeholder={kind === 'link' ? '例如：项目文档' : '例如：界面截图'}
+                placeholder={kind === 'link' ? t('例如：项目文档') : t('例如：界面截图')}
               />
             </label>
             <label>
-              {kind === 'link' ? '链接地址' : '图片地址或相对路径'}
+              {kind === 'link' ? t('链接地址') : t('图片地址或相对路径')}
               <input
                 value={address}
                 onChange={(event) => setAddress(event.target.value)}
                 placeholder={
-                  kind === 'link' ? 'https://example.com 或 ./说明.md' : 'assets/screenshot.png'
+                  kind === 'link' ? t('https://example.com 或 ./说明.md') : 'assets/screenshot.png'
                 }
               />
             </label>
             {kind === 'image' && (
               <p className="insert-help">
-                本地图片也可以直接拖进正文，或复制图片后粘贴。网络图片需要在正文中主动加载。
+                {t('本地图片也可以直接拖进正文，或复制图片后粘贴。网络图片需要在正文中主动加载。')}
               </p>
             )}
           </>
@@ -261,27 +268,34 @@ export default function InsertDialog({
           <>
             <div className="table-grid-tools">
               <button type="button" onClick={() => resize('row', 1)}>
-                <Plus size={14} />行
+                <Plus size={14} />
+                {t('行')}
               </button>
               <button
                 type="button"
                 disabled={active.row === 0 || table.rows.length <= 2}
                 onClick={() => resize('row', -1)}
               >
-                <Minus size={14} />行
+                <Minus size={14} />
+                {t('行')}
               </button>
               <button type="button" onClick={() => resize('column', 1)}>
-                <Plus size={14} />列
+                <Plus size={14} />
+                {t('列')}
               </button>
               <button
                 type="button"
                 disabled={table.alignments.length <= 1}
                 onClick={() => resize('column', -1)}
               >
-                <Minus size={14} />列
+                <Minus size={14} />
+                {t('列')}
               </button>
               <span>
-                {table.rows.length - 1} 行 × {table.alignments.length} 列
+                {t('{0} 行 × {1} 列', '{0} rows × {1} columns', [
+                  table.rows.length - 1,
+                  table.alignments.length,
+                ])}
               </span>
             </div>
             <div className="table-grid-scroll">
@@ -291,9 +305,9 @@ export default function InsertDialog({
                     {table.alignments.map((alignment, c) => (
                       <th key={c}>
                         <label>
-                          第 {c + 1} 列对齐
+                          {t('第 {0} 列对齐', undefined, [c + 1])}
                           <select
-                            aria-label={`第 ${c + 1} 列对齐`}
+                            aria-label={t('第 {0} 列对齐', undefined, [c + 1])}
                             value={alignment}
                             onChange={(event) =>
                               setTable((old) => ({
@@ -304,10 +318,10 @@ export default function InsertDialog({
                               }))
                             }
                           >
-                            <option value="none">默认</option>
-                            <option value="left">左对齐</option>
-                            <option value="center">居中</option>
-                            <option value="right">右对齐</option>
+                            <option value="none">{t('默认')}</option>
+                            <option value="left">{t('左对齐')}</option>
+                            <option value="center">{t('居中')}</option>
+                            <option value="right">{t('右对齐')}</option>
                           </select>
                         </label>
                       </th>
@@ -320,9 +334,12 @@ export default function InsertDialog({
                       {row.map((cell, c) => (
                         <td key={c}>
                           <input
-                            aria-label={`${r === 0 ? '表头' : `第 ${r} 行`}第 ${c + 1} 列`}
+                            aria-label={t('{0}第 {1} 列', undefined, [
+                              r === 0 ? t('表头') : t('第 {0} 行', undefined, [r]),
+                              c + 1,
+                            ])}
                             value={cell}
-                            placeholder={r === 0 ? '标题' : '内容'}
+                            placeholder={r === 0 ? t('标题') : t('内容')}
                             onFocus={() => setActive({ row: r, column: c })}
                             onChange={(event) =>
                               setTable((old) => ({
@@ -350,15 +367,17 @@ export default function InsertDialog({
               </table>
             </div>
             <p className="insert-help">
-              第一行是表头。增删操作作用于当前选中的行或列；保存后可从「插入 → 表格」继续修改。
+              {t(
+                '第一行是表头。增删操作作用于当前选中的行或列；保存后可从「插入 → 表格」继续修改。',
+              )}
             </p>
           </>
         )}
         {kind === 'code' && (
           <label>
-            代码语言
+            {t('代码语言')}
             <select value={language} onChange={(event) => setLanguage(event.target.value)}>
-              <option value="">纯文本</option>
+              <option value="">{t('纯文本')}</option>
               {[
                 'javascript',
                 'typescript',
@@ -381,20 +400,22 @@ export default function InsertDialog({
         {kind === 'math' && (
           <>
             <label>
-              常用公式
+              {t('常用公式')}
               <select
                 onChange={(event) => {
                   if (event.target.value) setText(event.target.value);
                 }}
                 defaultValue=""
               >
-                <option value="">选择公式模板</option>
-                <option value="E = mc^2">质能方程</option>
-                <option value="a^2 + b^2 = c^2">勾股定理</option>
-                <option value="x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}">一元二次方程求根公式</option>
-                <option value="\frac{a}{b}">分数</option>
-                <option value="\sum_{i=1}^{n} i">求和</option>
-                <option value="\int_a^b f(x)\,dx">积分</option>
+                <option value="">{t('选择公式模板')}</option>
+                <option value="E = mc^2">{t('质能方程')}</option>
+                <option value="a^2 + b^2 = c^2">{t('勾股定理')}</option>
+                <option value="x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}">
+                  {t('一元二次方程求根公式')}
+                </option>
+                <option value="\frac{a}{b}">{t('分数')}</option>
+                <option value="\sum_{i=1}^{n} i">{t('求和')}</option>
+                <option value="\int_a^b f(x)\,dx">{t('积分')}</option>
               </select>
             </label>
             <label className="insert-toggle">
@@ -403,7 +424,7 @@ export default function InsertDialog({
                 checked={inline}
                 onChange={(event) => setInline(event.target.checked)}
               />
-              插在文字行内
+              {t('插在文字行内')}
             </label>
           </>
         )}
@@ -419,18 +440,18 @@ export default function InsertDialog({
                 );
               }}
             />
-            使用 Mermaid 源码
+            {t('使用 Mermaid 源码')}
           </label>
         )}
         {['code', 'math', 'mermaid'].includes(kind) && (
           <label>
             {kind === 'code'
-              ? '代码内容'
+              ? t('代码内容')
               : kind === 'math'
-                ? '公式（支持 LaTeX）'
+                ? t('公式（支持 LaTeX）')
                 : advanced
-                  ? 'Mermaid 图表内容'
-                  : '流程步骤，每行一个'}
+                  ? t('Mermaid 图表内容')
+                  : t('流程步骤，每行一个')}
             <textarea
               value={text}
               onChange={(event) => setText(event.target.value)}
@@ -446,10 +467,10 @@ export default function InsertDialog({
         )}
         <footer>
           <button type="button" onClick={onClose}>
-            取消
+            {t('取消')}
           </button>
           <button type="submit" className="primary">
-            {initialTable ? '更新表格' : '插入'}
+            {initialTable ? t('更新表格') : t('插入')}
           </button>
         </footer>
       </form>

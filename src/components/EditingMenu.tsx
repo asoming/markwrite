@@ -1,12 +1,14 @@
+import { t, useI18n } from '../lib/i18n';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { FormatAction } from '../editor/formatting';
-import type { Mode } from '../lib/types';
+import type { Mode, Theme } from '../lib/types';
 import './editing.css';
 
 export type EditingAction =
   | `format:${FormatAction}`
   | 'app:new'
   | 'app:open'
+  | 'app:import'
   | 'app:folder'
   | 'app:save'
   | 'app:saveAs'
@@ -48,7 +50,13 @@ export type EditingAction =
   | 'view:git'
   | 'theme:light'
   | 'theme:dark'
-  | 'theme:system';
+  | 'theme:system'
+  | 'theme:github'
+  | 'theme:newsprint'
+  | 'theme:night'
+  | 'theme:pixyll'
+  | 'theme:whitey';
+// Theme presets preserve their product names in both interface languages.
 type Item = { label: string; action: EditingAction; shortcut?: string } | 'separator';
 const menus: { label: string; items: Item[] }[] = [
   {
@@ -56,6 +64,7 @@ const menus: { label: string; items: Item[] }[] = [
     items: [
       { label: '新建文档', action: 'app:new', shortcut: 'Ctrl N' },
       { label: '打开文档…', action: 'app:open', shortcut: 'Ctrl O' },
+      { label: '导入文件…', action: 'app:import' },
       { label: '打开文件夹…', action: 'app:folder' },
       { label: '快速打开…', action: 'app:quickOpen', shortcut: 'Ctrl P' },
       'separator',
@@ -151,6 +160,12 @@ const menus: { label: string; items: Item[] }[] = [
       { label: '深色', action: 'theme:dark' },
       { label: '跟随系统', action: 'theme:system' },
       'separator',
+      { label: 'Github', action: 'theme:github' },
+      { label: 'Newsprint', action: 'theme:newsprint' },
+      { label: 'Night', action: 'theme:night' },
+      { label: 'Pixyll', action: 'theme:pixyll' },
+      { label: 'Whitey', action: 'theme:whitey' },
+      'separator',
       { label: '排版与主题设置…', action: 'app:settings', shortcut: 'Ctrl ,' },
     ],
   },
@@ -180,9 +195,10 @@ export default function EditingMenu({
 }: {
   onAction: (action: EditingAction) => void;
   mode: Mode;
-  theme: 'light' | 'dark' | 'system';
+  theme: Theme;
   focus: boolean;
 }) {
+  useI18n();
   const [open, setOpen] = useState<number | null>(null);
   const root = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -244,8 +260,8 @@ export default function EditingMenu({
     onAction(action);
   }
   return (
-    <nav className="editing-menubar" ref={root} aria-label="文档菜单">
-      <div role="menubar" aria-label="菜单栏">
+    <nav className="editing-menubar" ref={root} aria-label={t('文档菜单')}>
+      <div role="menubar" aria-label={t('菜单栏')}>
         {menus.map((menu, index) => (
           <div
             key={menu.label}
@@ -274,10 +290,10 @@ export default function EditingMenu({
                 }
               }}
             >
-              {menu.label}
+              {t(menu.label)}
             </button>
             {open === index && (
-              <div role="menu" aria-label={menu.label} className="editing-menu-popup">
+              <div role="menu" aria-label={t(menu.label)} className="editing-menu-popup">
                 {menu.items.map((item, n) =>
                   item === 'separator' ? (
                     <div role="separator" key={n} />
@@ -307,7 +323,7 @@ export default function EditingMenu({
                           ? '✓'
                           : ''}
                       </span>
-                      <span>{item.label}</span>
+                      <span>{t(item.label)}</span>
                       {item.shortcut && <kbd>{item.shortcut}</kbd>}
                     </button>
                   ),
@@ -317,7 +333,7 @@ export default function EditingMenu({
           </div>
         ))}
       </div>
-      <span className="editing-menu-hint">选中文字，使用菜单设置格式</span>
+      <span className="editing-menu-hint">{t('选中文字，使用菜单设置格式')}</span>
     </nav>
   );
 }

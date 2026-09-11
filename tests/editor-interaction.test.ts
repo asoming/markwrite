@@ -5,12 +5,16 @@ import type { EditorView } from '@codemirror/view';
 import Editor, { releaseEditor } from '../src/editor/Editor';
 import { configureInlineSyntax } from '../src/lib/markdown';
 import { starterExtension } from '../src/lib/extensions';
+import { setLanguage } from '../src/lib/i18n';
+import { undo } from '@codemirror/commands';
+import { getSearchQuery, openSearchPanel, SearchQuery, setSearchQuery } from '@codemirror/search';
 
 let host: HTMLDivElement;
 let root: Root;
 let view: EditorView | null = null;
 let id = '';
 beforeEach(() => {
+  setLanguage('zh-CN');
   (
     globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -32,6 +36,7 @@ afterEach(() => {
   act(() => root.unmount());
   releaseEditor(id);
   host.remove();
+  setLanguage('zh-CN');
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -109,4 +114,46 @@ it('reconfigures declarative inline syntax without replacing document text or un
   });
   expect(host.querySelector('.cm-custom-syntax')).toBeNull();
   expect(view!.state.doc.toString()).toBe(source);
+});
+it('switches editor interface language while retaining source, selection, and undo history', () => {
+  const source = '文件\n\n| 标题 |\n| --- |\n| 保存 |';
+  mount(source);
+  act(() => view!.dispatch({ changes: { from: 0, insert: '编辑' }, selection: { anchor: 1 } }));
+  const editor = view!;
+  expect(host.querySelector('.live-block-tools button')?.textContent).toContain('编辑表格');
+  act(() => setLanguage('en'));
+  expect(view).toBe(editor);
+  expect(editor.contentDOM.getAttribute('aria-label')).toBe('Markdown editor');
+  expect(host.querySelector('.live-block-tools button')?.textContent).toBe('Edit table');
+  expect(editor.state.doc.toString()).toBe('编辑' + source);
+  expect(editor.state.selection.main.anchor).toBe(1);
+  act(() => {
+    undo(editor);
+  });
+  expect(editor.state.doc.toString()).toBe(source);
+  act(() => setLanguage('zh-CN'));
+  expect(editor.contentDOM.getAttribute('aria-label')).toBe('Markdown 编辑器');
+  expect(editor.state.doc.toString()).toBe(source);
+});
+it('refreshes an open search panel without losing its query or replacement options', () => {
+  mount('文件\n\n保存');
+  act(() => {
+    view!.dispatch({
+      effects: setSearchQuery.of(
+        new SearchQuery({ search: '文件', replace: '保存', caseSensitive: true }),
+      ),
+    });
+    openSearchPanel(view!);
+  });
+  expect(host.querySelector('input[name="search"]')?.getAttribute('placeholder')).toBe('查找');
+  act(() => setLanguage('en'));
+  expect(host.querySelector('input[name="search"]')?.getAttribute('placeholder')).toBe('Find');
+  expect(getSearchQuery(view!.state)).toMatchObject({
+    search: '文件',
+    replace: '保存',
+    caseSensitive: true,
+  });
+  expect(view!.state.doc.toString()).toBe('文件\n\n保存');
+  act(() => setLanguage('zh-CN'));
+  expect(host.querySelector('input[name="search"]')?.getAttribute('placeholder')).toBe('查找');
 });

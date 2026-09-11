@@ -1,3 +1,4 @@
+import { t, useI18n } from '../lib/i18n';
 import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { desktop, openExternal } from '../lib/platform';
@@ -12,6 +13,7 @@ export default function TransferPanel({
   name: string;
   onInsert: (url: string) => void;
 }) {
+  useI18n();
   const [endpoint, setEndpoint] = useState(''),
     [apiKey, setApiKey] = useState(''),
     [responsePath, setResponsePath] = useState('url'),
@@ -49,25 +51,25 @@ export default function TransferPanel({
   return (
     <div className="ai-panel">
       <p className="panel-note">
-        这是通用 HTTP 服务连接。
+        {t('这是通用 HTTP 服务连接。')}
         {kind === 'image'
-          ? '将选中的图片上传到你指定的服务，得到图片链接后再插入。'
-          : '将当前文档的 HTML（包括正文与嵌入的图片）发送到你指定的发布服务。'}
-        点击下面的发送按钮前不会联网。密钥仅保留到窗口关闭。
+          ? t('将选中的图片上传到你指定的服务，得到图片链接后再插入。')
+          : t('将当前文档的 HTML（包括正文与嵌入的图片）发送到你指定的发布服务。')}
+        {t('点击下面的发送按钮前不会联网。密钥仅保留到窗口关闭。')}
       </p>
       <label>
-        服务地址
+        {t('服务地址')}
         <input
-          aria-label="传输服务地址"
-          placeholder="https://你的服务/api/upload"
+          aria-label={t('传输服务地址')}
+          placeholder={t('https://你的服务/api/upload')}
           value={endpoint}
           onChange={(e) => setEndpoint(e.target.value)}
         />
       </label>
       <label>
-        Bearer 密钥（可选）
+        {t('Bearer 密钥（可选）')}
         <input
-          aria-label="传输服务密钥"
+          aria-label={t('传输服务密钥')}
           type="password"
           autoComplete="off"
           value={apiKey}
@@ -76,9 +78,9 @@ export default function TransferPanel({
       </label>
       {kind === 'image' ? (
         <label>
-          图片
+          {t('图片')}
           <input
-            aria-label="选择上传图片"
+            aria-label={t('选择上传图片')}
             type="file"
             accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
             onChange={(e) => {
@@ -95,32 +97,33 @@ export default function TransferPanel({
       ) : (
         <details>
           <summary>
-            将发送：{name} · {Math.ceil((html?.length || 0) / 1024)} KB HTML
+            {t('将发送：')}
+            {name} · {Math.ceil((html?.length || 0) / 1024)} KB HTML
           </summary>
-          <p>内容来自当前编辑缓冲区；本地资源已嵌入，源文件不会被覆盖。</p>
+          <p>{t('内容来自当前编辑缓冲区；本地资源已嵌入，源文件不会被覆盖。')}</p>
         </details>
       )}
       <details>
-        <summary>接口格式</summary>
+        <summary>{t('接口格式')}</summary>
         <p className="panel-note">
           {kind === 'image'
-            ? '使用 multipart/form-data POST 上传文件。'
-            : '使用 Content-Type: text/html 的 POST 发送文档。'}
-          服务须返回包含链接的 JSON，或使用 Location 响应头。默认读取 JSON 的 url 字段。
+            ? t('使用 multipart/form-data POST 上传文件。')
+            : t('使用 Content-Type: text/html 的 POST 发送文档。')}
+          {t('服务须返回包含链接的 JSON，或使用 Location 响应头。默认读取 JSON 的 url 字段。')}
         </p>
         <label>
-          链接字段路径
+          {t('链接字段路径')}
           <input
-            aria-label="响应链接字段"
+            aria-label={t('响应链接字段')}
             value={responsePath}
             onChange={(e) => setResponsePath(e.target.value)}
           />
         </label>
         {kind === 'image' && (
           <label>
-            文件字段名
+            {t('文件字段名')}
             <input
-              aria-label="上传文件字段"
+              aria-label={t('上传文件字段')}
               value={fieldName}
               onChange={(e) => setFieldName(e.target.value)}
             />
@@ -132,35 +135,35 @@ export default function TransferPanel({
           {error}
         </p>
       )}
-      {!desktop && <p>请在桌面版连接服务。</p>}
+      {!desktop && <p>{t('请在桌面版连接服务。')}</p>}
       <button
         className="primary panel-wide"
         disabled={!desktop || loading || !endpoint || (kind === 'image' && !file)}
         onClick={() => void send()}
       >
-        {loading ? '正在发送…' : kind === 'image' ? '上传所选图片' : '发布当前文档'}
+        {loading ? t('正在发送…') : kind === 'image' ? t('上传所选图片') : t('发布当前文档')}
       </button>
       {url && (
         <div>
-          <p>服务返回链接：</p>
-          <input aria-label="返回的链接" readOnly value={url} />
+          <p>{t('服务返回链接：')}</p>
+          <input aria-label={t('返回的链接')} readOnly value={url} />
           <div className="panel-actions">
             <button
               onClick={() =>
                 void navigator.clipboard
                   .writeText(url)
-                  .catch(() => setError('复制失败，请手动选择链接复制。'))
+                  .catch(() => setError(t('复制失败，请手动选择链接复制。')))
               }
             >
-              复制链接
+              {t('复制链接')}
             </button>
             {kind === 'image' ? (
               <button className="primary" onClick={() => onInsert(url)}>
-                插入到正文
+                {t('插入到正文')}
               </button>
             ) : (
               <button onClick={() => void openExternal(url).catch((e) => setError(String(e)))}>
-                打开发布页面
+                {t('打开发布页面')}
               </button>
             )}
           </div>
