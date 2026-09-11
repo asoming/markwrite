@@ -2,7 +2,7 @@
 
 一个正文优先、本地优先的 Markdown 桌面编辑器。Linux 为首要平台，采用 **Tauri 2 + React + TypeScript + Rust + CodeMirror 6**。
 
-当前版本：**0.1.0 开发预览**。已实现真实编辑与本地文件操作；尚未达到 PRD 中 v1.0 的全部验收要求。
+当前版本：**0.1.1 开发预览**。已修复 v0.1.0 关闭窗口无响应的问题。已实现真实编辑与本地文件操作；尚未达到 PRD 中 v1.0 的全部验收要求。
 
 <img src="public/assets/app-icon.png" width="100" alt="墨页应用图标" />
 
