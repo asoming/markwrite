@@ -5,10 +5,11 @@ import WorkspacePanel from '../src/components/WorkspacePanel';
 import type { Document } from '../src/lib/types';
 import { emptyReferences } from '../src/lib/referenceIndex';
 const invoke = vi.hoisted(() => vi.fn());
+let referenceSnapshot = emptyReferences();
 vi.mock('@tauri-apps/api/core', () => ({ invoke }));
 vi.mock('../src/lib/platform', () => ({ desktop: true }));
 vi.mock('../src/lib/useReferenceIndex', () => ({
-  useReferenceIndex: () => ({ result: emptyReferences(), pending: false, error: '' }),
+  useReferenceIndex: () => ({ result: referenceSnapshot, pending: false, error: '' }),
 }));
 let host: HTMLDivElement, root: Root;
 const current: Document = {
@@ -52,6 +53,7 @@ beforeEach(() => {
     globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
   invoke.mockReset();
+  referenceSnapshot = emptyReferences();
   props = {
     tab: 'history',
     root: '/a',
@@ -175,4 +177,91 @@ it('treats cancelling the reference preview as a cancelled rename, not a panel e
   expect(host.querySelector('[role="alert"]')).toBeNull();
   expect(host.querySelector('[role="status"]')).toBeNull();
   expect(props.onRefresh).not.toHaveBeenCalled();
+});
+
+it('reveals all outgoing links in batches and resets the limit when switching tabs', async () => {
+  referenceSnapshot.outgoing = Array.from({ length: 205 }, (_, i) => ({
+    target: `doc${i}.md`,
+    wiki: false,
+  }));
+  invoke.mockResolvedValue([]);
+  await render({ tab: 'backlinks' });
+  const rows = () =>
+    [...host.querySelectorAll('.panel-note')].filter((node) =>
+      node.textContent?.startsWith('链接 ·'),
+    );
+  const more = () =>
+    [...host.querySelectorAll('button')].find((node) =>
+      node.textContent?.startsWith('显示更多本文链接'),
+    )!;
+  expect(rows()).toHaveLength(100);
+  await click(more());
+  expect(rows()).toHaveLength(200);
+  await click(more());
+  expect(rows()).toHaveLength(205);
+  expect(more()).toBeUndefined();
+  await render({ tab: 'files' });
+  await render({ tab: 'backlinks' });
+  expect(rows()).toHaveLength(100);
+});
+
+it('pages attachments without losing earlier selections or bypassing referenced-image protection', async () => {
+  invoke.mockResolvedValue(
+    Array.from({ length: 205 }, (_, i) => ({
+      path: `/a/image${i}.png`,
+      size: 1024,
+      references: i === 204 ? ['/a/note.md'] : [],
+    })),
+  );
+  await render({ tab: 'attachments' });
+  const boxes = () => [...host.querySelectorAll<HTMLInputElement>('.panel-check input')];
+  const more = () =>
+    [...host.querySelectorAll('button')].find((node) =>
+      node.textContent?.startsWith('显示更多附件'),
+    )!;
+  expect(boxes()).toHaveLength(100);
+  await click(boxes()[0]);
+  await click(more());
+  expect(boxes()).toHaveLength(200);
+  expect(boxes()[0].checked).toBe(true);
+  await click(boxes()[199]);
+  await click(more());
+  expect(boxes()).toHaveLength(205);
+  expect(boxes()[199].checked).toBe(true);
+  expect(boxes()[204].disabled).toBe(true);
+  expect(more()).toBeUndefined();
+  await click(
+    [...host.querySelectorAll('button')].find((node) => node.textContent?.startsWith('预览清理'))!,
+  );
+  expect(
+    [...host.querySelectorAll('[role="alertdialog"] li')].map((node) => node.textContent),
+  ).toEqual(['image0.png', 'image199.png']);
+});
+
+it('pages Git entries and retains selections from multiple batches', async () => {
+  invoke.mockResolvedValue({
+    ...git('a'),
+    entries: Array.from({ length: 205 }, (_, i) => ({
+      path: `doc${i}.md`,
+      index: ' ',
+      worktree: 'M',
+    })),
+  });
+  await render({ tab: 'git' });
+  const boxes = () => [...host.querySelectorAll<HTMLInputElement>('.git-row input')];
+  const more = () =>
+    [...host.querySelectorAll('button')].find((node) =>
+      node.textContent?.startsWith('显示更多 Git 文件'),
+    )!;
+  expect(boxes()).toHaveLength(100);
+  await click(boxes()[0]);
+  await click(more());
+  expect(boxes()).toHaveLength(200);
+  expect(boxes()[0].checked).toBe(true);
+  await click(boxes()[199]);
+  await click(more());
+  expect(boxes()).toHaveLength(205);
+  expect(boxes()[199].checked).toBe(true);
+  expect(more()).toBeUndefined();
+  expect(host.querySelector('.primary.panel-wide')?.textContent).toContain('2');
 });

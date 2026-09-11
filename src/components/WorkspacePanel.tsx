@@ -360,6 +360,12 @@ export default function WorkspacePanel(p: Props) {
                 {l.wiki ? t('双链') : t('链接')} · {l.target}
               </p>
             ))}
+            {indexed.result.outgoing.length > limit && (
+              <button className="panel-wide" onClick={() => setLimit((v) => v + 100)}>
+                {t('显示更多本文链接', 'Show more outgoing links')} (
+                {indexed.result.outgoing.length - limit})
+              </button>
+            )}
           </>
         )}
         {p.tab === 'graph' && (
@@ -435,7 +441,7 @@ export default function WorkspacePanel(p: Props) {
               {t('展示工作文件夹中的图片。清理只允许选择未被引用的图片，并移到系统回收站。')}
             </p>
             {!p.root && <p>{t('请先打开工作文件夹。')}</p>}
-            {attachments.map((a) => {
+            {attachments.slice(0, limit).map((a) => {
               const referenced = isReferenced(a);
               return (
                 <label className="panel-check" key={a.path}>
@@ -455,6 +461,11 @@ export default function WorkspacePanel(p: Props) {
                 </label>
               );
             })}
+            {attachments.length > limit && (
+              <button className="panel-wide" onClick={() => setLimit((v) => v + 100)}>
+                {t('显示更多附件', 'Show more attachments')} ({attachments.length - limit})
+              </button>
+            )}
             {!!selected.length && (
               <button className="danger panel-wide" onClick={() => setConfirmTrash(true)}>
                 {t('预览清理') + ' '}
@@ -572,7 +583,7 @@ export default function WorkspacePanel(p: Props) {
                 <p className="panel-note">
                   {t('只提交明确选择的文件，不会自动推送到远程。冲突文件须编辑解决后再提交。')}
                 </p>
-                {git.entries.map((entry) => (
+                {git.entries.slice(0, limit).map((entry) => (
                   <div className="git-row" key={entry.path}>
                     <input
                       type="checkbox"
@@ -599,6 +610,11 @@ export default function WorkspacePanel(p: Props) {
                     </button>
                   </div>
                 ))}
+                {git.entries.length > limit && (
+                  <button className="panel-wide" onClick={() => setLimit((v) => v + 100)}>
+                    {t('显示更多 Git 文件', 'Show more Git files')} ({git.entries.length - limit})
+                  </button>
+                )}
                 {!git.entries.length && <p>{t('工作区没有改动。')}</p>}
                 {gitDiff && (
                   <pre className="git-diff" aria-label={t('Git 差异')}>

@@ -2374,7 +2374,7 @@ export default function App() {
             title={current.name}
             language={settings.language}
             prepareArticle={prepareExportArticle}
-            sourceKey={`${current.id}:${current.updated}`}
+              sourceKey={current.content}
             busy={exporting}
           />
           <div className="modal-actions">
