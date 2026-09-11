@@ -1,6 +1,6 @@
 # [下载 Markwrite：Linux / Windows 安装包](https://github.com/asoming/markwrite/releases)
 
-**请从发布页选择对应系统的安装包。** 本文描述 0.3.0 开发版及此前已有功能；0.3.0 当前尚未发布，安装包内容以发布页对应版本说明为准。当前代码的 Windows 构建和验收结果仍需补齐，不能用旧版本的测试结果代替。
+**当前版本：0.3.0（预览版）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。请按系统选择下载，下方介绍功能、使用方法与转换边界。
 
 # Markwrite · 墨页
 
@@ -270,7 +270,9 @@ npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
 
 `npm run dev` 可在浏览器预览，默认地址为 `http://127.0.0.1:1420`。浏览器不提供原生历史、回收站、Git、AI、服务上传或默认文件关联；文件授权和草稿容量也与桌面版不同，不能代替桌面验收。
 
-[Desktop builds 工作流](.github/workflows/desktop.yml) 在 Linux 和 Windows runner 运行前端测试、Rust 测试并打包。Windows 还包含 NSIS 安装、窗口出现、系统关闭消息和卸载检查。只有某个提交的实际运行成功，才能证明该提交通过了这些检查；工作流配置不是所有 Windows 使用场景均已验证的证明。
+[Desktop builds 工作流](.github/workflows/desktop.yml) 在 Linux 和 Windows runner 运行前端测试、Rust 测试并打包。Windows 还包含 NSIS 安装、带空格安装路径的文件关联、中文文件参数、窗口出现、系统关闭消息和卸载检查。
+
+0.3.0 功能提交 `2adeb87` 的 [Linux / Windows 构建与安装验收](https://github.com/asoming/markwrite/actions/runs/34578849358) 已全部通过。前端共 101 项测试通过，2 项可选性能诊断跳过；Linux 原生测试 31 项通过、1 项可选性能诊断跳过。本机另已验证原生窗口启动/关闭，以及中文和空格文件路径打开后正文完整保留。此后 README 的说明更新不改变应用代码。这些检查不代表所有设备与使用场景均已覆盖。
 
 可选性能诊断：
 
