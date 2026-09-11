@@ -12,8 +12,6 @@ import {
   X,
   Check,
   Code2,
-  BookOpen,
-  PenLine,
   Command,
   Focus,
   Moon,
@@ -24,7 +22,6 @@ import {
   Files,
   AlertCircle,
   RefreshCw,
-  ArrowLeft,
   Bold,
   Italic,
   Link as LinkIcon,
@@ -71,6 +68,7 @@ import AiPanel from './components/AiPanel';
 import TransferPanel from './components/TransferPanel';
 import SettingsPanel from './components/SettingsPanel';
 import FileNavigator from './components/FileNavigator';
+import FloatingViewControls from './components/FloatingViewControls';
 import ImportPanel from './components/ImportPanel';
 import { resolveTheme, themeIsDark, themeTypography, themeDefaults } from './lib/themes';
 import { defaultMarkdownStatus, requestMarkdownDefault } from './lib/nativeSettings';
@@ -1608,7 +1606,10 @@ export default function App() {
       {sidebar && !focus && (
         <aside className="sidebar">
           <div className="sidebar-header">
-            <span>Markwrite</span>
+            <span className="sidebar-brand">
+              <strong lang="zh-CN">墨页</strong>
+              <span lang="en">Markwrite</span>
+            </span>
             <IconButton
               title={t('搜索文档')}
               onClick={() => {
@@ -1801,24 +1802,6 @@ export default function App() {
               theme={settings.theme}
               focus={focus}
             />
-            <label className="compact-mode" title={t('文档模式')}>
-              {mode === 'read' ? (
-                <BookOpen size={14} />
-              ) : mode === 'source' ? (
-                <Code2 size={14} />
-              ) : (
-                <PenLine size={14} />
-              )}
-              <select
-                aria-label={t('文档模式')}
-                value={mode}
-                onChange={(event) => setMode(event.target.value as Mode)}
-              >
-                <option value="read">{t('阅读')}</option>
-                <option value="live">{t('编辑')}</option>
-                <option value="source">{t('源码')}</option>
-              </select>
-            </label>
           </header>
         )}
         {docs.length > 1 && !focus && (
@@ -1982,13 +1965,13 @@ export default function App() {
             />
           )}
         </div>
-        {focus && (
-          <button className="exit-focus" onClick={() => setFocus(false)}>
-            <ArrowLeft size={14} />
-            {t('退出专注') + ' '}
-            <kbd>Esc</kbd>
-          </button>
-        )}
+        <FloatingViewControls
+          mode={mode}
+          onMode={setMode}
+          focus={focus}
+          onFocus={() => setFocus((value) => !value)}
+          transparency={settings.floatingToolbarTransparency}
+        />
         {!focus && (
           <footer className="statusbar">
             <button
@@ -2119,23 +2102,28 @@ export default function App() {
       )}
       {dialog === 'about' && (
         <Modal
-          title={t('墨页 · Markwrite')}
-          subtitle={t('本地优先的 Markdown 写作工具')}
+          title="Markwrite"
+          subtitle="本地 Markdown 编辑与阅读工具 · Local Markdown editor and reader"
           onClose={() => setDialog(null)}
         >
-          <p>
-            {t(
-              '通过菜单设置格式、插入表格和公式，也可以直接使用 Markdown。源码、编辑与阅读共用同一份正文。',
-            )}
-          </p>
-          <p>
-            {t(
-              '本版本提供历史、反向链接、附件管理、Git、PDF 与 Word 导出。扩展使用可检查的文字片段；AI 仅在你主动选择文字并配置服务后工作。',
-            )}
-          </p>
-          <p className="panel-note">
-            {t('Linux 与 Windows 构建；输入法、显示缩放和长期写作的真机验证记录见项目文档。')}
-          </p>
+          <div className="about-introduction">
+            <p lang="zh-CN">
+              通过菜单设置格式、插入表格和公式，也可以直接使用
+              Markdown。编辑、源码与阅读共用同一份正文。文件保存在本机，支持 Linux 和 Windows。
+            </p>
+            <p lang="en">
+              Write with visual formatting, tables, and formulas, or edit Markdown directly.
+              Editing, source, and reading modes share one document. Your files stay on your device,
+              on Linux and Windows.
+            </p>
+            <p lang="zh-CN">
+              内置文件树、历史记录、反向链接、附件管理、Git，以及 HTML、PDF 和 Word 导出。
+            </p>
+            <p lang="en">
+              Includes a file tree, document history, backlinks, attachments, Git, and HTML, PDF,
+              and Word export.
+            </p>
+          </div>
           <button
             className="primary-button"
             onClick={() => void platform.openExternal('https://github.com/asoming/markwrite')}

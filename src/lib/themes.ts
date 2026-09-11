@@ -27,7 +27,7 @@ export const themeOptions: readonly ThemeOption[] = [
   {
     id: 'light',
     name: { 'zh-CN': '浅色', en: 'Light' },
-    description: { 'zh-CN': '墨页默认浅色', en: 'The default light palette' },
+    description: { 'zh-CN': 'Markwrite 默认浅色', en: 'The default light palette' },
     paper: '#fcfcfd',
     ink: '#24272e',
     accent: '#4361d9',
@@ -36,7 +36,7 @@ export const themeOptions: readonly ThemeOption[] = [
   {
     id: 'dark',
     name: { 'zh-CN': '深色', en: 'Dark' },
-    description: { 'zh-CN': '墨页默认深色', en: 'The default dark palette' },
+    description: { 'zh-CN': 'Markwrite 默认深色', en: 'The default dark palette' },
     paper: '#20232a',
     ink: '#e1e5ec',
     accent: '#93a8ff',

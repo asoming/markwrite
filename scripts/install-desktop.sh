@@ -11,7 +11,8 @@ cat > "$markwrite_entry" <<ENTRY
 Version=1.0
 Type=Application
 Name=Markwrite
-Comment=本地优先的 Markdown 编辑器
+Comment=Local Markdown editor and reader
+Comment[zh_CN]=本地 Markdown 编辑与阅读工具
 Exec="$markwrite_dir/scripts/launch.sh" %F
 Icon=$markwrite_dir/public/assets/app-icon.png
 Terminal=false

@@ -1,28 +1,65 @@
-# [下载 Markwrite：Linux / Windows 安装包](https://github.com/asoming/markwrite/releases)
+# [下载 / Download Markwrite — Linux & Windows](https://github.com/asoming/markwrite/releases)
 
-**当前版本：0.3.1（预览版）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。请按系统选择下载，下方介绍功能、使用方法与转换边界。
+**当前版本 / Current release: 0.3.2（预览版，构建验证中 / Preview, validation in progress）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
 
-# Markwrite · 墨页
+Choose the Linux `.deb`, Linux portable archive, or Windows x64 installer from the release page above. Features, installation, and conversion limits are described below.
+
+# Markwrite
 
 <img src="public/assets/app-icon.png" width="96" alt="Markwrite 应用图标" />
 
-面向 Linux 和 Windows 的本地 Markdown 编辑与阅读工具，使用 **Tauri 2、React、TypeScript、Rust 和 CodeMirror 6**。文件保持为普通 Markdown，核心编辑、阅读、本地附件和导出可以离线使用，无需注册账号。桌面和应用菜单中的名称为 **Markwrite**。
+面向 Linux 和 Windows 的本地 Markdown 编辑与阅读工具，使用 **Tauri 2、React、TypeScript、Rust 和 CodeMirror 6**。文件保持为普通 Markdown，核心编辑、阅读、本地附件和导出可以离线使用，无需注册账号。你可以直接输入文字，再通过菜单选择标题、粗体、列表、表格、图片和公式；熟悉 Markdown 时也可以随时编辑源码。
 
-你可以直接输入文字，再通过菜单选择标题、粗体、列表、表格、图片和公式；熟悉 Markdown 时也可以随时编辑源码。
+Markwrite is a local Markdown editor and reader for **Linux and Windows**, built with **Tauri 2, React, TypeScript, Rust, and CodeMirror 6**. Your documents remain ordinary Markdown files. Write and format text through menus, use live Markdown editing, or switch to source mode whenever you need precise control. Core editing, reading, local attachments, and export work offline without an account.
 
-## 从这里开始
+侧栏品牌显示为 **墨页 Markwrite**；窗口、安装程序、桌面快捷方式及其他应用名称统一使用 **Markwrite**。界面可在简体中文和 English 之间切换。
 
-1. **打开或新建。** 在「文件」选择「打开文档…」「打开文件夹…」或「新建文档」。打开文档默认进入阅读模式；要修改内容，在顶部模式下拉框选择「编辑」，或选择「视图 → 即时渲染编辑」。
+The sidebar displays the bilingual brand; the application, installer, and desktop shortcut use **Markwrite**. Both Simplified Chinese and English interfaces are available.
+
+## 从这里开始 / Quick start
+
+**中文**
+
+1. **打开或新建。** 在「文件」选择「打开文档…」「打开文件夹…」或「新建文档」。打开文档默认进入阅读模式；要修改内容，将鼠标移到正文右下角、状态栏上方，在浮动工具条选择「编辑」，或选择「视图 → 即时渲染编辑」。
 2. **排版。** 选中文字，在「格式」选择粗体、斜体或删除线；把光标放在某段，在「段落」选择标题、正文、引用或列表。
 3. **保存。** 按 `Ctrl+S`。新草稿先选择保存位置和 `.md` 文件名；已有路径的文档默认自动保存。底部状态栏会显示保存结果，失败或冲突会提供处理入口。
 4. **输出。** 在「文件」选择导出 HTML、PDF 或 Word 文档，选择模板后点击「选择位置并导出」。导出读取当前编辑内容，无需先覆盖原文件。
 5. **设置。** 按 `Ctrl+,`，或选择「主题 → 排版与主题设置…」。左侧选择分类，右侧修改选项；设置保存在本机。
 
+**English**
+
+1. **Open or create a document** from **File**. Documents open in reading mode by default. Hover above the status bar at the bottom right to reveal the mode controls, or use **View** to switch to editing or Markdown source.
+2. **Format your text** with **Format**, **Paragraph**, and **Insert**: headings, emphasis, lists, tables, links, images, math, and diagrams are available through menus.
+3. **Save with `Ctrl+S`**. Choose a location for a new draft; documents with a file path autosave by default. Check the status bar for save results and conflict prompts.
+4. **Import or export** from **File**. Import TXT, HTML, or DOCX into a new Markdown draft; export the current document to HTML, PDF, or DOCX without first overwriting the source file.
+5. **Open Settings with `Ctrl+,`**. Choose **General** to change the interface language and **Appearance** to adjust the theme and floating controls. Preferences stay on your computer.
+
+## 功能概览 / Features at a glance
+
+| 功能 / Feature                    | 说明 / What it does                                                                                                                            |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 编辑与阅读 / Editing and reading  | 同一正文可在即时渲染、源码与阅读模式切换。 / Switch between live editing, Markdown source, and reading without creating separate copies.       |
+| 文件树 / File tree                | 跟随当前 Markdown 的父目录，也可固定文件夹。 / Browse the current document’s parent folder or pin a workspace folder.                          |
+| 排版与专注 / Typography and focus | 五种文档主题、自定义字体与颜色、浮动专注按钮。 / Five document themes, custom fonts and colors, and a floating focus control.                  |
+| 保存与恢复 / Saving and recovery  | 自动保存、外部修改冲突提示、草稿恢复与本地版本历史。 / Autosave, external-change conflict handling, draft recovery, and local version history. |
+| 文档工具 / Document tools         | 大纲、全文搜索、内部链接、反向链接、标签与附件管理。 / Outline, full-text search, internal links, backlinks, tags, and attachment management.  |
+| 格式转换 / Conversion             | 导入 TXT/HTML/DOCX；导出 HTML/PDF/DOCX。 / Import TXT, HTML, and DOCX; export HTML, PDF, and DOCX.                                             |
+
+**English: conversion and service limits.** Complex HTML and Word layouts may lose formatting during import. Exported math and diagrams in DOCX are graphics, not editable Office objects; PDF uses A4 pagination and has font/character limits. Review conversion messages and the exported result.
+
+The native single-file limit is 32 MiB, and live Markdown rendering is reduced for very large documents. There is no real-time collaboration, mobile app, or cloud synchronization. The browser preview has fewer filesystem capabilities than the desktop application.
+
+Git integration requires a local Git installation. AI assistance, image upload, and HTML publishing are optional connections to services you configure; no cloud account, hosting, or API credits are included.
+
 ## 0.3 新增功能
 
-### 0.3.1 界面与文件树调整
+### 界面与文件树
 
-正文上方保留一行菜单，右侧的模式下拉框在「阅读、编辑、源码」之间切换。当前文件名显示在系统窗口标题中；同时打开多篇文档时显示标签栏，用于切换和关闭文档。只打开一篇文档时不占用额外的标签栏空间。
+正文上方保留一行菜单，模式切换和专注按钮移到**正文右下角、状态栏上方**。鼠标移入该区域时显示浮动工具条，移开后隐藏；键盘 Tab 聚焦时也会显示，触屏直接显示工具条。工具条可切换「阅读、编辑、源码」，并进入或退出专注模式；「视图」菜单仍提供这些操作。在「设置 → 外观」可调整工具条的透明度（0–80%）。
+
+The floating controls sit **at the bottom right, just above the status bar**. Hover to reveal reading, editing, source, and focus controls; they hide when the pointer leaves. Keyboard focus also reveals them, and touch devices keep the controls visible. Adjust the toolbar transparency from **0–80%** in **Settings → Appearance**. The **View** menu remains available for these actions.
+
+当前文件名显示在系统窗口标题中；同时打开多篇文档时显示标签栏，用于切换和关闭文档。只打开一篇文档时不占用额外的标签栏空间。
 
 左侧文件树默认**跟随当前 Markdown 所在的父文件夹**。打开磁盘文档或切换到另一个目录中的文档后，文件树随之更新，可直接打开相邻文件；读取失败时显示重试入口，也可手动选择文件夹。
 
@@ -40,10 +77,10 @@
 | 文件   | 文件树跟随当前文件、自动保存、Markdown 默认打开方式；查看搜索排除规则               |
 | 编辑器 | 默认打开模式、字号、行高、正文宽度、衬线/无衬线、自定义正文和代码字体、阅读排版预设 |
 | 图像   | 保存到文档旁的 `assets` 文件夹，或内嵌到 Markdown                                   |
-| 外观   | 主题、自定义背景/正文/强调色、恢复主题原色                                          |
+| 外观   | 主题、自定义背景/正文/强调色、恢复主题原色、浮动工具条透明度                        |
 | 通用   | 简体中文或 English 界面、恢复默认设置                                               |
 
-默认打开模式为**阅读**，也可改为即时渲染编辑或 Markdown 源码。当前文档仍可通过顶部模式下拉框或「视图」随时切换。切换界面语言不翻译或修改文档内容。旧设置会补齐新增字段，保留已有排版和保存偏好。
+默认打开模式为**阅读**，也可改为即时渲染编辑或 Markdown 源码。当前文档仍可通过右下角浮动工具条或「视图」随时切换。切换界面语言不翻译或修改文档内容。旧设置会补齐新增字段，保留已有排版和保存偏好。
 
 ### 主题
 
@@ -88,7 +125,7 @@ HTML 的本地相对图片在授权来源目录内尝试内嵌；无法读取的
 
 ## 编辑与阅读
 
-顶部单行菜单提供「文件、编辑、段落、格式、插入、视图、主题、工具、帮助」，常用操作不依赖记忆语法或快捷键。模式下拉框与菜单位于同一行。
+顶部单行菜单提供「文件、编辑、段落、格式、插入、视图、主题、工具、帮助」，常用操作不依赖记忆语法或快捷键。右下角浮动工具条集中提供模式切换和专注按钮。
 
 - **三种模式：**即时渲染编辑、完整 Markdown 源码和只读阅读共用同一份正文。切换模式保留编辑会话和撤销历史；阅读模式支持选择复制、标题跳转和链接浏览。
 - **基本格式：**一级至六级标题、粗体、斜体、删除线、行内代码、代码块、引用、有序/无序列表、待办、分隔线、缩进和段落上下移动。
@@ -197,13 +234,17 @@ HTML 的本地相对图片在授权来源目录内尝试内嵌；无法读取的
 
 规则不跨行、不递归解析内部 Markdown，代码块和行内代码保持字面内容。停用规则后显示原始标记，不删除正文。标准保留标记不能覆盖，冲突和超限规则会被拒绝。当前没有任意代码插件或插件市场；规则不能执行脚本、读取文件、联网或注入自定义 CSS。
 
-## 安装与启动
+## 安装与启动 / Installation
 
-安装包和版本说明统一在 **[GitHub Releases](https://github.com/asoming/markwrite/releases)**。下文说明各包的使用方式，不表示开发版安装包已经发布。
+安装包和版本说明统一在 **[GitHub Releases](https://github.com/asoming/markwrite/releases)**。请下载适合自己系统的安装包；源代码压缩包不包含已编译的桌面程序。
+
+Download an installer or portable package from **[GitHub Releases](https://github.com/asoming/markwrite/releases)**. Source-code archives do not include a compiled desktop application.
 
 ### Linux
 
 目标构建为 x86_64，开发与检查主要在 Ubuntu 22.04 / GNOME / X11 完成。
+
+**English:** On Debian/Ubuntu x86_64, install the `.deb` with your software installer or `sudo apt install ./downloaded-file.deb`, then launch **Markwrite** from the application menu. For the portable archive, extract it to a permanent folder and run the commands below from that folder: the first starts the app; the second creates application-menu and desktop shortcuts. Your desktop may require “Allow Launching” the first time. Rerun the shortcut installer after moving the folder. Linux development and checks primarily use Ubuntu 22.04 / GNOME / X11.
 
 - **Debian/Ubuntu 安装包：**下载 `.deb`，在系统软件安装器中打开；也可使用 `sudo apt install ./下载的文件名.deb`。安装后从应用菜单启动 **Markwrite**。
 - **便携包：**解压到固定位置，在解压目录运行以下命令。便携包需要包含 `bin/markwrite`，单纯下载源代码不包含这个已编译程序。
@@ -218,6 +259,8 @@ HTML 的本地相对图片在授权来源目录内尝试内嵌；无法读取的
 ### Windows
 
 目标为 Windows 10 / 11 x86_64。下载 NSIS `*-setup.exe`，选择简体中文或英文，默认安装到当前用户目录；从开始菜单中的 **Markwrite** 启动。
+
+**English:** On Windows 10/11 x86_64, run the `*-setup.exe` installer, choose Chinese or English, and launch **Markwrite** from the Start menu. Installation defaults to your user directory. WebView2 is required; if missing, the installer downloads Microsoft’s official bootstrapper, so first-time setup may need internet access. The installer is currently unsigned. To associate `.md` and `.markdown`, use **Settings → Files → Default application**, then complete the selection in Windows Default Apps and refresh the status in Markwrite.
 
 运行使用系统 WebView2；缺少时安装器会下载 Microsoft 官方引导程序，因此首次安装可能需要网络。安装包当前未做商业代码签名。已有 WebView2 后，本地写作和导出无需联网。
 
@@ -313,3 +356,5 @@ cargo test --manifest-path src-tauri/Cargo.toml benchmark_workspace_search_100mb
 文档主题的来源、适配方式、字体来源和文件校验值列在 **[public/themes/NOTICE.txt](public/themes/NOTICE.txt)**。Pixyll 衍生样式保留 **[MIT 许可证](public/themes/pixyll/LICENSE.txt)**；随附 Open Sans 使用 **[Apache License 2.0](public/themes/github/Apache-2.0.txt)**，PT Serif、Merriweather、Lato、Vollkorn 各自的 SIL Open Font License 文件保存在对应主题目录，具体链接和版权信息见 NOTICE。分发应用时须一并保留这些文件。
 
 离线 PDF 使用随包提供的 Noto Sans CJK 简体中文常规/粗体字体。来源、提取方式与版权说明保存在 **[public/fonts/NOTICE.txt](public/fonts/NOTICE.txt)**，字体许可证为 **[SIL Open Font License 1.1](public/fonts/OFL.txt)**。分发应用时保留字体及这些许可说明；字体许可只针对字体文件，不因此要求导出的文档采用相同许可证。应用不会将这些字体安装到系统字体目录。
+
+0.3.2 新增浮动工具条、透明度与双语介绍；当前前端 134 项测试通过，本版安装包与原生验收记录待构建完成后更新。

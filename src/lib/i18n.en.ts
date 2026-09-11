@@ -55,7 +55,6 @@ const english: Record<string, string> = {
   '{0} 不是有效 UTF-8 文件。': '{0} is not a valid UTF-8 file.',
   '已作为草稿打开，按 Ctrl S 选择保存位置。':
     'Opened as a draft. Press Ctrl S to choose a save location.',
-  墨页: 'Markwrite',
   收起侧栏: 'Collapse sidebar',
   搜索文档: 'Search documents',
   文档: 'Documents',
@@ -152,7 +151,6 @@ const english: Record<string, string> = {
     'Connect your own service; nothing is sent until you choose to send',
   '原文已变化，请复制链接后在目标位置插入。':
     'The original text changed. Copy the link and insert it at the intended position.',
-  '墨页 · Markwrite': 'Markwrite',
   '本地优先的 Markdown 写作工具': 'A local-first Markdown writing app',
   '通过菜单设置格式、插入表格和公式，也可以直接使用 Markdown。源码、编辑与阅读共用同一份正文。':
     'Use menus to format text and insert tables or formulas, or write Markdown directly. Source, editing, and reading modes share one document.',
@@ -310,7 +308,7 @@ const english: Record<string, string> = {
   '导出 PDF…': 'Export PDF…',
   '导出 Word 文档…': 'Export Word document…',
   关闭当前文档: 'Close current document',
-  退出墨页: 'Quit Markwrite',
+  '退出 Markwrite': 'Quit Markwrite',
   全选: 'Select all',
   查找: 'Find',
   文件夹全文搜索: 'Search workspace',
@@ -352,7 +350,7 @@ const english: Record<string, string> = {
   '上传图片到图床…': 'Upload image…',
   '发布当前文档…': 'Publish current document…',
   帮助: 'Help',
-  关于墨页: 'About Markwrite',
+  '关于 Markwrite': 'About Markwrite',
   文档菜单: 'Document menu',
   菜单栏: 'Menu bar',
   '选中文字，使用菜单设置格式': 'Select text and use the menus to format it',
@@ -543,7 +541,7 @@ const english: Record<string, string> = {
   新名称: 'New name',
   '移到回收站…': 'Move to Trash…',
   '请先打开一个工作文件夹。': 'Open a workspace folder first.',
-  '未找到 Git。请先安装 Git 并重新启动墨页。':
+  '未找到 Git。请先安装 Git 并重新启动 Markwrite。':
     'Git was not found. Install Git and restart Markwrite.',
   '这个文件夹还没有 Git 仓库。': 'This folder is not a Git repository yet.',
   '在当前文件夹初始化 Git': 'Initialize Git in this folder',

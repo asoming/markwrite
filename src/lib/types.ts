@@ -28,6 +28,7 @@ export type Settings = {
   language: Language;
   defaultMode: Mode;
   followFileParent: boolean;
+  floatingToolbarTransparency: number;
   fontSize: number;
   lineHeight: number;
   width: number;

@@ -79,7 +79,7 @@ const menus: { label: string; items: Item[] }[] = [
       { label: '导出 Word 文档…', action: 'app:exportDocx' },
       'separator',
       { label: '关闭当前文档', action: 'app:close', shortcut: 'Ctrl W' },
-      { label: '退出墨页', action: 'app:quit' },
+      { label: '退出 Markwrite', action: 'app:quit' },
     ],
   },
   {
@@ -187,7 +187,7 @@ const menus: { label: string; items: Item[] }[] = [
     items: [
       { label: 'Markdown 语法手册', action: 'app:reference' },
       { label: '快捷键', action: 'app:shortcuts' },
-      { label: '关于墨页', action: 'app:about' },
+      { label: '关于 Markwrite', action: 'app:about' },
     ],
   },
 ];

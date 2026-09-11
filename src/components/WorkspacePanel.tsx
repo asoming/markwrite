@@ -429,7 +429,7 @@ export default function WorkspacePanel(p: Props) {
         {p.tab === 'git' && (
           <>
             {!p.root && <p>{t('请先打开一个工作文件夹。')}</p>}
-            {git && !git.available && <p>{t('未找到 Git。请先安装 Git 并重新启动墨页。')}</p>}
+            {git && !git.available && <p>{t('未找到 Git。请先安装 Git 并重新启动 Markwrite。')}</p>}
             {git?.available && !git.repository && (
               <>
                 <p>{t('这个文件夹还没有 Git 仓库。')}</p>

@@ -342,7 +342,10 @@ export default function SettingsPanel({
                   {association === true && (
                     <p className="preference-success">
                       <Check size={15} />
-                      {t('墨页已是 Markdown 默认应用', 'Markwrite is the default Markdown app')}
+                      {t(
+                        'Markwrite 已是 Markdown 默认应用',
+                        'Markwrite is the default Markdown app',
+                      )}
                     </p>
                   )}
                   <button
@@ -350,7 +353,7 @@ export default function SettingsPanel({
                     className="preference-button"
                     disabled={requesting || !defaultAppAvailable}
                     aria-label={t(
-                      '将 Markdown 默认设为墨页打开',
+                      '将 Markdown 默认设为 Markwrite 打开',
                       'Use Markwrite as the default Markdown app',
                     )}
                     onClick={() => void requestDefault()}
@@ -380,7 +383,7 @@ export default function SettingsPanel({
                       {result.status === 'set'
                         ? t('默认打开方式已更新。', 'The default application was updated.')
                         : t(
-                            '已打开系统设置，请选择墨页完成关联。',
+                            '已打开系统设置，请选择 Markwrite 完成关联。',
                             'System settings are open. Select Markwrite to finish the association.',
                           )}
                       {result.message && (
@@ -586,6 +589,31 @@ export default function SettingsPanel({
             )}
             {category === 'appearance' && (
               <>
+                <section className="preferences-section">
+                  <h4>{t('浮动工具条', 'Floating toolbar')}</h4>
+                  <label className="preference-range">
+                    <span>{t('工具条透明度', 'Toolbar transparency')}</span>
+                    <input
+                      type="range"
+                      aria-label={t('工具条透明度', 'Toolbar transparency')}
+                      aria-describedby={`${id}-toolbar-help`}
+                      min={0}
+                      max={80}
+                      step={1}
+                      value={settings.floatingToolbarTransparency}
+                      onChange={(event) =>
+                        update({ floatingToolbarTransparency: Number(event.target.value) })
+                      }
+                    />
+                    <output>{settings.floatingToolbarTransparency}%</output>
+                  </label>
+                  <p className="preference-help" id={`${id}-toolbar-help`}>
+                    {t(
+                      '鼠标移到右下角状态栏上方时，显示模式切换与专注按钮，移开后自动隐藏。0% 为不透明；仅调整工具条，不影响正文。',
+                      'Hover above the status bar at the bottom right to show mode and focus controls. They hide when you move away. 0% is opaque; this affects only the toolbar, not the document.',
+                    )}
+                  </p>
+                </section>
                 <section className="preferences-section">
                   <h4>{t('主题', 'Theme')}</h4>
                   <div className="preference-theme-grid">

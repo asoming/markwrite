@@ -14,6 +14,7 @@ export const defaultSettings: Settings = {
   language: 'zh-CN',
   defaultMode: 'read',
   followFileParent: true,
+  floatingToolbarTransparency: 15,
   fontSize: 17,
   lineHeight: 1.9,
   width: 760,
@@ -55,6 +56,11 @@ export function readSession(): {
         theme: isTheme(value.settings?.theme) ? value.settings.theme : defaultSettings.theme,
         language: value.settings?.language === 'en' ? 'en' : 'zh-CN',
         followFileParent: value.settings?.followFileParent !== false,
+        floatingToolbarTransparency:
+          typeof value.settings?.floatingToolbarTransparency === 'number' &&
+          Number.isFinite(value.settings.floatingToolbarTransparency)
+            ? Math.min(80, Math.max(0, value.settings.floatingToolbarTransparency))
+            : defaultSettings.floatingToolbarTransparency,
         defaultMode: ['read', 'live', 'source'].includes(value.settings?.defaultMode)
           ? value.settings.defaultMode
           : defaultSettings.defaultMode,

@@ -626,7 +626,7 @@ export async function buildDocx(
   const documentFile = new d.Document({
     title,
     creator: 'Markwrite',
-    description: '由墨页导出',
+    description: 'Exported by Markwrite',
     styles: {
       default: {
         document: {

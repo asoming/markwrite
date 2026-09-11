@@ -129,9 +129,10 @@ function snapshot(): { active: string; root?: string; settings: Settings } {
 }
 
 describe('file navigation at the application boundary', () => {
-  it('reveals the opened document parent, displays its recursive tree, and keeps one compact mode selector', async () => {
+  it('reveals the opened document parent, displays its recursive tree, and keeps mode controls out of the top menu', async () => {
     expect(boundary.parentFolder).not.toHaveBeenCalled();
-    expect(host.querySelectorAll('.compact-header select[aria-label="文档模式"]')).toHaveLength(1);
+    expect(host.querySelector('.compact-header select')).toBeNull();
+    expect(host.querySelector('[role="toolbar"][aria-label="阅读与编辑工具"]')).not.toBeNull();
     expect(host.querySelector('.topbar, .breadcrumb, .breadcrumbs')).toBeNull();
     const parent = folder('/notes');
     parent.entries.push({
@@ -177,6 +178,38 @@ describe('file navigation at the application boundary', () => {
     expect(host.querySelector('[data-testid="document-buffer"]')?.textContent).toBe(
       '# /first/current.md',
     );
+  });
+
+  it('switches modes and enters and exits focus from the floating controls without changing the document', async () => {
+    await openDocument('/notes/current.md');
+    const original = disk('/notes/current.md').content;
+    expect(host.querySelector('.sidebar-brand')?.textContent).toBe('墨页Markwrite');
+    await click(button('源码模式'));
+    expect(host.querySelector('[data-testid="document-buffer"]')?.getAttribute('data-mode')).toBe(
+      'source',
+    );
+    expect(host.querySelector('[data-testid="document-buffer"]')?.textContent).toBe(original);
+    await click(button('进入专注模式'));
+    expect(host.querySelector('.compact-header')).toBeNull();
+    expect(host.querySelector('.statusbar')).toBeNull();
+    await click(button('阅读模式'));
+    expect(host.querySelector('[data-testid="reading-buffer"]')?.textContent).toBe(original);
+    await click(button('退出专注模式'));
+    expect(host.querySelector('.statusbar')).not.toBeNull();
+    await click(button('进入专注模式'));
+    await act(async () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })));
+    expect(host.querySelector('.compact-header')).not.toBeNull();
+    expect(host.querySelector('[data-testid="reading-buffer"]')?.textContent).toBe(original);
+    await act(async () => setLanguage('en'));
+    expect(host.querySelector('.sidebar-brand')?.textContent).toBe('墨页Markwrite');
+    expect(button('Reading mode').getAttribute('aria-pressed')).toBe('true');
+    await click(button('Help', '[role="menuitem"]'));
+    await click(button('About Markwrite', '[role="menuitem"]'));
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain(
+      'Write with visual formatting',
+    );
+    expect(host.querySelector('[role="dialog"]')?.textContent).toContain('通过菜单设置格式');
+    expect(host.querySelector('[role="dialog"]')?.textContent).not.toContain('墨页');
   });
 
   it('pins an explicitly selected workspace, refreshes that folder, and resumes following with the pin control', async () => {

@@ -1,0 +1,77 @@
+.floating-view-region {
+  position: absolute;
+  right: 6px;
+  bottom: 32px;
+  z-index: 6;
+  padding: 12px;
+}
+
+.floating-view-region.is-focused {
+  bottom: 4px;
+}
+
+.floating-view-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: 0 2px 10px #00000008;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 150ms ease;
+}
+
+.floating-view-region:hover .floating-view-controls,
+.floating-view-region:has(:focus-visible) .floating-view-controls {
+  opacity: var(--view-controls-opacity, 0.85);
+  pointer-events: auto;
+}
+
+.floating-view-controls > button {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  width: 30px;
+  height: 28px;
+  padding: 0;
+  color: var(--muted);
+  border-radius: 6px;
+}
+
+.floating-view-controls > button:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.floating-view-controls > button[aria-pressed='true'] {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.floating-view-controls > button:focus-visible {
+  outline-offset: -1px;
+}
+
+.floating-view-divider {
+  width: 1px;
+  height: 15px;
+  margin: 0 4px;
+  background: var(--border);
+}
+
+@media (hover: none) {
+  .floating-view-region .floating-view-controls {
+    opacity: var(--view-controls-opacity, 0.85);
+    pointer-events: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-view-controls {
+    transition: none;
+  }
+}

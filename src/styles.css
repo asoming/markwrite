@@ -858,23 +858,6 @@ input::placeholder {
 .focus-mode .reader {
   padding-top: 80px !important;
 }
-.exit-focus {
-  position: absolute;
-  top: 18px;
-  right: 24px;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  color: var(--muted);
-  font-size: 11px;
-  padding: 8px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  opacity: 0.5;
-}
-.exit-focus:hover {
-  opacity: 1;
-}
 .outline-row {
   display: flex;
   align-items: center;
@@ -1537,28 +1520,6 @@ input::placeholder {
   padding: 0 8px;
   height: 30px;
 }
-.compact-mode {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--muted);
-  padding-left: 8px;
-  margin-left: auto;
-  flex-shrink: 0;
-}
-.compact-mode select {
-  font-size: 12px;
-  color: var(--ink);
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  padding: 4px 2px;
-  max-width: 90px;
-}
-.compact-mode select option {
-  color: var(--ink);
-  background: var(--paper);
-}
 .sidebar-header {
   display: flex;
   align-items: center;
@@ -1660,9 +1621,6 @@ input::placeholder {
     padding: 0 5px;
     font-size: 12px;
   }
-  .compact-mode {
-    padding-left: 3px;
-  }
 }
 @media (max-width: 800px) {
   .sidebar {
@@ -1672,13 +1630,27 @@ input::placeholder {
     padding: 0 4px;
     font-size: 11px;
   }
-  .compact-mode {
-    gap: 0;
-  }
-  .compact-mode > svg {
-    display: none;
-  }
-  .compact-mode select {
-    font-size: 11px;
-  }
+}
+
+.sidebar-header > .sidebar-brand {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  white-space: nowrap;
+}
+.sidebar-brand strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+}
+.sidebar-brand span {
+  font-size: 12px;
+  font-weight: 500;
+}
+.about-introduction p {
+  line-height: 1.8;
+}
+.about-introduction p[lang='en'] {
+  color: var(--muted);
+  margin-top: -4px;
 }
