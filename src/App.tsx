@@ -1034,7 +1034,11 @@ export default function App() {
             notify('正在完成文件操作，请稍后再关闭。');
             return;
           }
-          if (docsRef.current.some((d) => d.content !== d.saved || d.status === 'conflict')) {
+          if (
+            docsRef.current.some(
+              (d) => d.content !== d.saved || d.status === 'conflict' || d.status === 'error',
+            )
+          ) {
             event.preventDefault();
             setCloseTarget('app');
             setDialog('close');
@@ -1067,7 +1071,7 @@ export default function App() {
   };
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.isComposing) return;
+      if (e.isComposing || dialog || insertDialog || namePrompt) return;
       if (e.key === 'Escape') {
         setMenu(false);
         if (!dialog) setFocus(false);
@@ -1121,7 +1125,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
-  }, [dialog, mode]);
+  }, [dialog, mode, insertDialog, namePrompt]);
   const commands = [
     { label: '新建文档', hint: 'Ctrl N', icon: <FilePlus2 size={18} />, run: newDocument },
     {

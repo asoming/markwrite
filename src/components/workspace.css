@@ -413,4 +413,26 @@ textarea:focus-visible {
   font-family: var(--code-font, monospace) !important;
 }
 
-.workspace-switch{margin:0 14px 8px;width:calc(100% - 28px);padding:7px;border:1px solid var(--border);border-radius:5px;color:var(--ink);background:var(--paper)}.startup-error{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:50px;gap:20px}.startup-error button{padding:12px 25px;border:1px solid var(--border)}
+.workspace-switch {
+  margin: 0 14px 8px;
+  width: calc(100% - 28px);
+  padding: 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--ink);
+  background: var(--paper);
+}
+.startup-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 50px;
+  gap: 20px;
+}
+.startup-error button {
+  padding: 12px 25px;
+  border: 1px solid var(--border);
+}

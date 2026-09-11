@@ -1,0 +1,135 @@
+.linkgraph {
+  color: var(--ink);
+}
+.linkgraph-note,
+.linkgraph-summary,
+.linkgraph-empty {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+.linkgraph-note {
+  margin: 0 0 10px;
+}
+.linkgraph-diagram {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 370px;
+  overflow: visible;
+}
+.linkgraph-diagram line {
+  stroke: var(--accent);
+  stroke-width: 1.4;
+}
+.linkgraph-diagram line.incoming {
+  stroke: var(--muted);
+  stroke-dasharray: 4 3;
+}
+.linkgraph-diagram marker path {
+  fill: var(--muted);
+}
+.linkgraph-current circle {
+  fill: var(--accent-bg);
+  stroke: var(--accent);
+  stroke-width: 1;
+}
+.linkgraph-current text {
+  fill: var(--ink);
+  font:
+    12px system-ui,
+    sans-serif;
+}
+.linkgraph-current .current-caption {
+  fill: var(--muted);
+  font-size: 10px;
+}
+.linkgraph-node {
+  cursor: pointer;
+  outline: none;
+}
+.linkgraph-node circle {
+  fill: var(--paper);
+  stroke: var(--accent);
+  stroke-width: 1.7;
+  transition: fill 0.12s;
+}
+.linkgraph-node text {
+  fill: var(--ink);
+  font:
+    11px system-ui,
+    sans-serif;
+}
+.linkgraph-node:hover circle,
+.linkgraph-node:focus-visible circle {
+  fill: var(--accent-bg);
+  stroke-width: 3.5;
+}
+.linkgraph-list {
+  margin: 6px 0 18px;
+  padding: 0;
+  list-style: none;
+}
+.linkgraph-list li + li {
+  border-top: 1px solid var(--border);
+}
+.linkgraph-list button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 4px;
+  text-align: left;
+  color: inherit;
+}
+.linkgraph-list button:hover,
+.linkgraph-issues button:hover {
+  background: var(--hover);
+}
+.linkgraph-list button > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.linkgraph-list small,
+.linkgraph-issues small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.linkgraph-list em {
+  flex: none;
+  font-size: 10px;
+  font-style: normal;
+  color: var(--muted);
+}
+.linkgraph-issues {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  font-size: 12px;
+}
+.linkgraph-issues summary {
+  cursor: pointer;
+  color: var(--ink);
+}
+.linkgraph-issues p {
+  margin: 10px 0 4px;
+  overflow-wrap: anywhere;
+}
+.linkgraph-issues button {
+  display: block;
+  text-align: left;
+  width: 100%;
+  padding: 5px 8px;
+  overflow-wrap: anywhere;
+  color: var(--accent);
+}
+.linkgraph-issues code {
+  color: var(--ink);
+}
+@media (prefers-reduced-motion: reduce) {
+  .linkgraph-node circle {
+    transition: none;
+  }
+}

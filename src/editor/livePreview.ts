@@ -105,6 +105,46 @@ class InlineMath extends WidgetType {
     return true;
   }
 }
+class CustomInline extends WidgetType {
+  constructor(
+    readonly text: string,
+    readonly name: string,
+    readonly color: string,
+    readonly position: number,
+    readonly markerLength: number,
+  ) {
+    super();
+  }
+  eq(other: CustomInline) {
+    return (
+      this.text === other.text &&
+      this.name === other.name &&
+      this.color === other.color &&
+      this.position === other.position &&
+      this.markerLength === other.markerLength
+    );
+  }
+  toDOM(view: EditorView) {
+    const mark = document.createElement('mark');
+    mark.className = 'cm-custom-syntax';
+    mark.textContent = this.text;
+    mark.title = `${this.name} · 点击编辑`;
+    mark.style.backgroundColor = this.color;
+    mark.style.color = syntaxInk(this.color);
+    mark.addEventListener('mousedown', (event) => {
+      event.preventDefault();
+      view.dispatch({
+        selection: { anchor: this.position + this.markerLength },
+        scrollIntoView: true,
+      });
+      view.focus();
+    });
+    return mark;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
 class RenderedBlock extends WidgetType {
   constructor(
     readonly raw: string,
@@ -310,22 +350,16 @@ function build(state: EditorState): DecorationSet {
         if (
           !active(from, to) &&
           ![...blocks, ...mathExcluded, ...customRanges].some(
-            (range) => from < range.to && to > range.from,
+            (range) => from >= range.from && from < range.to,
           )
         ) {
-          add(from, from + rule.open.length, Decoration.replace({}));
           add(
-            from + rule.open.length,
-            to - rule.close.length,
-            Decoration.mark({
-              class: 'cm-custom-syntax',
-              attributes: {
-                style: `background-color:${rule.color};color:${syntaxInk(rule.color)}`,
-                title: rule.name,
-              },
+            from,
+            to,
+            Decoration.replace({
+              widget: new CustomInline(match.text, rule.name, rule.color, from, rule.open.length),
             }),
           );
-          add(to - rule.close.length, to, Decoration.replace({}));
           customRanges.push({ from, to });
         }
         from = source.indexOf(rule.open, to);

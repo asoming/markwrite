@@ -5,9 +5,11 @@ import type { DiskFile, Document, FileEntry } from '../lib/types';
 import { desktop } from '../lib/platform';
 import { backlinks, documentReferences, fileName, type IndexedDocument } from '../lib/workspace';
 import DiffView from './DiffView';
+import LinkGraph from './LinkGraph';
 import './workspace.css';
 
-export type WorkspaceTab = 'history' | 'backlinks' | 'tags' | 'attachments' | 'git' | 'files';
+export type WorkspaceTab =
+  'history' | 'backlinks' | 'tags' | 'attachments' | 'git' | 'files' | 'graph';
 type HistoryEntry = { id: string; createdAt: number; size: number };
 type Attachment = { path: string; size: number; references: string[] };
 type GitState = {
@@ -32,6 +34,7 @@ type Props = {
   onNotify: (text: string) => void;
 };
 const labels: Record<WorkspaceTab, string> = {
+  graph: '关联视图',
   history: '版本历史',
   backlinks: '反向链接',
   tags: '标签',
@@ -78,7 +81,7 @@ export default function WorkspacePanel(p: Props) {
           const result = await invoke<Attachment[]>('attachment_inventory', { path: p.root });
           if (!disposed) setAttachments(result);
         } else setAttachments([]);
-      } else if (p.tab === 'backlinks' || p.tab === 'tags') {
+      } else if (p.tab === 'backlinks' || p.tab === 'tags' || p.tab === 'graph') {
         const disk =
           desktop && p.root
             ? await invoke<DiskFile[]>('workspace_documents', { path: p.root })
@@ -273,6 +276,13 @@ export default function WorkspacePanel(p: Props) {
               </p>
             ))}
           </>
+        )}
+        {p.tab === 'graph' && (
+          <LinkGraph
+            documents={liveIndex}
+            currentPath={p.current.path || p.current.id}
+            onOpen={p.onOpen}
+          />
         )}
         {p.tab === 'tags' && (
           <>

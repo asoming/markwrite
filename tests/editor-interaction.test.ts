@@ -96,13 +96,13 @@ it('renders inactive inline math but leaves literal dollar syntax in code unchan
 });
 it('reconfigures declarative inline syntax without replacing document text or undo state', () => {
   configureInlineSyntax([]);
-  const source = '正文\n\n==高亮内容==';
+  const source = '正文\n\n==高亮内容 **保持字面文本**==';
   mount(source);
   expect(host.querySelector('.cm-custom-syntax')).toBeNull();
   act(() => {
     configureInlineSyntax([starterExtension]);
   });
-  expect(host.querySelector('.cm-custom-syntax')?.textContent).toBe('高亮内容');
+  expect(host.querySelector('.cm-custom-syntax')?.textContent).toBe('高亮内容 **保持字面文本**');
   expect(view!.state.doc.toString()).toBe(source);
   act(() => {
     configureInlineSyntax([]);
