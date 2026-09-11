@@ -1,0 +1,23 @@
+[package]
+name = "markwrite"
+version = "0.1.0"
+description = "A local-first Markdown editor"
+authors = ["Markwrite"]
+edition = "2021"
+rust-version = "1.85"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+percent-encoding = "2"
+sha2 = "0.10"
+
+[profile.dev]
+debug = 0
+incremental = true

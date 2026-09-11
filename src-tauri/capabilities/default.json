@@ -1,0 +1,1 @@
+{"identifier":"main-window","description":"Only the main app can access window lifecycle controls. File access is checked by the Rust document service.","windows":["main"],"permissions":["core:default","core:window:allow-close","core:window:allow-on-close-requested"]}
