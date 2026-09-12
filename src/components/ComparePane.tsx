@@ -31,6 +31,7 @@ type Props = {
   onSelect: (id: string) => void;
   onMode: (mode: Mode) => void;
   onClose: () => void;
+  onCompare?: () => void;
   onChange: (text: string) => void;
   onSave: (asNew?: boolean) => void;
   onComposition: (active: boolean) => void;
@@ -141,6 +142,9 @@ export default forwardRef<CompareHandle, Props>(function ComparePane(props, ref)
         </button>
       </div>
       <div className="compare-toolbar">
+        {props.onCompare && (
+          <button onClick={props.onCompare}>{t('文字差异', 'Text differences')}</button>
+        )}
         {(['read', 'live', 'source'] as const).map((mode) => (
           <button key={mode} aria-pressed={props.mode === mode} onClick={() => props.onMode(mode)}>
             {mode === 'read'

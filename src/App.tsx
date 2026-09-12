@@ -132,6 +132,7 @@ const InsertDialog = lazy(() => import('./components/InsertDialog'));
 const WorkspacePanel = lazy(() => import('./components/WorkspacePanel'));
 const DiffView = lazy(() => import('./components/DiffView'));
 const ExtensionsPanel = lazy(() => import('./components/ExtensionsPanel'));
+const TextComparison = lazy(() => import('./components/TextComparison'));
 const AiPanel = lazy(() => import('./components/AiPanel'));
 const TransferPanel = lazy(() => import('./components/TransferPanel'));
 const SettingsPanel = lazy(() => import('./components/SettingsPanel'));
@@ -402,6 +403,7 @@ export default function App() {
     { resolve: (path: string) => void; reject: (error: unknown) => void } | undefined
   >(undefined);
   const [compareId, setCompareId] = useState<string | null>(null);
+  const [textComparison, setTextComparison] = useState(false);
   const [compareMode, setCompareMode] = useState<Mode>('read');
   const [linkedScroll, setLinkedScroll] = useState(false);
   const [splitPercent, setSplitPercent] = useState(50);
@@ -435,6 +437,7 @@ export default function App() {
   } | null>(null);
   const [linkChoices, setLinkChoices] = useState<{ path: string; name?: string }[]>([]);
   const aiSelection = useRef<{
+    pane: 'main' | 'compare';
     id: string;
     from: number;
     to: number;
@@ -576,6 +579,7 @@ export default function App() {
   const saving = useRef(new Set<string>());
   const searchRequest = useRef<string>('');
   const composing = useRef(new Set<string>());
+  const pendingUpdate = useRef<string | null>(null);
   const exitAfterSave = useRef<Document[] | null>(null);
   const current = docs.find((d) => d.id === activeId) || docs[0];
   const currentRef = useRef(current);
@@ -1608,6 +1612,16 @@ export default function App() {
         }
         // Preserve the explicit keep-draft choice only for the snapshot just persisted.
         // A later native close event revalidates it after the close IPC completes.
+        if (pendingUpdate.current) {
+          try {
+            await invoke('install_app_update', { name: pendingUpdate.current });
+            pendingUpdate.current = null;
+          } catch (error) {
+            await restoreDiscard();
+            notify(errorText(error));
+            return;
+          }
+        }
         exitAfterSave.current = snapshot;
         setDialog(null);
         try {
@@ -2102,19 +2116,25 @@ export default function App() {
       case 'app:extensions':
         setDialog('extensions');
         break;
-      case 'app:ai':
-        withEditor('live', (view) => {
+      case 'app:ai': {
+        const right = focusedPane.current === 'compare' && compare.current;
+        const targetId = right && compareId ? compareId : current.id;
+        const capture = (view: EditorView) => {
           const r = view.state.selection.main;
           aiSelection.current = {
-            id: current.id,
+            pane: right ? 'compare' : 'main',
+            id: targetId,
             from: r.from,
             to: r.to,
-            source: current.content,
+            source: view.state.doc.toString(),
             selection: view.state.sliceDoc(r.from, r.to),
           };
           setDialog('ai');
-        });
+        };
+        if (right) right.edit(capture);
+        else withEditor('live', capture);
         break;
+      }
       case 'app:commands':
         setPalette('');
         setDialog('commands');
@@ -2667,6 +2687,7 @@ export default function App() {
                   mode={compareMode}
                   settings={settings}
                   revision={syntaxRevision}
+                  onCompare={() => setTextComparison(true)}
                   onSelect={selectComparison}
                   onMode={(next) => {
                     editPermission.current.select(compareId, next);
@@ -2942,6 +2963,17 @@ export default function App() {
           </Suspense>
         </Modal>
       )}
+      {textComparison && compareId && docs.some((doc) => doc.id === compareId) && (
+        <Modal
+          title={t('文字差异', 'Text differences')}
+          wide
+          onClose={() => setTextComparison(false)}
+        >
+          <Suspense fallback={<p>{t('正在加载…', 'Loading…')}</p>}>
+            <TextComparison before={current} after={docs.find((doc) => doc.id === compareId)!} />
+          </Suspense>
+        </Modal>
+      )}
       {dialog === 'ai' && (
         <Modal
           title={t('AI 写作助手')}
@@ -2954,13 +2986,17 @@ export default function App() {
               selection={aiSelection.current?.selection || ''}
               onApply={(text) => {
                 const snapshot = aiSelection.current,
-                  view = editor.current;
+                  view = snapshot?.pane === 'compare' ? compare.current?.view : editor.current;
                 if (!snapshot || !view) return;
-                if (current.id !== snapshot.id || current.content !== snapshot.source) {
+                if (
+                  (snapshot.pane === 'compare' ? compareId : current.id) !== snapshot.id ||
+                  view.state.doc.toString() !== snapshot.source
+                ) {
                   notify(t('原文已变化，请重新选择内容生成建议。'));
                   return;
                 }
-                setMode('live');
+                if (snapshot.pane === 'compare') setCompareMode('live');
+                else setMode('live');
                 view.dispatch(
                   insertMarkdownTransaction(view.state, text, {
                     from: snapshot.from,
@@ -2968,7 +3004,7 @@ export default function App() {
                   }),
                 );
                 setDialog(null);
-                view.focus();
+                requestAnimationFrame(() => view.focus());
               }}
             />
           </Suspense>
@@ -3117,6 +3153,11 @@ export default function App() {
         <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
           <SettingsPanel
             settings={settings}
+            onInstallUpdate={(name) => {
+              pendingUpdate.current = name;
+              setCloseTarget('app');
+              setDialog('close');
+            }}
             onChange={setSettings}
             onClose={() => setDialog(null)}
             filesExtra={
@@ -3321,7 +3362,12 @@ export default function App() {
         <Modal
           title={
             closeTarget === 'app'
-              ? t('退出前如何处理修改？', 'What would you like to do with your changes?')
+              ? pendingUpdate.current
+                ? t(
+                    '安装更新前，如何处理修改？',
+                    'Before updating, what should happen to your changes?',
+                  )
+                : t('退出前如何处理修改？', 'What would you like to do with your changes?')
               : t('这篇文档还有未保存的修改')
           }
           subtitle={
@@ -3333,7 +3379,10 @@ export default function App() {
               : t('保存到文件后再关闭，或明确放弃这次修改。')
           }
           onClose={() => {
-            if (!closeInFlight.current) setDialog(null);
+            if (!closeInFlight.current) {
+              pendingUpdate.current = null;
+              setDialog(null);
+            }
           }}
         >
           <div className="close-description">
@@ -3356,7 +3405,13 @@ export default function App() {
                 {t('不保存并退出', 'Discard changes and exit')}
               </button>
             )}
-            <button disabled={closing} onClick={() => setDialog(null)}>
+            <button
+              disabled={closing}
+              onClick={() => {
+                pendingUpdate.current = null;
+                setDialog(null);
+              }}
+            >
               {t('取消')}
             </button>
             <button disabled={closing} onClick={() => void finishClose('keep')}>

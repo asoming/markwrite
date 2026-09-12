@@ -1,6 +1,6 @@
 [package]
 name = "markwrite"
-version = "1.0.1"
+version = "1.1.0"
 description = "A local-first Markdown editor"
 authors = ["Markwrite"]
 edition = "2021"
@@ -31,9 +31,11 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"
+keyring = { version = "=3.6.3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
 
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 arboard = "3.6"
+keyring = { version = "=3.6.3", features = ["windows-native", "apple-native"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }

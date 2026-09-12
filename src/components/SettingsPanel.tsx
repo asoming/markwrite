@@ -25,6 +25,7 @@ export type SettingsPanelProps = {
   onCheckDefaultApp?: () => Promise<boolean | null>;
   defaultAppAvailable?: boolean;
   filesExtra?: ReactNode;
+  onInstallUpdate?: (name: string) => void;
 };
 type Category = 'files' | 'editor' | 'images' | 'appearance' | 'general' | 'shortcuts';
 
@@ -36,6 +37,7 @@ export default function SettingsPanel({
   onCheckDefaultApp,
   defaultAppAvailable = true,
   filesExtra,
+  onInstallUpdate,
 }: SettingsPanelProps) {
   const [category, setCategory] = useState<Category>('general');
   const [association, setAssociation] = useState<boolean | null>(null);
@@ -294,7 +296,9 @@ export default function SettingsPanel({
                 </section>
               </>
             )}
-            {category === 'general' && <UpdatePanel language={settings.language} />}
+            {category === 'general' && (
+              <UpdatePanel language={settings.language} onInstall={onInstallUpdate} />
+            )}
             {category === 'files' && (
               <>
                 <section className="preferences-section">

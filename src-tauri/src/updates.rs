@@ -1,4 +1,4 @@
-//! Explicit release checks and verified downloads. Never executes an installer or stores tokens.
+//! Explicit release checks, verified downloads and user-requested installation. Tokens are never stored.
 use reqwest::{header, Client, Response};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -6,6 +6,9 @@ use std::{fs, io::Write, time::Duration};
 use tauri::{Emitter, Manager};
 const API: &str = "https://api.github.com/repos/asoming/markwrite";
 const PAGE: &str = "https://github.com/asoming/markwrite/releases";
+#[derive(Default)]
+pub struct UpdateState(std::sync::Mutex<std::collections::HashMap<String, (String, u64)>>);
+
 const LIMIT: u64 = 256 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -313,6 +316,11 @@ pub async fn download_app_update(
         Ok(sha256) => {
             let path = directory.join(&asset.name);
             crate::storage::replace_file(&temp, &path).map_err(|e| e.to_string())?;
+            app.state::<UpdateState>()
+                .0
+                .lock()
+                .map_err(|_| "Update state unavailable")?
+                .insert(asset.name.clone(), (sha256.clone(), asset.size));
             Ok(Downloaded {
                 path: path.to_string_lossy().into_owned(),
                 name: asset.name,
@@ -396,5 +404,166 @@ mod tests {
                 .unwrap()
         ));
         assert!(installer(&release("v1.0.0", false), "linux", "aarch64").is_none());
+    }
+}
+
+fn verified_installer(
+    directory: &std::path::Path,
+    name: &str,
+    expected: &str,
+    size: u64,
+) -> Result<std::path::PathBuf, String> {
+    if name.contains(['/', '\\']) || size == 0 || size > LIMIT {
+        return Err("无效安装包 / Invalid installer".into());
+    }
+    let path = directory.join(name);
+    let metadata = fs::symlink_metadata(&path)
+        .map_err(|_| "安装包不存在，请重新下载 / Installer missing; download again")?;
+    if !metadata.is_file() || metadata.len() != size {
+        return Err("安装包已改变，请重新下载 / Installer changed; download again".into());
+    }
+    let actual = format!(
+        "{:x}",
+        Sha256::digest(fs::read(&path).map_err(|e| e.to_string())?)
+    );
+    if actual != expected {
+        return Err("安装前校验失败，请重新下载 / Pre-install verification failed".into());
+    }
+    path.canonicalize().map_err(|e| e.to_string())
+}
+#[cfg(target_os = "linux")]
+fn portable_root(executable: &std::path::Path) -> Option<std::path::PathBuf> {
+    let bin = executable.parent()?;
+    let root = bin.parent()?;
+    (bin.file_name()? == "bin" && root.join("scripts/launch.sh").is_file())
+        .then(|| root.to_path_buf())
+}
+#[cfg(target_os = "linux")]
+fn replace_portable_binary(
+    source: &std::path::Path,
+    target: &std::path::Path,
+) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    let meta = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
+    if !meta.is_file() || meta.len() > LIMIT {
+        return Err("便携更新文件无效 / Invalid portable binary".into());
+    }
+    let data = fs::read(source).map_err(|e| e.to_string())?;
+    if !data.starts_with(b"\x7fELF") {
+        return Err("更新不是 Linux 程序 / Invalid Linux executable".into());
+    }
+    let temporary = target.with_file_name(format!(".markwrite-update-{}", std::process::id()));
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|e| e.to_string())?;
+    let result = (|| {
+        file.write_all(&data).map_err(|e| e.to_string())?;
+        file.set_permissions(fs::Permissions::from_mode(0o755))
+            .map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        let backup =
+            target.with_file_name(format!("markwrite-{}.backup", env!("CARGO_PKG_VERSION")));
+        fs::copy(target, backup).map_err(|e| e.to_string())?;
+        fs::rename(&temporary, target).map_err(|e| e.to_string())
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&temporary);
+    }
+    result
+}
+#[tauri::command]
+pub async fn install_app_update(name: String, app: tauri::AppHandle) -> Result<String, String> {
+    // Accept only downloads this native process verified, never an arbitrary frontend path.
+    let (sha, size) = app
+        .state::<UpdateState>()
+        .0
+        .lock()
+        .map_err(|_| "Update state unavailable")?
+        .get(&name)
+        .cloned()
+        .ok_or("请先下载并校验更新 / Download and verify this update first")?;
+    let directory = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("updates");
+    tauri::async_runtime::spawn_blocking(move || {
+        let path=verified_installer(&directory,&name,&sha,size)?;
+        #[cfg(target_os="windows")] {
+            use std::os::windows::process::CommandExt;
+            let running=std::process::Command::new("tasklist.exe").args(["/FI","IMAGENAME eq markwrite.exe","/FO","CSV","/NH"]).creation_flags(0x08000000).output().map_err(|e|e.to_string())?;
+            if !running.status.success() { return Err("无法检查其他窗口，请关闭其他 Markwrite 窗口后手动安装 / Cannot check running windows".into()); }
+            if String::from_utf8_lossy(&running.stdout).lines().filter(|line|line.to_lowercase().starts_with("\"markwrite.exe\"")).count()>1 { return Err("请先保存并关闭其他 Markwrite 窗口，再安装更新 / Save and close other Markwrite windows first".into()); }
+            std::process::Command::new(path).spawn().map_err(|e|e.to_string())?;
+            Ok("installer-started".into())
+        }
+        #[cfg(target_os="linux")] {
+            let executable=std::env::current_exe().map_err(|e|e.to_string())?;
+            if portable_root(&executable).is_some() {
+                let temp=directory.join(format!("unpack-{}",std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
+                fs::create_dir(&temp).map_err(|e|e.to_string())?;
+                let result=(|| {
+                    let status=std::process::Command::new("dpkg-deb").arg("-x").arg(&path).arg(&temp).status().map_err(|_| "需要 dpkg-deb 解包更新 / dpkg-deb is required")?;
+                    if !status.success() { return Err("安装包解包失败 / Cannot unpack installer".into()); }
+                    replace_portable_binary(&temp.join("usr/bin/markwrite"),&executable)?;
+                    Ok("portable-updated".into())
+                })();
+                let _=fs::remove_dir_all(temp);result
+            } else {
+                let output=std::process::Command::new("pkexec").arg("/usr/bin/dpkg").arg("-i").arg(&path).output().map_err(|_| "无法启动系统安装，请打开安装包手动安装 / Cannot start system installer; open the package manually")?;
+                if !output.status.success() { return Err("安装被取消或失败；应用保持打开，安装包已保留 / Installation canceled or failed; app and download are retained".into()); }
+                Ok("system-updated".into())
+            }
+        }
+        #[cfg(not(any(target_os="linux",target_os="windows")))] { let _=path; Err("此平台暂不支持直接安装 / Direct installation is not supported on this platform".into()) }
+    }).await.map_err(|_| "更新任务失败 / Update task failed".to_string())?
+}
+#[cfg(test)]
+mod install_tests {
+    use super::*;
+    #[test]
+    fn rechecks_download_before_any_launch() {
+        let root =
+            std::env::temp_dir().join(format!("markwrite-update-test-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("update.deb"), b"verified bytes").unwrap();
+        let hash = format!("{:x}", Sha256::digest(b"verified bytes"));
+        assert!(verified_installer(&root, "update.deb", &hash, 14).is_ok());
+        fs::write(root.join("update.deb"), b"modified bytes").unwrap();
+        assert!(verified_installer(&root, "update.deb", &hash, 14).is_err());
+        assert!(verified_installer(&root, "../update.deb", &hash, 14).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn portable_update_retains_backup_and_rejects_invalid_binary() {
+        let root = std::env::temp_dir().join(format!(
+            "markwrite-portable-update-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(root.join("bin")).unwrap();
+        fs::create_dir_all(root.join("scripts")).unwrap();
+        fs::write(root.join("scripts/launch.sh"), b"fixture").unwrap();
+        let target = root.join("bin/markwrite");
+        let source = root.join("new");
+        fs::write(&target, b"original").unwrap();
+        fs::write(&source, b"bad binary").unwrap();
+        assert!(portable_root(&target).is_some());
+        assert!(replace_portable_binary(&source, &target).is_err());
+        assert_eq!(fs::read(&target).unwrap(), b"original");
+        fs::write(&source, b"\x7fELFfixture").unwrap();
+        replace_portable_binary(&source, &target).unwrap();
+        assert_eq!(fs::read(&target).unwrap(), b"\x7fELFfixture");
+        assert_eq!(
+            fs::read(root.join(format!(
+                "bin/markwrite-{}.backup",
+                env!("CARGO_PKG_VERSION")
+            )))
+            .unwrap(),
+            b"original"
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 }

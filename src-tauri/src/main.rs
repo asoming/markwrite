@@ -2,6 +2,7 @@
 mod ai;
 mod backup;
 mod clipboard;
+mod credentials;
 mod document_windows;
 mod history;
 mod imports;
@@ -802,6 +803,7 @@ fn main() {
             }
         })
         .manage(AppState::default())
+        .manage(updates::UpdateState::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             storage::configure_lock_directory(
@@ -856,6 +858,7 @@ fn main() {
             updates::check_app_update,
             updates::download_app_update,
             updates::open_update_folder,
+            updates::install_app_update,
             reference_changes::apply_reference_changes,
             reference_changes::choose_move_destination,
             reference_changes::reference_recovery_list,
@@ -880,6 +883,10 @@ fn main() {
             session::load_session,
             clipboard::read_clipboard_image,
             ai::ai_transform,
+            ai::ai_test_connection,
+            credentials::ai_load_key,
+            credentials::ai_save_key,
+            credentials::ai_delete_key,
             transfer::upload_image,
             transfer::publish_html,
             read_asset,

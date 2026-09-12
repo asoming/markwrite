@@ -11,7 +11,13 @@ type Update = {
   asset: { name: string; size: number } | null;
 };
 type Download = { path: string; name: string; sha256: string };
-export default function UpdatePanel({ language }: { language: 'zh-CN' | 'en' }) {
+export default function UpdatePanel({
+  language,
+  onInstall,
+}: {
+  language: 'zh-CN' | 'en';
+  onInstall?: (name: string) => void;
+}) {
   const t = (zh: string, en: string) => (language === 'en' ? en : zh);
   const [token, setToken] = useState(''),
     [previews, setPreviews] = useState(false);
@@ -196,13 +202,18 @@ export default function UpdatePanel({ language }: { language: 'zh-CN' | 'en' }) 
         <div role="status">
           <p>
             {t(
-              '下载完成，SHA-256 校验通过。保存工作并退出 Markwrite，再打开安装包完成更新。',
-              'Download verified with SHA-256. Save your work and quit Markwrite, then open the installer to finish updating.',
+              '下载完成，SHA-256 校验通过。点击安装更新，处理未保存文档后开始安装。Linux 系统安装可能要求授权；便携版原位更新，重新打开后生效。',
+              'Download verified. Install update handles unsaved work first. Linux system installs may request authorization; portable installs update in place. Reopen to use the new version.',
             )}
           </p>
           <p className="preference-help" style={{ overflowWrap: 'anywhere' }}>
             {download.path}
           </p>
+          {onInstall && (
+            <button className="preference-button primary" onClick={() => onInstall(download.name)}>
+              {t('安装更新', 'Install update')}
+            </button>
+          )}
           <button
             className="preference-button"
             onClick={() => void invoke('open_update_folder').catch((e) => setProblem(String(e)))}

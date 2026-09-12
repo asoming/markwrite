@@ -23,8 +23,11 @@ afterEach(() => {
   host.remove();
   localStorage.clear();
 });
+const install = vi.fn();
 async function render() {
-  await act(async () => root.render(createElement(UpdatePanel, { language: 'en' })));
+  await act(async () =>
+    root.render(createElement(UpdatePanel, { language: 'en', onInstall: install })),
+  );
 }
 async function click(text: string) {
   const button = [...host.querySelectorAll('button')].find((button) =>
@@ -54,7 +57,11 @@ it('checks only on request and offers a verified download without executing an i
   expect(host.querySelector('script')).toBeNull();
   await click('Download installer');
   expect(mocks.invoke).toHaveBeenCalledWith('download_app_update', { releaseId: 5, token: null });
-  expect(host.textContent).toContain('Save your work and quit');
+  expect(host.textContent).toContain('Download verified');
+  expect(install).not.toHaveBeenCalled();
+  await click('Install update');
+  expect(install).toHaveBeenCalledWith('app.deb');
+  expect(mocks.invoke.mock.calls.some(([command]) => command === 'install_app_update')).toBe(false);
   expect(localStorage.length).toBe(0);
   await click('Show installer folder');
   expect(mocks.invoke).toHaveBeenCalledWith('open_update_folder');
