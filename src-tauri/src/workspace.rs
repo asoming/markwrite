@@ -850,7 +850,9 @@ mod tests {
             .unwrap()
             .status
             .success());
-        root
+        // Production callers obtain a canonical root from git_root. Match that
+        // contract here, including the Windows verbatim path prefix.
+        root.canonicalize().unwrap()
     }
     #[test]
     fn resolved_merge_requires_explicit_selection_of_all_staged_files() {

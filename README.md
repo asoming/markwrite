@@ -15,7 +15,7 @@ These changes follow release 0.5.0. Implementation, verification and packaged de
 | 全目录快速打开 / Recursive quick open | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
 | 窄窗口覆盖侧栏 / Narrow-window sidebar overlay | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
 | Git 冲突解释和标记解决 / Explain and resolve Git conflicts | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
-| 性能与真实输入法 / Performance and real IME acceptance | 部分通过；IBus 两种模式通过，正式包复测中，1 秒目标未达 / Partial: both IBus modes pass; production retest pending; one-second target unmet |
+| 性能与真实输入法 / Performance and real IME acceptance | 部分通过；正式包 IBus 两模式通过，1 秒目标仍未达 / Partial: production IBus checks pass in both modes; one-second target unmet |
 | 文档一致性 / Documentation consistency | 已纠正旧描述，随验收更新 / Corrected; updated with validation |
 
 仍未实现的后续增强：正文表格多格粘贴、行列拖动/排序，图片对齐/图注/重新链接，双编辑器与同步滚动，自定义快捷键，逐块/三方合并，批量文件操作中断自动恢复界面，GitHub 提示块和来源预设，可编辑 Office 公式。Typora CSS 主题为有边界的适配，不保证完整主题包原样还原。
@@ -24,7 +24,7 @@ Still pending: in-document table range paste/reordering/sorting; image alignment
 恢复历史版本先进入未保存编辑状态，后续保存时记录被替换的磁盘版本；恢复本身不立即生成新的历史条目，也不自动覆盖文件。
 Restoring history creates an unsaved editor buffer. Saving later records the replaced disk version; restoration alone creates neither a history entry nor a source-file write.
 
-## 0.5.1 验证中 / 0.5.1 verification in progress
+## 0.5.1 本地验证完成，跨平台复核中 / Local validation complete; platform verification pending
 
 - 阅读与 HTML 导出按语言高亮代码，语言解析按需在 Worker 加载；未知语言或超过 40,000 字符的单块保留纯文本，源代码内容不变。
 - Ctrl+P 按需递归检索文件名，不读取正文；支持取消和中文子目录，最多返回 500 项。沿用隐藏目录、依赖目录、链接和 32 层深度的扫描边界。
@@ -33,6 +33,17 @@ Restoring history creates an unsaved editor buffer. Saving later records the rep
 - 修复 WebKitGTK 在即时编辑隐藏语法节点与中文输入交互时的渲染进程崩溃；组合输入期间保留文档装饰，提交后再恢复即时排版。
 
 Reader and HTML code coloring loads language parsers on demand in a worker; unknown languages and blocks over 40,000 characters stay plain. Ctrl+P searches filenames recursively only when opened, with cancellation and 500 results. Narrow windows use a keyboard-accessible sidebar overlay. Git explains conflicts, stages explicitly resolved saved files, and completes reviewed merge commits without pushing. Live editing retains syntax text nodes and stable composition decorations to avoid a WebKitGTK IME/accessibility process crash. Non-UTF-8 or over-8MiB conflict files remain outside in-app resolution.
+
+Windows 首轮 CI 发现新增 Git 测试夹具未使用与实际入口一致的规范化路径（Windows 的 `\\?\` 前缀）；已修正测试夹具，等待重新验证。Linux CI 已通过，安装包尚未发布。
+The first Windows CI run exposed a non-canonical Git test-fixture path; the fixture now matches the canonical production entry point. Windows revalidation is pending; Linux CI passed. Packages have not been released.
+
+**0.5.1 验收记录（2026-09-12）：**941 项前端测试、81 项 Linux 原生测试通过，另有 2 项可选前端诊断和 2 项原生助手/诊断未在默认集合执行。最终 deb 解包程序通过实际菜单/键盘验收：阅读 Worker 高亮、中文深层文件快速打开、Git 编辑保存→标记解决→双父合并提交、IBus libpinyin 在源码/即时编辑中的候选提交与撤销重做。浏览器验证窄窗口浮层、明暗高亮、查找和实际 HTML 下载；导出的代码保留原文与高亮样式。
+
+**启动指标未达 1 秒。** 最终安装包打开 1MiB 文档的 10 个新进程样本（秒）：`3.552, 1.342, 1.332, 1.330, 1.355, 1.331, 1.357, 1.351, 1.342, 1.349`。中位数 1.346 秒，9/10 小于 3 秒，0/10 小于 1 秒。环境为 i9-14900HX、约 16GB 内存、WebKitGTK 2.50.4、私有 Xephyr 软件渲染；每次使用新应用配置，以 250ms AT-SPI 轮询计时到首屏标题可读，未清除操作系统文件缓存。此结果不是普通桌面的冷盘测试，也不等同于全部 PRD 性能验收通过。
+
+**仍待验收：**真实输入到绘制 P95、两小时写作与内存趋势、完整冷启动/冷缓存搜索基准、Fcitx5、Windows 中文候选输入、Wayland、多屏与 125%/150% 缩放，以及 Word/WPS、公众号/飞书目标端与实际联网服务。保留后续增强清单，未用本次修复宣称完整 PRD 已完成。
+
+**English acceptance record:** 941 frontend and 81 native Linux tests pass. The final deb executable passed actual keyboard/menu checks for worker coloring, recursive Chinese-path quick open, conflict resolution through a two-parent Git merge, and real IBus libpinyin input/undo/redo in both editor modes. Browser checks covered the narrow overlay, dark/light coloring, search and downloaded HTML. Ten fresh-process 1MiB samples ranged from 1.330 to 3.552 seconds (median 1.346); none met one second. Measurements used an i9-14900HX/16GB machine, WebKitGTK 2.50.4 and private Xephyr software rendering, with 250ms accessibility polling and no OS-cache clearing. Real input-to-paint P95, two-hour stability, cold-cache baselines, Fcitx5, Windows IME, Wayland, multi-monitor/DPI and destination/service interoperability still need acceptance.
 
 # Markwrite
 
@@ -450,7 +461,7 @@ cargo test --manifest-path src-tauri/Cargo.toml benchmark_workspace_search_100mb
 ## 已知边界
 
 - 正文超过 300,000 个 UTF-16 字符单位时暂停即时渲染，超过 1,000,000 个时暂停编辑器 Markdown 语法解析；完整正文仍可编辑。这是字符阈值，不是文件字节数。原生单文件打开上限 32MiB。
-- 真实 Fcitx5 / IBus / Windows 输入法候选、Wayland、多屏、125%/150% 缩放、冷启动 10 次、2 小时持续写作和内存趋势尚未全部验收。
+- IBus libpinyin 在 X11 下的源码/即时编辑候选提交与撤销重做已验证；Fcitx5 / Windows 输入法、Wayland、多屏、125%/150% 缩放、完整冷启动基准、2 小时持续写作和内存趋势仍待验收。
 - 不提供多人实时协作、移动端、云端账号同步、全库图谱、自动修复所有引用、高级表格计算或任意方言兼容。
 - 图床、发布和 AI 是可选的用户服务连接，不自带云服务或免费额度；本地核心功能不依赖这些接口。
 - 安装、构建通过与内容转换无损是不同结果。复杂 HTML/DOCX 导入和 PDF/DOCX 导出请按前述边界检查最终内容。
