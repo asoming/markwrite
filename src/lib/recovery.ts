@@ -1,3 +1,4 @@
+import { validShortcuts } from './shortcuts';
 import type { DiskFile, Document, Settings } from './types';
 import { isTheme, themeDefaults } from './themes';
 import { invoke, isTauri } from '@tauri-apps/api/core';
@@ -81,6 +82,7 @@ export function mergeRecoveredDocuments(opened: Document[], previous: Document[]
   return merged;
 }
 export const defaultSettings: Settings = {
+  shortcuts: {},
   theme: 'system',
   language: 'zh-CN',
   defaultMode: 'read',
@@ -95,6 +97,7 @@ export const defaultSettings: Settings = {
   codeFont: '',
   attachmentMode: 'relative',
   markdownCompatibility: false,
+  markdownProfile: 'technical',
 };
 export function readSession(): Session | null {
   return parseSession(isTauri() ? nativeSession : localStorage.getItem(KEY));
@@ -126,7 +129,13 @@ export function parseSession(json: string | null): Session | null {
         theme: isTheme(value.settings?.theme) ? value.settings.theme : defaultSettings.theme,
         language: value.settings?.language === 'en' ? 'en' : 'zh-CN',
         followFileParent: value.settings?.followFileParent !== false,
+        shortcuts: validShortcuts(value.settings?.shortcuts),
         markdownCompatibility: value.settings?.markdownCompatibility === true,
+        markdownProfile: ['technical', 'github', 'commonmark'].includes(
+          value.settings?.markdownProfile || '',
+        )
+          ? value.settings!.markdownProfile
+          : 'technical',
         floatingToolbarTransparency:
           typeof value.settings?.floatingToolbarTransparency === 'number' &&
           Number.isFinite(value.settings.floatingToolbarTransparency)

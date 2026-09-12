@@ -223,6 +223,23 @@ export default function ExportOptionsPanel({
                 <option value="A5">A5</option>
               </select>
             </label>
+            {format === 'docx' && (
+              <label>
+                {t('公式格式', 'Equation format')}
+                <select
+                  aria-label={t('公式格式', 'Equation format')}
+                  value={value.equations || 'editable'}
+                  onChange={(event) =>
+                    update({ equations: event.target.value as ExportOptions['equations'] })
+                  }
+                >
+                  <option value="editable">
+                    {t('可编辑 Office 公式', 'Editable Office equations')}
+                  </option>
+                  <option value="image">{t('图片（兼容模式）', 'Images (compatibility)')}</option>
+                </select>
+              </label>
+            )}
             <fieldset className="export-margins">
               <legend>{t('页边距（毫米）', 'Margins (mm)')}</legend>
               {(['top', 'right', 'bottom', 'left'] as const).map((side, index) => (

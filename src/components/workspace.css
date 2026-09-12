@@ -417,3 +417,55 @@ textarea:focus-visible {
 .git-row small {
   color: var(--muted);
 }
+.git-merge-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  margin-bottom: 15px;
+}
+.git-merge-panel h4 {
+  overflow-wrap: anywhere;
+}
+.git-merge-panel pre {
+  max-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  background: var(--code);
+  padding: 7px;
+  font: 12px/1.6 var(--code-font, monospace);
+}
+.git-merge-versions summary {
+  cursor: pointer;
+  padding: 6px 0;
+}
+.git-merge-hunk {
+  border-top: 1px solid var(--border);
+  padding: 8px 0;
+}
+.git-merge-hunk > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.git-merge-panel button {
+  padding: 6px 8px;
+  margin: 3px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.git-merge-panel button[aria-pressed='true'] {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.git-merge-panel textarea {
+  width: 100%;
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  font: 12px/1.7 var(--code-font, monospace);
+}
+.git-merge-actions {
+  display: flex;
+  flex-wrap: wrap;
+  margin: 6px 0;
+}

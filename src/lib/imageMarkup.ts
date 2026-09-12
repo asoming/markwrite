@@ -6,6 +6,8 @@ export type ImageMarkup = {
   title?: string;
   width?: number;
   height?: number;
+  alignment?: 'left' | 'center' | 'right';
+  caption?: string;
 };
 
 /** Only finite pixel dimensions are shared between the editor and document exporters. */
@@ -29,7 +31,43 @@ function safeSource(value: string): boolean {
 /** Reads one standalone image, without attaching HTML or fetching its source. */
 export function parseImageMarkup(raw: string): ImageMarkup | null {
   const source = raw.trim();
-  if (!/^(?:!\[|<img\b)/i.test(source)) return null;
+  if (!/^(?:!\[|<img\b|<figure\b)/i.test(source)) return null;
+  if (/^<figure\b/i.test(source)) {
+    const template = document.createElement('template');
+    template.innerHTML = source;
+    const figure = template.content.firstElementChild;
+    if (
+      figure?.tagName !== 'FIGURE' ||
+      template.content.children.length !== 1 ||
+      figure.querySelectorAll('img').length !== 1 ||
+      [...figure.children].some((node) => !['IMG', 'FIGCAPTION'].includes(node.tagName))
+    )
+      return null;
+    const significant = (node: Node) =>
+      node.nodeType !== Node.TEXT_NODE || !!node.textContent?.trim();
+    if (
+      [...template.content.childNodes].filter(significant).length !== 1 ||
+      [...figure.childNodes].some(
+        (node) => node.nodeType !== Node.ELEMENT_NODE && significant(node),
+      ) ||
+      figure.querySelectorAll('figcaption').length > 1 ||
+      figure.querySelector('figcaption')?.children.length ||
+      [...figure.attributes].some((attr) => attr.name !== 'style') ||
+      (figure.getAttribute('style') &&
+        !/^\s*text-align\s*:\s*(left|center|right)\s*;?\s*$/i.test(figure.getAttribute('style')!))
+    )
+      return null;
+    const image = parseImageMarkup(figure.querySelector('img')!.outerHTML);
+    if (!image) return null;
+    const alignment = (figure as HTMLElement).style.textAlign;
+    return {
+      ...image,
+      caption: figure.querySelector('figcaption')?.textContent || undefined,
+      alignment: ['left', 'center', 'right'].includes(alignment)
+        ? (alignment as ImageMarkup['alignment'])
+        : undefined,
+    };
+  }
   if (/^<img\b/i.test(source)) {
     const template = document.createElement('template');
     template.innerHTML = source;
@@ -84,7 +122,14 @@ export function serializeImageMarkup(
     );
   const width = imageDimension(dimensions.width);
   const height = imageDimension(dimensions.height);
-  return `<img src="${escape(image.source)}" alt="${escape(image.alt)}"${image.title ? ` title="${escape(image.title)}"` : ''}${width ? ` width="${width}"` : ''}${height ? ` height="${height}"` : ''}>`;
+  const markup = `<img src="${escape(image.source)}" alt="${escape(image.alt)}"${image.title ? ` title="${escape(image.title)}"` : ''}${width ? ` width="${width}"` : ''}${height ? ` height="${height}"` : ''}>`;
+  const alignment =
+    image.alignment && ['left', 'center', 'right'].includes(image.alignment)
+      ? image.alignment
+      : undefined;
+  return image.caption || alignment
+    ? `<figure${alignment ? ` style="text-align: ${alignment}"` : ''}>${markup}${image.caption ? `<figcaption>${escape(image.caption)}</figcaption>` : ''}</figure>`
+    : markup;
 }
 
 /** Fit explicit dimensions into the reading column without losing their saved aspect ratio. */

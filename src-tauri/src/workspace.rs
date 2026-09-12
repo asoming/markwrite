@@ -611,6 +611,197 @@ fn mark_resolved(root: &Path, file: &str) -> Result<(), String> {
     )?;
     Ok(())
 }
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictVersions {
+    base: Option<String>,
+    ours: Option<String>,
+    theirs: Option<String>,
+    working: Option<storage::DiskFile>,
+    index_version: String,
+}
+fn conflict_versions(root: &Path, file: &str) -> Result<ConflictVersions, String> {
+    let target = safe_relative(root, file)?;
+    let index = success(
+        git(root)
+            .args(["ls-files", "--unmerged", "-z", "--", file])
+            .output()
+            .map_err(|e| e.to_string())?,
+    )?;
+    if index.is_empty() {
+        return Err("该文件已无未解决冲突 / The file no longer has a conflict".into());
+    }
+    let mut stages: [Option<String>; 3] = [None, None, None];
+    for record in index
+        .split(|byte| *byte == 0)
+        .filter(|record| !record.is_empty())
+    {
+        let header = record
+            .split(|byte| *byte == b'\t')
+            .next()
+            .ok_or("Invalid Git index")?;
+        let fields: Vec<_> = std::str::from_utf8(header)
+            .map_err(|e| e.to_string())?
+            .split_whitespace()
+            .collect();
+        if fields.len() != 3 {
+            return Err("Invalid Git index".into());
+        }
+        if fields[0] != "100644" && fields[0] != "100755" {
+            return Err(
+                "请使用 Git 处理符号链接或子模块冲突 / Use Git for symlink or submodule conflicts"
+                    .into(),
+            );
+        }
+        let stage: usize = fields[2].parse().map_err(|_| "Invalid Git stage")?;
+        if !(1..=3).contains(&stage) {
+            return Err("Invalid Git stage".into());
+        }
+        let size = success(
+            git(root)
+                .args(["cat-file", "-s", fields[1]])
+                .output()
+                .map_err(|e| e.to_string())?,
+        )?;
+        let size: usize = String::from_utf8_lossy(&size)
+            .trim()
+            .parse()
+            .map_err(|_| "Invalid Git object size")?;
+        if size > 8 * 1024 * 1024 {
+            return Err("冲突版本超过8MiB / Conflict version exceeds8MiB".into());
+        }
+        let bytes = success(
+            git(root)
+                .args(["cat-file", "blob", fields[1]])
+                .output()
+                .map_err(|e| e.to_string())?,
+        )?;
+        let content = String::from_utf8(bytes)
+            .map_err(|_| "非 UTF-8 冲突请使用 Git / Use Git for non-UTF-8 conflicts")?;
+        stages[stage - 1] = Some(
+            content
+                .strip_prefix('\u{feff}')
+                .unwrap_or(&content)
+                .replace("\r\n", "\n"),
+        );
+    }
+    let working = if target.exists() {
+        if !fs::symlink_metadata(&target)
+            .map_err(|e| e.to_string())?
+            .is_file()
+            || fs::metadata(&target).map_err(|e| e.to_string())?.len() > 8 * 1024 * 1024
+        {
+            return Err("请选择8MiB内的普通文本 / Choose regular text within8MiB".into());
+        }
+        Some(storage::read(&target)?)
+    } else {
+        None
+    };
+    Ok(ConflictVersions {
+        base: stages[0].take(),
+        ours: stages[1].take(),
+        theirs: stages[2].take(),
+        working,
+        index_version: storage::version(&index),
+    })
+}
+#[tauri::command]
+pub async fn git_conflict_versions(
+    path: String,
+    file: String,
+    state: State<'_, AppState>,
+) -> Result<ConflictVersions, String> {
+    let root = git_root(&path, &state)?;
+    tauri::async_runtime::spawn_blocking(move || conflict_versions(&root, &file))
+        .await
+        .map_err(|e| e.to_string())?
+}
+fn save_resolution(
+    root: &Path,
+    file: &str,
+    content: String,
+    expected_version: Option<String>,
+    expected_index: &str,
+    history: &Path,
+) -> Result<storage::DiskFile, String> {
+    if content.len() > 8 * 1024 * 1024
+        || content.lines().any(|line| {
+            ["<<<<<<<", ">>>>>>>", "|||||||"]
+                .iter()
+                .any(|marker| line.starts_with(marker))
+        })
+    {
+        return Err("请先清除冲突标记，内容限制8MiB / Resolve markers first; maximum8MiB".into());
+    }
+    let versions = conflict_versions(root, file)?;
+    if versions.index_version != expected_index
+        || versions.working.as_ref().map(|file| &file.version) != expected_version.as_ref()
+    {
+        return Err(
+            "CONFLICT:磁盘或Git索引已改变，请重新加载 / Disk or Git index changed; reload".into(),
+        );
+    }
+    let target = safe_relative(root, file)?;
+    let original = versions.working;
+    let result = storage::DiskFile {
+        path: target.to_string_lossy().into_owned(),
+        content,
+        version: String::new(),
+        bom: original.as_ref().is_some_and(|f| f.bom),
+        crlf: original.as_ref().is_some_and(|f| f.crlf),
+    };
+    let bytes = storage::serialize(&result);
+    if let Some(original) = original {
+        storage::atomic_write(&target, &bytes, Some(&original.version), history)?;
+    } else {
+        use std::io::Write;
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_nanos();
+        let temporary =
+            target.with_file_name(format!(".markwrite-merge-{}-{stamp}", std::process::id()));
+        let write = (|| {
+            let mut output = fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&temporary)
+                .map_err(|e| e.to_string())?;
+            output
+                .write_all(&bytes)
+                .and_then(|_| output.sync_all())
+                .map_err(|e| e.to_string())?;
+            storage::rename_without_replace(&temporary, &target).map_err(|e| e.to_string())
+        })();
+        if write.is_err() {
+            let _ = fs::remove_file(&temporary);
+        }
+        write?;
+    }
+    storage::read(&target)
+}
+#[tauri::command]
+pub async fn git_save_resolution(
+    path: String,
+    file: String,
+    content: String,
+    expected_version: Option<String>,
+    expected_index: String,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<storage::DiskFile, String> {
+    let root = git_root(&path, &state)?;
+    let _guard = state.writes.lock().map_err(|e| e.to_string())?;
+    save_resolution(
+        &root,
+        &file,
+        content,
+        expected_version,
+        &expected_index,
+        &recovery(&app)?,
+    )
+}
+
 #[tauri::command]
 pub async fn git_mark_resolved(
     path: String,
@@ -853,6 +1044,91 @@ mod tests {
         // Production callers obtain a canonical root from git_root. Match that
         // contract here, including the Windows verbatim path prefix.
         root.canonicalize().unwrap()
+    }
+    #[test]
+    fn three_way_versions_and_save_reject_stale_disk_and_index() {
+        let root = conflicted_test_repository("three-way");
+        let history = root.join(".test-history");
+        let versions = conflict_versions(&root, "冲突.md").unwrap();
+        assert_eq!(versions.base.as_deref(), Some("original\n"));
+        assert_eq!(versions.ours.as_deref(), Some("ours\n"));
+        assert_eq!(versions.theirs.as_deref(), Some("theirs\n"));
+        let expected = versions.working.unwrap().version;
+        assert!(save_resolution(
+            &root,
+            "冲突.md",
+            "<<<<<<< ours\n".into(),
+            Some(expected.clone()),
+            &versions.index_version,
+            &history
+        )
+        .is_err());
+        assert!(save_resolution(
+            &root,
+            "冲突.md",
+            "resolved\n".into(),
+            Some(expected.clone()),
+            "stale",
+            &history
+        )
+        .is_err());
+        let result = save_resolution(
+            &root,
+            "冲突.md",
+            "resolved\n".into(),
+            Some(expected.clone()),
+            &versions.index_version,
+            &history,
+        )
+        .unwrap();
+        assert_eq!(result.content, "resolved\n");
+        assert!(save_resolution(
+            &root,
+            "冲突.md",
+            "stale overwrite\n".into(),
+            Some(expected),
+            &versions.index_version,
+            &history
+        )
+        .is_err());
+        assert_eq!(
+            fs::read_to_string(root.join("冲突.md")).unwrap(),
+            "resolved\n"
+        );
+        mark_resolved(&root, "冲突.md").unwrap();
+        commit_selected(
+            &root,
+            vec!["冲突.md".into()],
+            "resolved from three way".into(),
+        )
+        .unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn three_way_can_recreate_an_explicitly_selected_deleted_file() {
+        let root = conflicted_test_repository("three-way-deleted");
+        fs::remove_file(root.join("冲突.md")).unwrap();
+        let versions = conflict_versions(&root, "冲突.md").unwrap();
+        assert!(versions.working.is_none());
+        save_resolution(
+            &root,
+            "冲突.md",
+            "restored\n".into(),
+            None,
+            &versions.index_version,
+            &root.join(".test-history"),
+        )
+        .unwrap();
+        assert!(save_resolution(
+            &root,
+            "冲突.md",
+            "overwrite\n".into(),
+            None,
+            &versions.index_version,
+            &root.join(".test-history")
+        )
+        .is_err());
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn resolved_merge_requires_explicit_selection_of_all_staged_files() {

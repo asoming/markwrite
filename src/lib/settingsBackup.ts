@@ -1,3 +1,4 @@
+import { validShortcuts } from './shortcuts';
 import { defaultSettings } from './recovery';
 import { isTheme } from './themes';
 import { loadThemeLibrary, saveThemeLibrary, validateLibrary } from './themeImport';
@@ -10,8 +11,10 @@ export function validateBackupSettings(value: unknown): Settings {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new Error('备份设置无效 / Invalid backup settings');
   const v = value as Record<string, unknown>;
-  const settings = { ...defaultSettings };
+  const settings = { ...defaultSettings, shortcuts: validShortcuts(v.shortcuts) };
   if (isTheme(v.theme)) settings.theme = v.theme;
+  if (['technical', 'github', 'commonmark'].includes(String(v.markdownProfile)))
+    settings.markdownProfile = v.markdownProfile as Settings['markdownProfile'];
   settings.language = v.language === 'en' ? 'en' : 'zh-CN';
   if (v.defaultMode === 'read' || v.defaultMode === 'live' || v.defaultMode === 'source')
     settings.defaultMode = v.defaultMode;

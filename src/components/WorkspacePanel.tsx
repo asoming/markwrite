@@ -1,3 +1,4 @@
+import GitMergePanel, { type ConflictVersions } from './GitMergePanel';
 import { t, useI18n } from '../lib/i18n';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -37,6 +38,7 @@ type Props = {
   onTrashed: (paths: string[]) => void;
   onRename: (from: string, name: string) => Promise<string>;
   onNotify: (text: string) => void;
+  onGitSaved?: (file: DiskFile) => void;
 };
 const labels: Record<WorkspaceTab, string> = {
   graph: '关联视图',
@@ -57,6 +59,8 @@ export default function WorkspacePanel(p: Props) {
     [selectedHistory, setSelectedHistory] = useState<DiskFile>();
   const [index, setIndex] = useState<IndexedDocument[]>([]),
     [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [merge, setMerge] = useState<{ file: string; versions: ConflictVersions }>();
+  const [mergeSaving, setMergeSaving] = useState(false);
   const [git, setGit] = useState<GitState>(),
     [gitDiff, setGitDiff] = useState(''),
     [message, setMessage] = useState('');
@@ -80,6 +84,7 @@ export default function WorkspacePanel(p: Props) {
     actionSequence.current++;
     setHistory([]);
     setGit(undefined);
+    setMerge(undefined);
     setGitDiff('');
     setAttachments([]);
     setRename(undefined);
@@ -558,6 +563,52 @@ export default function WorkspacePanel(p: Props) {
             {!p.root && <p>{t('请先打开工作文件夹。')}</p>}
           </>
         )}
+        {p.tab === 'git' && merge && (
+          <GitMergePanel
+            key={`${merge.file}:${merge.versions.indexVersion}`}
+            file={merge.file}
+            versions={merge.versions}
+            busy={mergeSaving}
+            onClose={() => setMerge(undefined)}
+            onSave={async (content) => {
+              const path = `${p.root}/${merge.file}`;
+              if (
+                p.docs.some(
+                  (doc) =>
+                    doc.path &&
+                    pathKey(doc.path) === pathKey(path) &&
+                    (doc.content !== doc.saved ||
+                      doc.status === 'conflict' ||
+                      doc.status === 'error'),
+                )
+              )
+                throw new Error(
+                  t(
+                    '打开的文档仍有未保存内容或冲突，请先处理。',
+                    'Resolve unsaved edits or conflicts in the open document first.',
+                  ),
+                );
+              const requestScope = latestScope.current;
+              setMergeSaving(true);
+              try {
+                const file = await invoke<DiskFile>('git_save_resolution', {
+                  path: p.root,
+                  file: merge.file,
+                  content,
+                  expectedVersion: merge.versions.working?.version || null,
+                  expectedIndex: merge.versions.indexVersion,
+                });
+                p.onGitSaved?.(file);
+                if (mounted.current && requestScope === latestScope.current) {
+                  setMerge(undefined);
+                  setRevision((value) => value + 1);
+                }
+              } finally {
+                if (mounted.current) setMergeSaving(false);
+              }
+            }}
+          />
+        )}
         {p.tab === 'git' && (
           <>
             {!p.root && <p>{t('请先打开一个工作文件夹。')}</p>}
@@ -643,6 +694,20 @@ export default function WorkspacePanel(p: Props) {
                             'Save edits first. Marking resolved stages the disk contents, or retains the deletion if the file was removed.',
                           )}
                         </p>
+                        <button
+                          disabled={loading}
+                          onClick={() =>
+                            void run(async (isCurrent) => {
+                              const versions = await invoke<ConflictVersions>(
+                                'git_conflict_versions',
+                                { path: p.root, file: entry.path },
+                              );
+                              if (isCurrent()) setMerge({ file: entry.path, versions });
+                            })
+                          }
+                        >
+                          {t('三方比较…', 'Three-way comparison…')}
+                        </button>
                         <button onClick={() => p.onOpen(`${p.root}/${entry.path}`)}>
                           {t('打开文件', 'Open file')}
                         </button>

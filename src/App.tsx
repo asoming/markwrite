@@ -1,3 +1,9 @@
+import OperationRecoveryPanel from './components/OperationRecoveryPanel';
+import { synchronizeScroll } from './lib/linkedScroll';
+import type { CompareHandle } from './components/ComparePane';
+import ShortcutsPanel from './components/ShortcutsPanel';
+import { resolveShortcut } from './lib/shortcuts';
+import { markdownProfileOptions } from './lib/markdownProfile';
 import BackupPanel, { BackupScheduler } from './components/BackupPanel';
 import { prepareMove, selectedMoveChanges, type PreparedMove } from './lib/referenceMove';
 import { movedReferencePath } from './lib/referenceMaintenance';
@@ -145,10 +151,7 @@ function draft(name: string, content = ''): Document {
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const canceled = (e: unknown) => e instanceof DOMException && e.name === 'AbortError';
 configureInlineSyntax(loadExtensions());
-const recovered = readSession();
-setLanguage(recovered?.settings.language || 'zh-CN');
-configureMarkdown({ compatibility: recovered?.settings.markdownCompatibility === true });
-const initialDocs = recovered?.docs.length ? recovered.docs : [draft('开始写作.md', welcome)];
+const ComparePane = lazy(() => import('./components/ComparePane'));
 function IconButton({
   title,
   children,
@@ -248,6 +251,15 @@ function Modal({
   );
 }
 export default function App() {
+  const [{ recovered, initialDocs }] = useState(() => {
+    const recovered = readSession();
+    setLanguage(recovered?.settings.language || 'zh-CN');
+    configureMarkdown(markdownProfileOptions(recovered?.settings || {}));
+    return {
+      recovered,
+      initialDocs: recovered?.docs.length ? recovered.docs : [draft('开始写作.md', welcome)],
+    };
+  });
   useI18n();
   const [sessionReady, setSessionReady] = useState(!recoveryPending());
   const [recoveryError, setRecoveryError] = useState('');
@@ -301,7 +313,7 @@ export default function App() {
     setModeState(next);
   }
   function withEditor(next: 'live' | 'source', run: (view: EditorView) => void) {
-    setMode(next);
+    if (mode === 'read') setMode(next);
     if (editor.current) run(editor.current);
     else {
       const restore = pendingEditorAction.current;
@@ -386,9 +398,30 @@ export default function App() {
     { resolve: (path: string) => void; reject: (error: unknown) => void } | undefined
   >(undefined);
   const [compareId, setCompareId] = useState<string | null>(null);
+  const [compareMode, setCompareMode] = useState<Mode>('read');
+  const [linkedScroll, setLinkedScroll] = useState(false);
+  const [splitPercent, setSplitPercent] = useState(50);
+  const compare = useRef<CompareHandle | null>(null);
+  const focusedPane = useRef<'main' | 'compare'>('main');
+  const expectedScroll = useRef(new WeakMap<HTMLElement, number>());
+  const [paneAction, setPaneAction] = useState<{ id: string; action: EditingAction }>();
+  function selectComparison(id: string) {
+    setCompareMode(editPermission.current.mode(id));
+    setCompareId(id);
+  }
+  useEffect(() => {
+    if (compareId && (!docs.some((doc) => doc.id === compareId) || compareId === activeId)) {
+      const other = docs.find((doc) => doc.id !== activeId);
+      if (other) selectComparison(other.id);
+      else setCompareId(null);
+      focusedPane.current = 'main';
+    }
+  }, [activeId, compareId, docs.length]);
+
   const [recents, setRecents] = useState(readRecents);
   const [insertDialog, setInsertDialog] = useState<{
     kind: InsertKind;
+    pane?: 'main' | 'compare';
     documentId: string;
     from: number;
     to: number;
@@ -534,7 +567,7 @@ export default function App() {
   }
   const saving = useRef(new Set<string>());
   const searchRequest = useRef<string>('');
-  const composing = useRef(false);
+  const composing = useRef(new Set<string>());
   const exitAfterSave = useRef<Document[] | null>(null);
   const current = docs.find((d) => d.id === activeId) || docs[0];
   const currentRef = useRef(current);
@@ -822,6 +855,7 @@ export default function App() {
   function removeDoc(id: string) {
     const next = docsRef.current.filter((d) => d.id !== id);
     releaseEditor(id);
+    releaseEditor(`compare:${id}`);
     editPermission.current.forget(id);
     if (!next.length) next.push(draft('未命名.md'));
     updateDocs(() => next);
@@ -862,9 +896,7 @@ export default function App() {
     });
     view.focus();
   }
-  async function image(file: File) {
-    const d = currentRef.current,
-      view = editor.current;
+  async function image(file: File, d = currentRef.current, view = editor.current) {
     if (!d || !view || !editPermission.current.canEdit(d.id)) return;
     const range = { from: view.state.selection.main.from, to: view.state.selection.main.to };
     const original = view.state.doc.toString();
@@ -877,7 +909,11 @@ export default function App() {
         settingsRef.current.attachmentMode === 'embedded' ? undefined : d.path,
         file,
       );
-      if (currentRef.current.id !== d.id || editor.current?.state.doc.toString() !== original) {
+      if (
+        !view.dom.isConnected ||
+        view.state.doc.toString() !== original ||
+        !docsRef.current.some((doc) => doc.id === d.id)
+      ) {
         notify(t('图片已处理，请回到原文档后重新插入。'));
         return;
       }
@@ -905,11 +941,14 @@ export default function App() {
     view.focus();
   }
   function chooseImage() {
+    const right = focusedPane.current === 'compare' && compare.current?.view;
+    const doc = right ? docsRef.current.find((doc) => doc.id === compareId) : currentRef.current;
+    const view = right || editor.current;
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = 'image/png,image/jpeg,image/webp,image/gif,image/avif';
     input.onchange = () => {
-      if (input.files?.[0]) void image(input.files[0]);
+      if (input.files?.[0]) void image(input.files[0], doc, view);
     };
     input.click();
   }
@@ -1094,9 +1133,9 @@ export default function App() {
     }
   }
   useEffect(() => {
-    configureMarkdown({ compatibility: settings.markdownCompatibility === true });
+    configureMarkdown(markdownProfileOptions(settings));
     setSyntaxRevision((value) => value + 1);
-  }, [settings.markdownCompatibility]);
+  }, [settings.markdownCompatibility, settings.markdownProfile]);
   useEffect(() => {
     const update = (event: Event) => {
       configureInlineSyntax((event as CustomEvent<ExtensionPack[]>).detail || loadExtensions());
@@ -1206,7 +1245,7 @@ export default function App() {
   }, [root]);
   useEffect(() => {
     const timer = setInterval(() => {
-      if (!settings.autosave || composing.current) return;
+      if (!settings.autosave || composing.current.size) return;
       for (const d of docsRef.current)
         if (editPermission.current.canAutosave(d) && Date.now() - d.updated > 800)
           void save(d.id, false, 'auto');
@@ -1218,7 +1257,7 @@ export default function App() {
       stopped = false;
     const stamps = new Map<string, string>();
     const check = async (full = false) => {
-      if (checking || composing.current) return;
+      if (checking || composing.current.size) return;
       checking = true;
       for (const d of full ? [...docsRef.current] : [currentRef.current]) {
         if (!d.path || saving.current.has(d.id) || d.status === 'conflict') continue;
@@ -1346,6 +1385,13 @@ export default function App() {
       window.removeEventListener('beforeunload', before);
     };
   }, [activeId, settings, root]);
+  const menuHandler = useRef(handleMenuAction);
+  menuHandler.current = handleMenuAction;
+  useEffect(() => {
+    if (!paneAction || activeId !== paneAction.id) return;
+    setPaneAction(undefined);
+    menuHandler.current(paneAction.action);
+  }, [activeId, paneAction]);
   actions.current = {
     save: () => {
       void save();
@@ -1358,74 +1404,45 @@ export default function App() {
   };
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.isComposing || dialog || insertDialog || namePrompt || referenceMove) return;
+      if (
+        e.isComposing ||
+        dialog ||
+        insertDialog ||
+        namePrompt ||
+        referenceMove ||
+        (e.target instanceof Element && e.target.closest('[role=dialog],[role=menu]'))
+      )
+        return;
       if (e.key === 'F3' && mode === 'read') {
         e.preventDefault();
         reader.current?.findNext(e.shiftKey ? -1 : 1);
         return;
       }
-      if (
-        mode === 'read' &&
-        e.altKey &&
-        ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)
-      ) {
-        e.preventDefault();
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
-          navigateHistory(e.key === 'ArrowLeft' ? -1 : 1);
-        else void adjacentFile(e.key === 'ArrowUp' ? -1 : 1);
+      if (e.key === 'Escape') {
+        setFocus(false);
         return;
       }
-      if (e.key === 'Escape') {
-        if (!dialog) setFocus(false);
+      const targetMode =
+        focusedPane.current === 'compare' && compare.current ? compare.current.mode : mode;
+      const { action, blocked } = resolveShortcut(
+        e,
+        settingsRef.current.shortcuts,
+        targetMode === 'read' ? 'read' : 'edit',
+      );
+      const field = e.target instanceof Element && e.target.closest('input,textarea,select');
+      // Save/open are application commands; text-field selection/undo belong to the field.
+      if (
+        field &&
+        action &&
+        (action.startsWith('format:') ||
+          ['app:selectAll', 'app:undo', 'app:redo', 'app:find'].includes(action))
+      )
+        return;
+      if (action || blocked) {
+        e.preventDefault();
+        e.stopPropagation();
       }
-      if (!(e.ctrlKey || e.metaKey)) return;
-      const key = e.key.toLowerCase();
-      if (key === 'k') {
-        e.preventDefault();
-        setPalette('');
-        setDialog('commands');
-      } else if (key === 'p') {
-        e.preventDefault();
-        setPalette('');
-        setDialog('quickopen');
-      } else if (key === 's' && e.shiftKey) {
-        e.preventDefault();
-        void save(currentRef.current.id, true);
-      } else if (key === 'h') {
-        e.preventDefault();
-        withEditor('source', (view) => openSearchPanel(view));
-      } else if (key === 's') {
-        e.preventDefault();
-        actions.current.save();
-      } else if (key === 'o') {
-        e.preventDefault();
-        actions.current.open();
-      } else if (key === 'n' && e.shiftKey) {
-        e.preventDefault();
-        void newWindow();
-      } else if (key === 'd' && mode === 'read') {
-        e.preventDefault();
-        reader.current?.toggleBookmark();
-      } else if (key === 'n') {
-        e.preventDefault();
-        actions.current.new();
-      } else if (key === 'w') {
-        e.preventDefault();
-        actions.current.close();
-      } else if (key === ',') {
-        e.preventDefault();
-        setDialog('settings');
-      } else if (key === 'f' && e.shiftKey) {
-        e.preventDefault();
-        setSideTab('search');
-        setSidebar(true);
-      } else if (key === 'f' && mode === 'read') {
-        e.preventDefault();
-        reader.current?.openSearch();
-      } else if (key === '\\') {
-        e.preventDefault();
-        setSidebar((v) => !v);
-      }
+      if (action) menuHandler.current(action);
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
@@ -1593,12 +1610,16 @@ export default function App() {
     });
   }
   function launchInsert(kind: InsertKind) {
-    withEditor('live', (view) => {
+    const right = focusedPane.current === 'compare' && compare.current;
+    const withTarget = (run: (view: EditorView) => void) =>
+      right ? right.edit(run) : withEditor('live', run);
+    withTarget((view) => {
       const range = view.state.selection.main;
       const table = kind === 'table' ? readTableAtSelection(view) : null;
       setInsertDialog({
         kind,
-        documentId: current.id,
+        documentId: right && compareId ? compareId : current.id,
+        pane: right ? 'compare' : 'main',
         from: table?.from ?? range.from,
         to: table?.to ?? range.to,
         source: view.state.doc.toString(),
@@ -1608,10 +1629,13 @@ export default function App() {
     });
   }
   function applyInsert(markdown: string) {
-    const view = editor.current,
-      target = insertDialog;
+    const target = insertDialog;
+    const view = target?.pane === 'compare' ? compare.current?.view : editor.current;
     if (!view || !target) return;
-    if (current.id !== target.documentId || view.state.doc.toString() !== target.source) {
+    if (
+      (target.pane === 'compare' ? compareId : current.id) !== target.documentId ||
+      view.state.doc.toString() !== target.source
+    ) {
       notify(t('原文已改变，请重新选择插入位置。'));
       return;
     }
@@ -1829,6 +1853,40 @@ export default function App() {
     }
   }
   function handleMenuAction(action: EditingAction) {
+    if (focusedPane.current === 'compare' && compare.current?.action(action)) return;
+    // Document tools share the main inspector. Promote the focused document before opening it.
+    if (
+      focusedPane.current === 'compare' &&
+      compareId &&
+      [
+        'app:openWindow',
+        'app:encoding',
+        'app:portable',
+        'app:clipboard',
+        'app:rename',
+        'app:move',
+        'app:print',
+        'app:reference',
+        'app:exportHtml',
+        'app:exportPdf',
+        'app:exportDocx',
+        'app:upload',
+        'app:publish',
+        'app:ai',
+        'view:history',
+        'view:backlinks',
+        'view:attachments',
+        'view:previousFile',
+        'view:nextFile',
+      ].includes(action)
+    ) {
+      const target = compareId;
+      selectComparison(current.id);
+      selectDocument(target);
+      focusedPane.current = 'main';
+      setPaneAction({ id: target, action });
+      return;
+    }
     const view = editor.current;
     if (action.startsWith('format:')) {
       withEditor('live', (view) =>
@@ -2015,6 +2073,10 @@ export default function App() {
           setDialog('ai');
         });
         break;
+      case 'app:commands':
+        setPalette('');
+        setDialog('commands');
+        break;
       case 'app:quickOpen':
         setPalette('');
         setDialog('quickopen');
@@ -2040,7 +2102,18 @@ export default function App() {
         break;
       case 'view:compare':
         setWorkspaceTab(null);
-        setCompareId((v) => (v ? null : docs.find((d) => d.id !== current.id)?.id || current.id));
+        if (compareId) setCompareId(null);
+        else {
+          const other = docs.find((d) => d.id !== current.id);
+          if (other) selectComparison(other.id);
+          else
+            notify(
+              t(
+                '请先打开第二篇文档再并排对照',
+                'Open a second document for side-by-side comparison',
+              ),
+            );
+        }
         break;
       case 'view:workspace':
         setWorkspaceTab('files');
@@ -2282,6 +2355,7 @@ export default function App() {
             )}
             <EditingMenu
               onAction={handleMenuAction}
+              shortcuts={settings.shortcuts}
               mode={mode}
               theme={settings.theme}
               focus={focus}
@@ -2360,8 +2434,43 @@ export default function App() {
             {t('当前文档较大，已暂停即时渲染以保证编辑响应。仍可使用源码和阅读模式。')}
           </div>
         )}
-        <div className="document-workspace">
-          <div className="document-surface" data-custom-document-theme="">
+        <div
+          className="document-workspace"
+          style={{ '--split-percent': `${splitPercent}%` } as CSSProperties}
+          onScrollCapture={(event) => {
+            if (
+              !linkedScroll ||
+              !compareId ||
+              !(event.target instanceof HTMLElement) ||
+              !event.target.matches('.reader-scroll,.cm-scroller')
+            )
+              return;
+            const source = event.target;
+            const expected = expectedScroll.current.get(source);
+            if (expected !== undefined && Math.abs(source.scrollTop - expected) < 2) {
+              expectedScroll.current.delete(source);
+              return;
+            }
+            const inCompare = !!source.closest('.compare-pane');
+            const target = event.currentTarget.querySelector<HTMLElement>(
+              inCompare
+                ? '.document-surface .reader-scroll,.document-surface .cm-scroller'
+                : '.compare-pane .reader-scroll,.compare-pane .cm-scroller',
+            );
+            if (target && target !== source)
+              expectedScroll.current.set(target, synchronizeScroll(source, target));
+          }}
+        >
+          <div
+            className="document-surface"
+            data-custom-document-theme=""
+            onFocusCapture={() => {
+              focusedPane.current = 'main';
+            }}
+            onPointerDownCapture={() => {
+              focusedPane.current = 'main';
+            }}
+          >
             {mode !== 'read' && (
               <Suspense
                 fallback={
@@ -2397,7 +2506,8 @@ export default function App() {
                     }
                   }}
                   onComposition={(v) => {
-                    composing.current = v;
+                    if (v) composing.current.add(current.id);
+                    else composing.current.delete(current.id);
                   }}
                 />
               </Suspense>
@@ -2432,7 +2542,7 @@ export default function App() {
                       : { line: point.line, column: 1 },
                   );
                 }}
-                parseOptions={{ compatibility: settings.markdownCompatibility === true }}
+                parseOptions={markdownProfileOptions(settings)}
                 content={current.content}
                 path={current.path}
                 theme={settings.theme}
@@ -2473,36 +2583,85 @@ export default function App() {
               </div>
             )}
           </div>
-          {compareId && (
-            <div className="compare-pane">
-              <div className="workspace-title">
-                <select
-                  aria-label={t('对照文档')}
-                  value={compareId}
-                  onChange={(e) => setCompareId(e.target.value)}
-                >
-                  {docs.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.name}
-                    </option>
-                  ))}
-                </select>
-                <button aria-label={t('关闭并排对照')} onClick={() => setCompareId(null)}>
-                  <X size={16} />
-                </button>
-              </div>
-              <Reader
-                documentKey={`compare:${compareId}`}
-                parseOptions={{ compatibility: settings.markdownCompatibility === true }}
-                content={(docs.find((d) => d.id === compareId) || current).content}
-                path={(docs.find((d) => d.id === compareId) || current).path}
-                theme={settings.theme}
-                revision={syntaxRevision}
-                onLink={(href) =>
-                  void followLink(href, docs.find((d) => d.id === compareId) || current)
-                }
+          {compareId && docs.some((doc) => doc.id === compareId) && (
+            <>
+              <div
+                className="split-handle"
+                role="separator"
+                aria-label={t('调整对照宽度', 'Resize comparison panes')}
+                aria-orientation="vertical"
+                aria-valuemin={25}
+                aria-valuemax={75}
+                aria-valuenow={splitPercent}
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+                    event.preventDefault();
+                    setSplitPercent((value) =>
+                      Math.max(25, Math.min(75, value + (event.key === 'ArrowLeft' ? -2 : 2))),
+                    );
+                  }
+                }}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                  const rect = event.currentTarget.parentElement!.getBoundingClientRect();
+                  setSplitPercent(
+                    Math.max(25, Math.min(75, ((event.clientX - rect.left) / rect.width) * 100)),
+                  );
+                }}
+                onPointerUp={(event) => event.currentTarget.releasePointerCapture(event.pointerId)}
               />
-            </div>
+              <Suspense fallback={<p>{t('正在打开对照…', 'Opening comparison…')}</p>}>
+                <ComparePane
+                  key={compareId}
+                  ref={compare}
+                  document={docs.find((doc) => doc.id === compareId)!}
+                  documents={docs.filter((doc) => doc.id !== current.id)}
+                  mode={compareMode}
+                  settings={settings}
+                  revision={syntaxRevision}
+                  onSelect={selectComparison}
+                  onMode={(next) => {
+                    editPermission.current.select(compareId, next);
+                    setCompareMode(next);
+                  }}
+                  onClose={() => {
+                    setCompareId(null);
+                    focusedPane.current = 'main';
+                  }}
+                  onFocused={() => {
+                    focusedPane.current = 'compare';
+                  }}
+                  onInsert={(kind) => launchInsert(kind)}
+                  onDocumentClose={() => requestClose(compareId)}
+                  onChange={(text) => contentChanged(compareId, text)}
+                  onSave={(asNew) => void save(compareId, asNew)}
+                  onComposition={(active) => {
+                    if (active) composing.current.add(compareId);
+                    else composing.current.delete(compareId);
+                  }}
+                  onImage={(file, view) =>
+                    void image(
+                      file,
+                      docsRef.current.find((doc) => doc.id === compareId),
+                      view,
+                    )
+                  }
+                  onLink={(href) =>
+                    void followLink(
+                      href,
+                      docsRef.current.find((doc) => doc.id === compareId),
+                    )
+                  }
+                  linked={linkedScroll}
+                  onLinked={setLinkedScroll}
+                />
+              </Suspense>
+            </>
           )}
           {workspaceTab && !focus && (
             <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
@@ -2519,6 +2678,17 @@ export default function App() {
                 onRefresh={() => void refresh()}
                 onTrashed={handleTrashed}
                 onRename={renameGuarded}
+                onGitSaved={(file) => {
+                  const doc = docsRef.current.find(
+                    (doc) => doc.path && pathKey(doc.path) === pathKey(file.path),
+                  );
+                  if (!doc) return;
+                  if (doc.content !== doc.saved) {
+                    patch(doc.id, { status: 'conflict' });
+                    return;
+                  }
+                  patch(doc.id, { ...file, saved: file.content, status: 'clean' });
+                }}
                 onNotify={notify}
               />
             </Suspense>
@@ -2906,36 +3076,54 @@ export default function App() {
             onChange={setSettings}
             onClose={() => setDialog(null)}
             filesExtra={
-              <BackupPanel
-                language={settings.language}
-                root={root}
-                getBundle={() => captureBackupSettings(settingsRef.current)}
-                onRestored={async (result) => {
-                  const restoredEntries = await platform.listFolder(result.path);
-                  const preferences = result.settingsBundle
-                    ? restoreBackupSettings(result.settingsBundle)
-                    : settingsRef.current;
-                  folderRequest.current++;
-                  setSettings({ ...preferences, followFileParent: false });
-                  setRoot(result.path);
-                  setEntries(restoredEntries);
-                  setFolderError('');
-                  setFolderLoading(false);
-                  setWorkspaces((old) => {
-                    const next = [result.path, ...old.filter((path) => path !== result.path)].slice(
-                      0,
-                      10,
+              <>
+                <OperationRecoveryPanel
+                  documents={() => docsRef.current}
+                  onRecovered={(from, to) => {
+                    handleRenamed(from, to);
+                    if (root && movedReferencePath(root, from, to) !== root)
+                      setRoot(movedReferencePath(root, from, to));
+                    invalidateWorkspaceIndex();
+                    void refresh();
+                    notify(
+                      t(
+                        '恢复完成，原始副本已归档。',
+                        'Recovery completed; original copies archived.',
+                      ),
                     );
-                    try {
-                      localStorage.setItem('markwrite.workspaces.v1', JSON.stringify(next));
-                    } catch {
-                      /* restored folder remains open */
-                    }
-                    return next;
-                  });
-                  invalidateWorkspaceIndex();
-                }}
-              />
+                  }}
+                />
+                <BackupPanel
+                  language={settings.language}
+                  root={root}
+                  getBundle={() => captureBackupSettings(settingsRef.current)}
+                  onRestored={async (result) => {
+                    const restoredEntries = await platform.listFolder(result.path);
+                    const preferences = result.settingsBundle
+                      ? restoreBackupSettings(result.settingsBundle)
+                      : settingsRef.current;
+                    folderRequest.current++;
+                    setSettings({ ...preferences, followFileParent: false });
+                    setRoot(result.path);
+                    setEntries(restoredEntries);
+                    setFolderError('');
+                    setFolderLoading(false);
+                    setWorkspaces((old) => {
+                      const next = [
+                        result.path,
+                        ...old.filter((path) => path !== result.path),
+                      ].slice(0, 10);
+                      try {
+                        localStorage.setItem('markwrite.workspaces.v1', JSON.stringify(next));
+                      } catch {
+                        /* restored folder remains open */
+                      }
+                      return next;
+                    });
+                    invalidateWorkspaceIndex();
+                  }}
+                />
+              </>
             }
             defaultAppAvailable={platform.desktop}
             onCheckDefaultApp={async () => (await defaultMarkdownStatus()).isDefault}
@@ -3015,27 +3203,13 @@ export default function App() {
           subtitle={t('也可以通过菜单使用这些操作。')}
           onClose={() => setDialog(null)}
         >
-          <div className="shortcut-list">
-            {[
-              [t('新建文档'), 'Ctrl N'],
-              [t('打开文件'), 'Ctrl O'],
-              [t('保存文档'), 'Ctrl S'],
-              [t('快速打开'), 'Ctrl P'],
-              [t('命令面板'), 'Ctrl K'],
-              [t('查找与替换'), 'Ctrl F'],
-              [t('全文搜索'), 'Ctrl Shift F'],
-              [t('撤销 / 重做'), 'Ctrl Z / Ctrl Shift Z'],
-              [t('关闭文档'), 'Ctrl W'],
-              [t('显示 / 隐藏侧栏'), 'Ctrl \\'],
-              [t('设置'), 'Ctrl ,'],
-              [t('退出专注模式'), 'Esc'],
-            ].map(([label, key]) => (
-              <div key={label}>
-                <span>{label}</span>
-                <kbd>{key}</kbd>
-              </div>
-            ))}
-          </div>
+          <ShortcutsPanel
+            value={settings.shortcuts}
+            onChange={(shortcuts) => {
+              setSettings((value) => ({ ...value, shortcuts }));
+              notify(t('快捷键已保存', 'Shortcuts saved'));
+            }}
+          />
         </Modal>
       )}
       {dialog === 'conflict' && diskConflict && (

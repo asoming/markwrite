@@ -70,7 +70,17 @@ function rawHtml(html: string) {
       if (/^<\//.test(tag)) return tag;
       return tag.replace(
         /([\s/]+)([^\s"'<>/=]+)(\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?/g,
-        (attribute, _space, name: string) => (/^(?:style|srcset)$/i.test(name) ? '' : attribute),
+        (attribute, _space, name: string) => {
+          if (
+            /^<figure\b/i.test(tag) &&
+            /^style$/i.test(name) &&
+            /^\s+style\s*=\s*(["'])\s*text-align\s*:\s*(left|center|right)\s*;?\s*\1$/i.test(
+              attribute,
+            )
+          )
+            return attribute;
+          return /^(?:style|srcset)$/i.test(name) ? '' : attribute;
+        },
       );
     },
   );
@@ -330,6 +340,29 @@ export function createMarkdownParser(options: MarkdownParseOptions = {}): Markdo
     );
     parser.renderer.rules.block_math = (tokens, index) => formula(tokens[index].content, true);
   }
+  if (options.presentation !== false && options.flavor !== 'commonmark') {
+    parser.core.ruler.before('inline', 'markwrite_alerts', (state) => {
+      const names: Record<string, string> = {
+        NOTE: 'Note',
+        TIP: 'Tip',
+        IMPORTANT: 'Important',
+        WARNING: 'Warning',
+        CAUTION: 'Caution',
+      };
+      state.tokens.forEach((token, index) => {
+        if (token.type !== 'blockquote_open' || state.tokens[index + 1]?.type !== 'paragraph_open')
+          return;
+        const inline = state.tokens[index + 2];
+        if (inline?.type !== 'inline') return;
+        const marker = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\n|$)/.exec(
+          inline.content,
+        );
+        if (!marker) return;
+        token.attrJoin('class', `markdown-alert markdown-alert-${marker[1].toLowerCase()}`);
+        inline.content = `**${names[marker[1]]}**\n${inline.content.slice(marker[0].length)}`;
+      });
+    });
+  }
   if (options.presentation !== false) {
     parser.core.ruler.push('markwrite_headings', (state) => {
       const counts = new Map<string, number>();
@@ -375,7 +408,7 @@ export function createMarkdownParser(options: MarkdownParseOptions = {}): Markdo
       const token = tokens[index],
         language = parser.utils.unescapeAll(token.info).trim().split(/\s+/)[0] || 'text';
       const content = token.content.replace(/\n$/, '');
-      if (language === 'mermaid')
+      if (language === 'mermaid' && options.flavor !== 'commonmark')
         return `<div class="diagram" data-diagram="${encodeURIComponent(content)}"><pre>${escapeHtml(content)}</pre></div>`;
       return `<pre><code class="language-${escapeHtml(language)}">${escapeHtml(content)}</code></pre>`;
     };

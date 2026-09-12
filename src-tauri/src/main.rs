@@ -736,7 +736,7 @@ async fn save_export(
     bytes: Vec<u8>,
     app: tauri::AppHandle,
 ) -> Result<bool, String> {
-    if !["pdf", "docx"].contains(&extension.as_str()) {
+    if !["pdf", "docx", "css"].contains(&extension.as_str()) {
         return Err("导出类型无效。".into());
     }
     if bytes.len() > 100 * 1024 * 1024 {
@@ -857,6 +857,10 @@ fn main() {
             updates::open_update_folder,
             reference_changes::apply_reference_changes,
             reference_changes::choose_move_destination,
+            reference_changes::reference_recovery_list,
+            reference_changes::reference_recover,
+            reference_changes::reference_recovery_archive,
+            reference_changes::reference_recovery_reveal,
             workspace::workspace_documents,
             workspace::history_list,
             workspace::history_read,
@@ -867,6 +871,8 @@ fn main() {
             workspace::git_init,
             workspace::git_commit,
             workspace::git_mark_resolved,
+            workspace::git_conflict_versions,
+            workspace::git_save_resolution,
             watch_folder,
             save_export,
             session::save_session,

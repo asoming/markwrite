@@ -1,5 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Check, Eye, FileUp, Trash2 } from 'lucide-react';
+import { Check, Eye, FileUp, Trash2, Pencil, Download } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
+import { desktop, download } from '../lib/platform';
 import type { Language } from '../lib/types';
 import {
   compileDocumentTheme,
@@ -18,6 +20,7 @@ import {
   type ThemeNotice,
 } from '../lib/themeImport';
 import './themeManager.css';
+import { readThemePackage, compileThemePackage, type ThemePackage } from '../lib/themePackage';
 
 function initialLibrary() {
   try {
@@ -56,7 +59,7 @@ export function DocumentThemeStyles() {
 }
 
 const errors: Record<ThemeErrorCode | 'storage' | 'read', [string, string]> = {
-  size: ['CSS 文件最多 1MB。', 'CSS files must be no larger than 1MB.'],
+  size: ['CSS 与内嵌资源合计最多 1MB。', 'CSS and embedded resources must total no more than 1MB.'],
   syntax: [
     'CSS 语法有误，请检查括号、引号及声明后重新导入。',
     'The CSS could not be parsed. Check braces, quotes, and declarations, then import again.',
@@ -112,6 +115,11 @@ export default function ThemeManager({ language }: { language: Language }) {
   const [reading, setReading] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const [bundle, setBundle] = useState<ThemePackage>();
+  const [entry, setEntry] = useState('');
+  const [packageError, setPackageError] = useState('');
+  const [renaming, setRenaming] = useState<{ id: string; name: string }>();
   const readGeneration = useRef(0);
   const instanceId = useId()
     .replace(/[^a-z0-9-]/gi, '')
@@ -145,7 +153,60 @@ export default function ThemeManager({ language }: { language: Language }) {
       return false;
     }
   }
+  async function importPackage(input: File | File[]) {
+    const generation = ++readGeneration.current;
+    setReading(true);
+    setError('');
+    setPackageError('');
+    setCandidate(undefined);
+    setBundle(undefined);
+    try {
+      const next = await readThemePackage(input);
+      if (generation !== readGeneration.current) return;
+      setBundle(next);
+      setEntry(next.styles[0]);
+    } catch (reason) {
+      if (generation === readGeneration.current) setPackageError(String(reason));
+    } finally {
+      if (generation === readGeneration.current) setReading(false);
+    }
+  }
+  async function previewPackage() {
+    if (!bundle) return;
+    const generation = ++readGeneration.current;
+    setReading(true);
+    setError('');
+    setPackageError('');
+    try {
+      const css = await compileThemePackage(bundle, entry);
+      if (generation !== readGeneration.current) return;
+      const imported = createImportedTheme(
+        entry
+          .split('/')
+          .pop()!
+          .replace(/\.css$/i, '')
+          .slice(0, 80),
+        css,
+      );
+      setCandidate(imported);
+      setName(imported.name);
+      setPreviewId(undefined);
+    } catch (reason) {
+      if (generation === readGeneration.current) {
+        if (reason instanceof ThemeImportError) setError(reason.code);
+        else setPackageError(String(reason));
+      }
+    } finally {
+      if (generation === readGeneration.current) setReading(false);
+    }
+  }
   async function importFile(file: File) {
+    if (/\.zip$/i.test(file.name)) {
+      await importPackage(file);
+      return;
+    }
+    setBundle(undefined);
+    setPackageError('');
     const generation = ++readGeneration.current;
     setReading(true);
     setError('');
@@ -191,13 +252,14 @@ export default function ThemeManager({ language }: { language: Language }) {
           onClick={() => fileInput.current?.click()}
           disabled={reading}
         >
-          <FileUp size={14} /> {reading ? t('读取中…', 'Reading…') : t('导入 CSS', 'Import CSS')}
+          <FileUp size={14} />{' '}
+          {reading ? t('读取中…', 'Reading…') : t('导入 CSS / ZIP', 'Import CSS / ZIP')}
         </button>
         <input
           ref={fileInput}
           className="theme-file-input"
           type="file"
-          accept=".css,text/css"
+          accept=".css,.zip,text/css,application/zip"
           aria-label={t('选择主题 CSS 文件', 'Choose theme CSS file')}
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -205,7 +267,63 @@ export default function ThemeManager({ language }: { language: Language }) {
             if (file) void importFile(file);
           }}
         />
+        <button
+          type="button"
+          className="preference-button"
+          disabled={reading}
+          onClick={() => folderInput.current?.click()}
+        >
+          {t('选择主题文件夹', 'Choose theme folder')}
+        </button>
+        <input
+          ref={folderInput}
+          className="theme-file-input"
+          type="file"
+          multiple
+          {...{ webkitdirectory: '' }}
+          aria-label={t('主题资源文件夹', 'Theme resource folder')}
+          onChange={(event) => {
+            const files = Array.from(event.target.files || []);
+            event.target.value = '';
+            if (files.length) void importPackage(files);
+          }}
+        />
       </div>
+      {bundle && (
+        <div className="theme-package-picker">
+          <label>
+            {t('主题样式', 'Theme stylesheet')}{' '}
+            <select
+              value={entry}
+              disabled={reading}
+              onChange={(event) => {
+                setEntry(event.target.value);
+                setCandidate(undefined);
+              }}
+            >
+              {bundle.styles.map((path) => (
+                <option key={path} value={path}>
+                  {path}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="button"
+            className="preference-button"
+            disabled={reading}
+            onClick={() => void previewPackage()}
+          >
+            {t('加载资源并预览', 'Load resources and preview')}
+          </button>
+        </div>
+      )}
+      {packageError && (
+        <p role="alert" className="theme-manager-error">
+          {t('资源包读取失败：', 'Could not read theme package: ')}
+          {packageError}
+        </p>
+      )}
       <p className="preference-help">
         {t(
           '支持 Typora 的 #write、body 及常见正文样式。先预览再应用；主题只作用于阅读与即时编辑正文，源码、菜单和侧栏保持原样。',
@@ -214,8 +332,8 @@ export default function ThemeManager({ language }: { language: Language }) {
       </p>
       <p className="preference-help">
         {t(
-          '编辑器结构与 Typora 不同，复杂插件选择器、动画和定位样式不完全兼容。外部 CSS、网络图片及相对路径字体不会加载；可使用 data: 内嵌资源或系统字体。',
-          'The editor structure differs from Typora, so complex plugin selectors, animations, and positioning are not fully compatible. External CSS, network images, and relative font paths do not load. Use embedded data: resources or system fonts.',
+          '编辑器结构与 Typora 不同，复杂插件选择器、动画和定位样式不完全兼容。ZIP 或文件夹可加载其中的 CSS 引用、本地字体和 PNG/JPEG/GIF/WebP/AVIF 图片；不请求网络资源。资源包最多 20MiB，嵌入后的单个主题最多 1MB。',
+          'The editor structure differs from Typora, so complex plugin selectors, animations, and positioning are not fully compatible. ZIP/folder imports resolve bundled CSS, fonts and PNG/JPEG/GIF/WebP/AVIF images without network requests. Packages are limited to 20MiB; each embedded theme is limited to 1MB.',
         )}
       </p>
       {displayedError && (
@@ -229,15 +347,77 @@ export default function ThemeManager({ language }: { language: Language }) {
             ? t('主题已应用到正文。', 'Theme applied to the document.')
             : message === 'disabled'
               ? t('已恢复内置主题的正文样式。', 'Built-in document styling restored.')
-              : message === 'deleted'
-                ? t('主题已删除。', 'Theme deleted.')
-                : t('已清空导入主题。', 'Imported themes cleared.')}
+              : message === 'renamed'
+                ? t('主题已重命名。', 'Theme renamed.')
+                : message === 'deleted'
+                  ? t('主题已删除。', 'Theme deleted.')
+                  : t('已清空导入主题。', 'Imported themes cleared.')}
         </p>
       )}
       <div className="theme-manager-list">
         {library.themes.map((theme) => (
           <div className="theme-manager-item" key={theme.id}>
-            <span title={theme.name}>{theme.name}</span>
+            {renaming?.id === theme.id ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const clean = renaming.name.trim();
+                  if (!clean) {
+                    setError('name');
+                    return;
+                  }
+                  if (
+                    save(
+                      {
+                        ...library,
+                        themes: library.themes.map((item) =>
+                          item.id === theme.id ? { ...item, name: clean } : item,
+                        ),
+                      },
+                      'renamed',
+                    )
+                  )
+                    setRenaming(undefined);
+                }}
+              >
+                <input
+                  aria-label={t('新主题名称', 'New theme name')}
+                  maxLength={80}
+                  autoFocus
+                  value={renaming.name}
+                  onChange={(event) => setRenaming({ ...renaming, name: event.target.value })}
+                />
+                <button type="submit">{t('保存', 'Save')}</button>
+                <button type="button" onClick={() => setRenaming(undefined)}>
+                  {t('取消', 'Cancel')}
+                </button>
+              </form>
+            ) : (
+              <span title={theme.name}>{theme.name}</span>
+            )}
+            <button
+              type="button"
+              aria-label={`${t('重命名主题', 'Rename theme')} ${theme.name}`}
+              onClick={() => setRenaming({ id: theme.id, name: theme.name })}
+            >
+              <Pencil size={15} />
+            </button>
+            <button
+              type="button"
+              aria-label={`${t('导出主题', 'Export theme')} ${theme.name}`}
+              onClick={() => {
+                const name = theme.name.replace(/[\\/:*?"<>|]/g, '-') + '.css';
+                if (desktop)
+                  void invoke('save_export', {
+                    name,
+                    extension: 'css',
+                    bytes: Array.from(new TextEncoder().encode(theme.css)),
+                  }).catch(report);
+                else download(theme.css, name, 'text/css');
+              }}
+            >
+              <Download size={15} />
+            </button>
             {library.activeId === theme.id && (
               <small>
                 <Check size={12} /> {t('使用中', 'Active')}

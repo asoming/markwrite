@@ -13,6 +13,7 @@ import { imageDimension } from './imageMarkup';
 export type ExportFormat = 'pdf' | 'docx';
 export type ExportOptions = {
   template?: 'standard' | 'academic' | 'compact';
+  equations?: 'editable' | 'image';
   paper?: 'A4' | 'LETTER' | 'A5';
   /** Page margins in millimetres. Omitted values follow the selected template. */
   margins?: { top: number; right: number; bottom: number; left: number };
@@ -97,6 +98,7 @@ export type ExportImage = {
   alt: string;
   inline?: boolean;
   baseline?: number;
+  tex?: string;
 };
 export type ExportBlock =
   | {
@@ -106,6 +108,7 @@ export type ExportBlock =
       quote?: boolean;
       indent?: number;
       code?: boolean;
+      alignment?: 'left' | 'center' | 'right';
     }
   | { kind: 'table'; rows: ExportRun[][][]; header: boolean }
   | { kind: 'rule' };
@@ -259,6 +262,7 @@ async function inline(nodes: Iterable<Node>, style: TextStyle = {}): Promise<Exp
       const svg = template.content.querySelector('svg')!;
       result.push({
         ...svgImage(svg, '公式'),
+        tex: decodeURIComponent(node.getAttribute('data-tex')!),
         inline: node.getAttribute('data-display') !== 'true',
         baseline: Number(svg.getAttribute('data-baseline')) || undefined,
       });
@@ -308,11 +312,16 @@ export async function collectExportBlocks(article: HTMLElement): Promise<ExportB
   if ([...article.querySelectorAll('[data-diagram]')].some((node) => !node.querySelector('svg')))
     throw new Error('图表尚未完成渲染，请稍后再导出。');
   const blocks: ExportBlock[] = [];
-  async function walk(parent: Element, quote = false, indent = 0) {
+  async function walk(
+    parent: Element,
+    quote = false,
+    indent = 0,
+    alignment?: 'left' | 'center' | 'right',
+  ) {
     let pending: Node[] = [];
     const flush = async () => {
       if (pending.some((node) => node.nodeType !== Node.TEXT_NODE || node.textContent?.trim()))
-        blocks.push({ kind: 'paragraph', runs: await inline(pending), quote, indent });
+        blocks.push({ kind: 'paragraph', runs: await inline(pending), quote, indent, alignment });
       pending = [];
     };
     for (const node of parent.childNodes) {
@@ -320,16 +329,31 @@ export async function collectExportBlocks(article: HTMLElement): Promise<ExportB
         pending.push(node);
         continue;
       }
-      if (node.matches('h1,h2,h3,h4,h5,h6,p,pre,blockquote,ul,ol,table,hr,div,section,article')) {
+      if (
+        node.matches(
+          'h1,h2,h3,h4,h5,h6,p,pre,blockquote,ul,ol,table,hr,div,section,article,figure,figcaption',
+        )
+      ) {
         await flush();
-        if (node.matches('h1,h2,h3,h4,h5,h6,p')) {
+        if (node.matches('h1,h2,h3,h4,h5,h6,p,figcaption')) {
           blocks.push({
             kind: 'paragraph',
             runs: await inline(node.childNodes),
             heading: /^H[1-6]$/.test(node.tagName) ? Number(node.tagName[1]) : undefined,
             quote,
             indent,
+            alignment,
           });
+        } else if (node.matches('figure')) {
+          const value = (node as HTMLElement).style.textAlign;
+          await walk(
+            node,
+            quote,
+            indent,
+            ['left', 'center', 'right'].includes(value)
+              ? (value as 'left' | 'center' | 'right')
+              : alignment,
+          );
         } else if (node.matches('pre')) {
           blocks.push({
             kind: 'paragraph',
@@ -337,6 +361,7 @@ export async function collectExportBlocks(article: HTMLElement): Promise<ExportB
             code: true,
             quote,
             indent,
+            alignment,
           });
         } else if (node.matches('hr')) blocks.push({ kind: 'rule' });
         else if (node.matches('blockquote')) await walk(node, true, indent + 1);
@@ -415,7 +440,8 @@ function pdfRuns(
     const result: Content[] = [];
     let inline: ExportRun[] = [];
     const flush = () => {
-      if (inline.length) result.push(...inlineFormulaLines(inline, maxWidth, { ...style, maxHeight }));
+      if (inline.length)
+        result.push(...inlineFormulaLines(inline, maxWidth, { ...style, maxHeight }));
       inline = [];
     };
     for (const run of runs) {
@@ -560,6 +586,7 @@ export function pdfDefinition(
     }
     return {
       stack: paragraph,
+      alignment: block.alignment,
       margin: [(block.indent || 0) * 14, block.heading ? p.gap * 1.7 : 0, 0, p.gap],
       color: block.quote ? '#657080' : undefined,
       fontSize: block.heading
@@ -765,6 +792,10 @@ export async function buildDocx(
             ? new d.ExternalHyperlink({ children: [text], link: run.link })
             : text;
         }
+        if (run.tex !== undefined && options.equations !== 'image') {
+          const { editableFormula } = await import('./officeMath');
+          return editableFormula(run.tex, !run.inline);
+        }
         const ratio = Math.min(1, Math.max(8, width) / run.width, maxHeight / run.height);
         const transformation = { width: run.width * ratio, height: run.height * ratio };
         const altText = { title: run.alt, description: run.alt, name: run.alt };
@@ -885,6 +916,7 @@ export async function buildDocx(
                 d.HeadingLevel.HEADING_6,
               ][block.heading - 1]
             : undefined,
+          alignment: block.alignment,
           indent: { left: (block.indent || 0) * 280 },
           spacing: {
             after: p.gap * 20,

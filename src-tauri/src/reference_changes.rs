@@ -289,6 +289,288 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
         .and_then(|_| file.sync_all())
         .map_err(|e| e.to_string())
 }
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecoveryFile {
+    path: PathBuf,
+    next_path: PathBuf,
+    copy: String,
+    before_version: String,
+    after_version: String,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecoveryTransaction {
+    from: PathBuf,
+    to: PathBuf,
+    files: Vec<RecoveryFile>,
+    #[serde(default)]
+    directory_identity: Option<String>,
+    #[serde(default)]
+    source_versions: Vec<String>,
+    #[serde(default)]
+    moved_documents: Vec<PathBuf>,
+}
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryItem {
+    id: String,
+    from: String,
+    to: String,
+    files: Vec<String>,
+    completed: bool,
+}
+fn directory_identity(path: &Path) -> Result<String, String> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
+        Ok(format!("{}:{}", metadata.dev(), metadata.ino()))
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
+        use windows_sys::Win32::Storage::FileSystem::{
+            GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, FILE_FLAG_BACKUP_SEMANTICS,
+        };
+        let file = OpenOptions::new()
+            .access_mode(0)
+            .share_mode(7)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(path)
+            .map_err(|e| e.to_string())?;
+        let mut info: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+        if unsafe { GetFileInformationByHandle(file.as_raw_handle(), &mut info) } == 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        Ok(format!(
+            "{}:{}:{}",
+            info.dwVolumeSerialNumber, info.nFileIndexHigh, info.nFileIndexLow
+        ))
+    }
+}
+fn recovery_directory(history: &Path, id: &str) -> Result<PathBuf, String> {
+    if !id.starts_with("reference-transaction-")
+        || id.len() > 160
+        || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    {
+        return Err("Invalid transaction id".into());
+    }
+    let directory = history.join(id);
+    no_links(&directory)?;
+    Ok(directory)
+}
+fn read_transaction(directory: &Path) -> Result<RecoveryTransaction, String> {
+    let path = directory.join("transaction.json");
+    no_links(&path)?;
+    if fs::metadata(&path).map_err(|e| e.to_string())?.len() > 2 * 1024 * 1024 {
+        return Err("Transaction manifest is too large".into());
+    }
+    let transaction: RecoveryTransaction =
+        serde_json::from_slice(&fs::read(path).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+    absolute(&transaction.from)?;
+    absolute(&transaction.to)?;
+    if transaction.files.len() > MAX_CHANGES || transaction.moved_documents.len() > 100_000 {
+        return Err("Transaction is too large".into());
+    }
+    let mut paths = HashSet::new();
+    for (index, file) in transaction.files.iter().enumerate() {
+        absolute(&file.path)?;
+        absolute(&file.next_path)?;
+        if file.copy != format!("{index}.original")
+            || !paths.insert(file.path.clone())
+            || rebase(&file.path, &transaction.from, &transaction.to) != file.next_path
+        {
+            return Err("Invalid recovery file mapping".into());
+        }
+    }
+    Ok(transaction)
+}
+fn pending_transactions(history: &Path) -> Result<Vec<RecoveryItem>, String> {
+    if !history.exists() {
+        return Ok(vec![]);
+    }
+    let mut result = Vec::new();
+    for entry in fs::read_dir(history).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let id = entry.file_name().to_string_lossy().into_owned();
+        if !id.starts_with("reference-transaction-") {
+            continue;
+        }
+        let directory = recovery_directory(history, &id)?;
+        let transaction = read_transaction(&directory)?;
+        result.push(RecoveryItem {
+            id,
+            from: transaction.from.to_string_lossy().into_owned(),
+            to: transaction.to.to_string_lossy().into_owned(),
+            files: transaction
+                .files
+                .iter()
+                .map(|f| f.path.to_string_lossy().into_owned())
+                .collect(),
+            completed: directory.join("completed").exists(),
+        });
+        if result.len() > 200 {
+            return Err(
+                "恢复记录超过200条，请先处理历史记录 / More than200 recovery records".into(),
+            );
+        }
+    }
+    result.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(result)
+}
+fn recover_transaction(
+    state: &AppState,
+    history: &Path,
+    data: &Path,
+    id: &str,
+) -> Result<(), String> {
+    let directory = recovery_directory(history, id)?;
+    if directory.join("completed").exists() {
+        return Err("该事务已完成，请归档记录 / Transaction completed; archive the record".into());
+    }
+    let transaction = read_transaction(&directory)?;
+    let moved = match (transaction.from.exists(), transaction.to.exists()) {
+        (true, false) => false,
+        (false, true) => true,
+        _ => return Err("原位置和目标位置状态不明确，未更改文件 / Ambiguous source/destination; no files changed".into()),
+    };
+    let current = if moved {
+        &transaction.to
+    } else {
+        &transaction.from
+    };
+    no_links(current)?;
+    state.check(current).map_err(|_| {
+        "请先打开当前所在文件夹以授权恢复 / Open the current containing folder before recovery"
+    })?;
+    if current.is_dir() {
+        if transaction.directory_identity.as_deref() != Some(directory_identity(current)?.as_str())
+        {
+            return Err("目录身份已改变或是旧版记录，请手动检查副本 / Directory changed or legacy record; inspect copies manually".into());
+        }
+    } else {
+        if fs::metadata(current).map_err(|e| e.to_string())?.len() > MAX_CHANGE_BYTES as u64 {
+            return Err("Source too large".into());
+        }
+        let version = storage::version(&fs::read(current).map_err(|e| e.to_string())?);
+        if !transaction.source_versions.contains(&version) {
+            return Err("原文件发生外部修改，恢复副本已保留 / Source changed externally; recovery copies preserved".into());
+        }
+    }
+    if moved {
+        no_links(transaction.from.parent().ok_or("Invalid source parent")?)?;
+        state.check_directory(transaction.from.parent().ok_or("Invalid source parent")?).map_err(|_| "请打开原位置的父文件夹后再恢复路径 / Open the original parent folder to restore this path")?;
+    }
+    let mut prepared = Vec::new();
+    let mut bytes = 0;
+    // Validate every copy and current version before any restore write.
+    for file in &transaction.files {
+        let path = if moved { &file.next_path } else { &file.path };
+        no_links(path)?;
+        state.check(path)?;
+        let copy = directory.join(&file.copy);
+        no_links(&copy)?;
+        let size = fs::metadata(&copy).map_err(|e| e.to_string())?.len();
+        let current_size = fs::metadata(path).map_err(|e| e.to_string())?.len();
+        bytes += size + current_size;
+        if bytes > MAX_CHANGE_BYTES as u64
+            || size > 32 * 1024 * 1024
+            || current_size > 32 * 1024 * 1024
+        {
+            return Err("Recovery content too large".into());
+        }
+        let original = fs::read(copy).map_err(|e| e.to_string())?;
+        let current = fs::read(path).map_err(|e| e.to_string())?;
+        let version = storage::version(&current);
+        if storage::version(&original) != file.before_version
+            || (version != file.before_version && version != file.after_version)
+        {
+            return Err(format!(
+                "外部修改或副本损坏，未覆盖：{} / Changed or invalid recovery copy",
+                path.display()
+            ));
+        }
+        prepared.push((path.clone(), original, current));
+    }
+    for (path, original, current) in prepared {
+        restore_bytes(&path, &original, &current)?;
+    }
+    if moved {
+        no_links(&transaction.to)?;
+        if transaction.to.is_dir() {
+            if transaction.directory_identity.as_deref()
+                != Some(directory_identity(&transaction.to)?.as_str())
+            {
+                return Err("Directory changed during recovery; copies preserved".into());
+            }
+        } else {
+            if fs::metadata(&transaction.to)
+                .map_err(|e| e.to_string())?
+                .len()
+                > MAX_CHANGE_BYTES as u64
+                || !transaction.source_versions.contains(&storage::version(
+                    &fs::read(&transaction.to).map_err(|e| e.to_string())?,
+                ))
+            {
+                return Err("Source changed during recovery; copies preserved".into());
+            }
+        }
+        absent(&transaction.from)?;
+        storage::rename_without_replace(&transaction.to, &transaction.from)
+            .map_err(|e| e.to_string())?;
+        update_access(state, &transaction.to, &transaction.from, data)?;
+        for original in &transaction.moved_documents {
+            // History identities are updated only after the filesystem has returned.
+            if original.strip_prefix(&transaction.from).is_ok() {
+                history::relocate(
+                    history,
+                    &rebase(original, &transaction.from, &transaction.to),
+                    original,
+                )?;
+            }
+        }
+    }
+    fs::rename(&directory, history.join(format!("recovered-{id}"))).map_err(|e| e.to_string())?;
+    Ok(())
+}
+#[tauri::command]
+pub async fn reference_recovery_list(app: tauri::AppHandle) -> Result<Vec<RecoveryItem>, String> {
+    let history = recovery(&app)?;
+    tauri::async_runtime::spawn_blocking(move || pending_transactions(&history))
+        .await
+        .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn reference_recover(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let _guard = state.writes.lock().map_err(|e| e.to_string())?;
+        recover_transaction(
+            &state,
+            &recovery(&app)?,
+            &app.path().app_local_data_dir().map_err(|e| e.to_string())?,
+            &id,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub async fn reference_recovery_archive(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let _guard = state.writes.lock().map_err(|e| e.to_string())?;
+    let history = recovery(&app)?;
+    let directory = recovery_directory(&history, &id)?;
+    fs::rename(directory, history.join(format!("archived-{id}"))).map_err(|e| e.to_string())
+}
+#[tauri::command]
+pub async fn reference_recovery_reveal(id: String, app: tauri::AppHandle) -> Result<(), String> {
+    let directory = recovery_directory(&recovery(&app)?, &id)?;
+    open::that(directory).map_err(|e| e.to_string())
+}
+
 fn journal(plan: &Plan, history_root: &Path) -> Result<PathBuf, String> {
     fs::create_dir_all(history_root).map_err(|e| e.to_string())?;
     let directory = history_root.join(unique("reference-transaction"));
@@ -301,8 +583,28 @@ fn journal(plan: &Plan, history_root: &Path) -> Result<PathBuf, String> {
             records.push(serde_json::json!({ "path": change.path, "nextPath": change.next_path,
                 "copy": name, "beforeVersion": storage::version(&change.before), "afterVersion": storage::version(&change.after) }));
         }
+        let directory_identity = if plan.directory {
+            Some(directory_identity(&plan.from)?)
+        } else {
+            None
+        };
+        let mut source_versions = vec![];
+        if !plan.directory {
+            if fs::metadata(&plan.from).map_err(|e| e.to_string())?.len() > MAX_CHANGE_BYTES as u64
+            {
+                return Err("Source too large for recovery".into());
+            }
+            source_versions.push(storage::version(
+                &fs::read(&plan.from).map_err(|e| e.to_string())?,
+            ));
+            for change in &plan.changes {
+                if change.path == plan.from {
+                    source_versions.push(storage::version(&change.after));
+                }
+            }
+        }
         let metadata = serde_json::to_vec_pretty(
-            &serde_json::json!({ "from": plan.from, "to": plan.to, "files": records }),
+            &serde_json::json!({ "from": plan.from, "to": plan.to, "files": records, "directoryIdentity": directory_identity, "sourceVersions": source_versions, "movedDocuments": plan.moved_documents }),
         )
         .map_err(|e| e.to_string())?;
         write_new(&directory.join("transaction.json"), &metadata)
@@ -454,6 +756,7 @@ fn execute(
             ));
         }
     }
+    let _ = write_new(&journal.join("completed"), b"complete");
     if let Err(error) = fs::remove_dir_all(&journal) {
         warnings.push(format!("移动已完成，临时恢复记录未能清理：{error}"));
     }
@@ -629,6 +932,67 @@ mod tests {
         }
     }
 
+    #[test]
+    fn interrupted_recovery_restores_contents_paths_and_archives_copies() {
+        let s = Sandbox::new();
+        let from = s.file("原文.md", "original\n");
+        let to = s.destination.join("原文.md");
+        let linked = s.file("linked.md", "before link\n");
+        let plan = s
+            .plan(
+                &from,
+                &to,
+                vec![
+                    s.change(&from, &to, "after\n"),
+                    s.change(&linked, &linked, "after link\n"),
+                ],
+            )
+            .unwrap();
+        let directory = journal(&plan, &s.history()).unwrap();
+        for change in &plan.changes {
+            storage::atomic_write(
+                &change.path,
+                &change.after,
+                Some(&storage::version(&change.before)),
+                &s.history(),
+            )
+            .unwrap();
+        }
+        storage::rename_without_replace(&from, &to).unwrap();
+        let id = directory.file_name().unwrap().to_string_lossy();
+        assert_eq!(pending_transactions(&s.history()).unwrap().len(), 1);
+        recover_transaction(&s.state, &s.history(), &s.data(), &id).unwrap();
+        assert_eq!(fs::read_to_string(&from).unwrap(), "original\n");
+        assert_eq!(fs::read_to_string(&linked).unwrap(), "before link\n");
+        assert!(!to.exists());
+        assert!(pending_transactions(&s.history()).unwrap().is_empty());
+        assert!(s
+            .history()
+            .join(format!("recovered-{id}"))
+            .join("0.original")
+            .exists());
+    }
+    #[test]
+    fn interrupted_recovery_preflights_every_version_and_rejects_tampering() {
+        let s = Sandbox::new();
+        let from = s.file("source.md", "original\n");
+        let to = s.destination.join("source.md");
+        let linked = s.file("linked.md", "before\n");
+        let plan = s
+            .plan(&from, &to, vec![s.change(&linked, &linked, "after\n")])
+            .unwrap();
+        let directory = journal(&plan, &s.history()).unwrap();
+        let id = directory.file_name().unwrap().to_string_lossy();
+        fs::write(&linked, "external\n").unwrap();
+        assert!(recover_transaction(&s.state, &s.history(), &s.data(), &id).is_err());
+        assert_eq!(fs::read_to_string(&linked).unwrap(), "external\n");
+        assert!(from.exists());
+        fs::write(&linked, "after\n").unwrap();
+        fs::write(directory.join("0.original"), "tampered").unwrap();
+        assert!(recover_transaction(&s.state, &s.history(), &s.data(), &id).is_err());
+        assert_eq!(fs::read_to_string(&linked).unwrap(), "after\n");
+        assert!(recovery_directory(&s.history(), "reference-transaction-../../escape").is_err());
+    }
     #[test]
     fn moves_selected_documents_preserving_bom_crlf_and_history() {
         let s = Sandbox::new();

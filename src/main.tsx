@@ -4,6 +4,7 @@ import { prepareSession } from './lib/recovery';
 import './styles.css';
 import 'katex/dist/katex.min.css';
 async function start() {
+  const appModule = import('./App');
   let recoveryError = '';
   try {
     await prepareSession();
@@ -20,7 +21,7 @@ async function start() {
     );
     return;
   }
-  const { default: App } = await import('./App');
+  const { default: App } = await appModule;
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
       {recoveryError && (

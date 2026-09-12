@@ -40,7 +40,9 @@ export type Settings = {
   bodyFont?: string;
   codeFont?: string;
   attachmentMode: 'relative' | 'embedded';
+  shortcuts?: Record<string, string>;
   markdownCompatibility?: boolean;
+  markdownProfile?: 'technical' | 'github' | 'commonmark';
   customColors?: { paper: string; ink: string; accent: string };
 };
 export type Heading = { level: number; text: string; line: number; id: string };

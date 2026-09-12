@@ -1,3 +1,4 @@
+import { displayShortcut, shortcutBindings, type ShortcutOverrides } from '../lib/shortcuts';
 import { t, useI18n } from '../lib/i18n';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { FormatAction } from '../editor/formatting';
@@ -45,6 +46,7 @@ export type EditingAction =
   | 'app:about'
   | 'app:extensions'
   | 'app:ai'
+  | 'app:commands'
   | 'app:quickOpen'
   | 'app:search'
   | 'insert:link'
@@ -222,11 +224,13 @@ const menus: { label: string; items: Item[] }[] = [
 ];
 export default function EditingMenu({
   onAction,
+  shortcuts = {},
   mode,
   theme,
   focus,
 }: {
   onAction: (action: EditingAction) => void;
+  shortcuts?: ShortcutOverrides;
   mode: Mode;
   theme: Theme;
   focus: boolean;
@@ -357,7 +361,18 @@ export default function EditingMenu({
                           : ''}
                       </span>
                       <span>{t(item.label)}</span>
-                      {item.shortcut && <kbd>{item.shortcut}</kbd>}
+                      {
+                        <kbd>
+                          {item.action in shortcuts
+                            ? displayShortcut(shortcuts[item.action])
+                            : displayShortcut(
+                                shortcutBindings.find((entry) => entry.action === item.action)
+                                  ?.key ||
+                                  item.shortcut ||
+                                  '',
+                              )}
+                        </kbd>
+                      }
                     </button>
                   ),
                 )}

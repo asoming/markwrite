@@ -459,3 +459,21 @@
 .preference-refresh {
   margin-left: 8px;
 }
+.operation-recovery p {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.operation-recovery-item,
+.operation-recovery-confirm {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin: 8px 0;
+}
+.operation-recovery button {
+  padding: 7px 10px;
+  background: var(--code);
+  border-radius: 4px;
+  margin: 4px;
+}

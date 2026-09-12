@@ -41,6 +41,30 @@ function unzip(bytes: Uint8Array) {
 }
 
 describe('offline document exports', () => {
+  it('exports editable fractions, scripts, roots and matrices with an explicit image fallback', async () => {
+    const blocks = await collectExportBlocks(
+      article(
+        renderMarkdown(
+          '公式 $\\frac{a_1}{\\sqrt{x^2}}$\n\n$$\\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}$$',
+        ),
+      ),
+    );
+    const bytes = await buildDocx(blocks, '公式', {}, async () => png);
+    const files = unzip(bytes);
+    const xml = files.get('word/document.xml')!;
+    expect(xml).toContain('<m:oMath>');
+    expect(xml).toContain('<m:f>');
+    expect(xml).toContain('<m:rad>');
+    expect(xml).toContain('<m:sSub>');
+    expect(xml).toContain('<m:m>');
+    expect([...files.keys()].some((name) => name.startsWith('word/media/'))).toBe(false);
+    const fallback = unzip(
+      await buildDocx(blocks, '公式', { equations: 'image' }, async () => png),
+    );
+    expect(fallback.get('word/document.xml')).not.toContain('<m:oMath>');
+    expect([...fallback.keys()].some((name) => name.endsWith('.svg'))).toBe(true);
+  });
+
   it('keeps headings, nested lists, tasks, code whitespace, and table structure', async () => {
     const node = article(
       renderMarkdown(
@@ -244,4 +268,23 @@ describe('offline document exports', () => {
       writeFileSync(resolve(process.env.MARKWRITE_EXPORT_FIXTURES, 'export-validation.docx'), docx);
     }
   }, 30000);
+});
+
+it('keeps figure captions separate and preserves image/caption alignment in PDF and DOCX', async () => {
+  const blocks = await collectExportBlocks(
+    article(
+      `<figure style="text-align:right"><img src="${png}" width="100" height="80"><figcaption>图一 Figure one</figcaption></figure><p>Following text</p>`,
+    ),
+  );
+  expect(blocks).toHaveLength(3);
+  expect(blocks[0]).toMatchObject({ kind: 'paragraph', alignment: 'right' });
+  expect(blocks[1]).toMatchObject({
+    kind: 'paragraph',
+    alignment: 'right',
+    runs: [{ kind: 'text', text: '图一 Figure one' }],
+  });
+  expect(JSON.stringify(pdfDefinition(blocks, 'Figures'))).toContain('"alignment":"right"');
+  const xml = unzip(await buildDocx(blocks, 'Figures')).get('word/document.xml')!;
+  expect(xml).toContain('<w:jc w:val="right"');
+  expect(xml).toContain('图一 Figure one');
 });

@@ -1716,3 +1716,122 @@ input::placeholder {
   font-size: 0 !important;
   letter-spacing: 0 !important;
 }
+.shortcut-settings {
+  width: 100%;
+  font-size: 13px;
+}
+.shortcut-settings > p {
+  color: var(--muted);
+  line-height: 1.6;
+  white-space: pre-line;
+}
+.shortcut-settings > input {
+  width: 100%;
+  padding: 9px;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--ink);
+  border-radius: 5px;
+}
+.shortcut-settings-list {
+  max-height: 45vh;
+  overflow: auto;
+  margin: 12px 0;
+}
+.shortcut-settings-list label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 7px 1px;
+  border-bottom: 1px solid var(--border);
+}
+.shortcut-settings-list small {
+  margin-left: 8px;
+  color: var(--muted);
+}
+.shortcut-settings-list input {
+  width: 155px;
+  background: var(--code);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  padding: 6px;
+  border-radius: 4px;
+}
+.shortcut-settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.shortcut-settings-actions button {
+  padding: 8px 12px;
+  background: var(--accent-bg);
+  border-radius: 5px;
+}
+.document-workspace:has(.compare-pane) > .document-surface {
+  flex: 0 0 var(--split-percent, 50%);
+}
+.split-handle {
+  width: 5px;
+  flex: 0 0 5px;
+  cursor: col-resize;
+  touch-action: none;
+  background: var(--border);
+}
+.split-handle:hover,
+.split-handle:focus-visible {
+  background: var(--accent);
+}
+.compare-pane {
+  width: auto;
+  flex: 1;
+  min-width: 0;
+  border: 0;
+}
+.compare-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  padding: 5px;
+  font-size: 12px;
+}
+.compare-toolbar select {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+}
+.compare-toolbar button {
+  padding: 5px 7px;
+  border-radius: 4px;
+}
+.compare-toolbar button[aria-pressed='true'] {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.compare-toolbar label {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  gap: 3px;
+}
+.compare-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.compare-content .editor-host {
+  flex: 1;
+  min-height: 0;
+}
+.compare-status {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 5px 10px;
+  border-top: 1px solid var(--border);
+}

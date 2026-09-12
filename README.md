@@ -4,46 +4,26 @@
 
 Choose the Linux `.deb`, Linux portable archive, or Windows x64 installer from the release page above. Features, installation, and conversion limits are described below.
 
-## 开发进度 / Development status — 2026-09-12
+## 1.0 正式版验收中 / Stable release acceptance
 
-以下为 0.5.1 的实现和验收状态。功能可用与完整性能/平台验收分别记录，未完成项继续列出。
-This is the implementation and acceptance status of 0.5.1. Feature availability and full performance/platform acceptance are tracked separately; outstanding work remains explicit.
+当前源码版本 **1.0.0**，安装包正在验收；上方可下载版本仍为 0.5.1，验收完成后更新正式版下载。
+The source version is **1.0.0** and installers are undergoing acceptance. The download above remains 0.5.1 until release validation finishes.
 
-| 工作项 / Work item | 当前状态 / Status |
+| 工作项 / Work item | 状态 / Status |
 | --- | --- |
-| 阅读和 HTML 代码高亮 / Reader and HTML syntax highlighting | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
-| 全目录快速打开 / Recursive quick open | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
-| 窄窗口覆盖侧栏 / Narrow-window sidebar overlay | 已实现；真实浏览器交互与布局验证通过 / Implemented; real-browser interaction and layout checks passed |
-| Git 冲突解释和标记解决 / Explain and resolve Git conflicts | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
-| 性能与真实输入法 / Performance and real IME acceptance | 部分通过；正式包 IBus 两模式通过，1 秒目标仍未达 / Partial: production IBus checks pass in both modes; one-second target unmet |
-| 文档一致性 / Documentation consistency | 已纠正旧描述，随验收更新 / Corrected; updated with validation |
+| 表格多格粘贴、行列移动与拖放、排序 / Table range paste, reorder, drag and sort | 已实现；自动测试和浏览器排序/粘贴通过 / Implemented; automated and browser sort/paste checks passed |
+| 图片对齐、图注、路径重链 / Image alignment, captions and relinking | 已实现；自动测试通过，整合验收中 / Implemented; automated checks passed, integration checks ongoing |
+| 双编辑器、同步滚动、可调分栏 / Dual editors, linked scroll and pane resizing | 已实现；浏览器编辑/撤销/重做/同步滚动通过 / Implemented; browser editing, undo/redo and scroll checks passed |
+| 快捷键自定义与冲突检测 / Custom shortcuts and conflict detection | 已实现；实际按键验证通过 / Implemented; real-key interaction checks passed |
+| Git 逐块与三方解决 / Git hunk and three-way resolution | 已实现；原生版本检查与合并测试通过 / Implemented; native version checks and merge tests passed |
+| 中断操作恢复 / Interrupted-operation recovery | 已实现；原生测试覆盖中断、外部改动、副本损坏 / Implemented; native interruption, external-change and corrupt-copy checks passed |
+| GitHub 提示块和渲染预设 / GitHub alerts and rendering presets | 已实现；CommonMark 标准样例与预设测试通过 / Implemented; CommonMark corpus and preset checks passed |
+| 可编辑 Word 公式 / Editable Word equations | 已实现；OOXML 结构测试通过，办公软件检查中 / Implemented; OOXML checks passed, office rendering under validation |
+| CSS / ZIP / 文件夹主题资源 / CSS, ZIP and folder theme assets | 已实现；真实字体导入、预览、应用、重命名、导出通过 / Implemented; real-font import, preview, apply, rename and export passed |
+| 最终安装包、性能、持续运行 / Final installers, performance and endurance | 进行中，未作为已通过承诺 / In progress; not yet claimed as passed |
 
-仍未实现的后续增强：正文表格多格粘贴、行列拖动/排序，图片对齐/图注/重新链接，双编辑器与同步滚动，自定义快捷键，逐块/三方合并，批量文件操作中断自动恢复界面，GitHub 提示块和来源预设，可编辑 Office 公式。Typora CSS 主题为有边界的适配，不保证完整主题包原样还原。
-Still pending: in-document table range paste/reordering/sorting; image alignment/captions/relinking; dual editors and synchronized scrolling; configurable shortcuts; hunk/three-way merge; interrupted multi-file operation recovery UI; GitHub alerts/source presets; editable Office equations. Imported Typora themes remain a bounded adaptation.
-
-恢复历史版本先进入未保存编辑状态，后续保存时记录被替换的磁盘版本；恢复本身不立即生成新的历史条目，也不自动覆盖文件。
-Restoring history creates an unsaved editor buffer. Saving later records the replaced disk version; restoration alone creates neither a history entry nor a source-file write.
-
-## 0.5.1：高亮、快速打开、侧栏与 Git / Highlighting, quick open, sidebar and Git
-
-- 阅读与 HTML 导出按语言高亮代码，语言解析按需在 Worker 加载；未知语言或超过 40,000 字符的单块保留纯文本，源代码内容不变。
-- Ctrl+P 按需递归检索文件名，不读取正文；支持取消和中文子目录，最多返回 500 项。沿用隐藏目录、依赖目录、链接和 32 层深度的扫描边界。
-- 正文可用宽度不足约 560px 时，侧栏改为浮层，支持 Esc、背景点击关闭与键盘焦点约束；宽窗口恢复原侧栏状态。
-- Git 显示冲突原因，允许保存后标记已解决；完成合并时明确选择全部暂存项，支持保留删除或保留本地内容，不自动推送。冲突标记未清除、非 UTF-8 或超过 8MiB 的冲突文件仍需先处理；不会把编辑器里未保存的草稿误当作已解决。
-- 修复 WebKitGTK 在即时编辑隐藏语法节点与中文输入交互时的渲染进程崩溃；组合输入期间保留文档装饰，提交后再恢复即时排版。
-
-Reader and HTML code coloring loads language parsers on demand in a worker; unknown languages and blocks over 40,000 characters stay plain. Ctrl+P searches filenames recursively only when opened, with cancellation and 500 results. Narrow windows use a keyboard-accessible sidebar overlay. Git explains conflicts, stages explicitly resolved saved files, and completes reviewed merge commits without pushing. Live editing retains syntax text nodes and stable composition decorations to avoid a WebKitGTK IME/accessibility process crash. Non-UTF-8 or over-8MiB conflict files remain outside in-app resolution.
-
-**[Linux / Windows CI 全部通过 / CI passed](https://github.com/asoming/markwrite/actions/runs/34677514192)。** 两平台各 941 项前端测试通过，Linux 81 项、Windows 73 项原生测试通过；各测试集合另有 2 项可选诊断/助手默认跳过。Windows 安装、中文空格路径文件关联、独立进程和恢复、源文件保持、卸载验证通过。
-Both platforms passed 941 frontend tests; Linux passed 81 native tests and Windows passed 73, with two optional diagnostics/helpers skipped in each suite. Windows installation, quoted/Chinese filename associations, independent processes and recovery, unchanged source files, and removal passed.
-
-**0.5.1 验收记录（2026-09-12）：**941 项前端测试、81 项 Linux 原生测试通过，另有 2 项可选前端诊断和 2 项原生助手/诊断未在默认集合执行。最终 deb 解包程序通过实际菜单/键盘验收：阅读 Worker 高亮、中文深层文件快速打开、Git 编辑保存→标记解决→双父合并提交、IBus libpinyin 在源码/即时编辑中的候选提交与撤销重做。浏览器验证窄窗口浮层、明暗高亮、查找和实际 HTML 下载；导出的代码保留原文与高亮样式。
-
-**启动指标未达 1 秒。** 最终安装包打开 1MiB 文档的 10 个新进程样本（秒）：`3.552, 1.342, 1.332, 1.330, 1.355, 1.331, 1.357, 1.351, 1.342, 1.349`。中位数 1.346 秒，9/10 小于 3 秒，0/10 小于 1 秒。环境为 i9-14900HX、约 16GB 内存、WebKitGTK 2.50.4、私有 Xephyr 软件渲染；每次使用新应用配置，以 250ms AT-SPI 轮询计时到首屏标题可读，未清除操作系统文件缓存。此结果不是普通桌面的冷盘测试，也不等同于全部 PRD 性能验收通过。
-
-**仍待验收：**真实输入到绘制 P95、两小时写作与内存趋势、完整冷启动/冷缓存搜索基准、Fcitx5、Windows 中文候选输入、Wayland、多屏与 125%/150% 缩放，以及 Word/WPS、公众号/飞书目标端与实际联网服务。保留后续增强清单，未用本次修复宣称完整 PRD 已完成。
-
-**English acceptance record:** 941 frontend and 81 native Linux tests pass. The final deb executable passed actual keyboard/menu checks for worker coloring, recursive Chinese-path quick open, conflict resolution through a two-parent Git merge, and real IBus libpinyin input/undo/redo in both editor modes. Browser checks covered the narrow overlay, dark/light coloring, search and downloaded HTML. Ten fresh-process 1MiB samples ranged from 1.330 to 3.552 seconds (median 1.346); none met one second. Measurements used an i9-14900HX/16GB machine, WebKitGTK 2.50.4 and private Xephyr software rendering, with 250ms accessibility polling and no OS-cache clearing. Real input-to-paint P95, two-hour stability, cold-cache baselines, Fcitx5, Windows IME, Wayland, multi-monitor/DPI and destination/service interoperability still need acceptance.
+源文件保护优先：浏览不自动保存；恢复和 Git 解决都检查版本；外部修改会阻止覆盖。GitHub 只保留本 README，本地 PRD、进度表、功能矩阵与验收证据随实现同步更新。
+Source protection comes first: browsing does not autosave; recovery and Git resolution check versions and refuse to overwrite external edits. GitHub contains this README; local PRD, progress, feature matrix and validation evidence are updated alongside implementation.
 
 # Markwrite
 
@@ -126,7 +106,7 @@ Workspace indexing and batch reference rewriting currently require UTF-8; other 
 
 - **面板响应：**反向链接、标签和关联视图共用后台 Worker 索引；切换面板复用文件快照，编辑只重新解析改变的文档。标签默认折叠，大量结果分批显示，减少阻塞。
 - **直接编辑：**即时渲染中点击表格单元格输入，支持 Tab 切换、Enter/Escape 结束和撤销。选择独立成段的图片可输入宽高、保持比例、拖动缩放或打开预览；设置尺寸后使用带宽高的 HTML `<img>` 保存在 Markdown 中。
-- **主题导入：**「设置 → 外观」导入 `.css`，支持主题库切换、重命名、导出和移除。适配 Typora 常见正文选择器；只作用于正文，源码和设置保留原样。外部资源、相对字体文件、页面定位等不支持的规则会过滤并提示；带配套字体目录的主题可能需要自行安装字体，不能保证所有主题完全一致。
+- **主题导入：**「设置 → 外观」导入 `.css`、ZIP 或主题文件夹，可选择主 CSS 并预览，支持主题库切换、重命名、导出和移除。ZIP/文件夹内的 CSS 引用、相对字体与 PNG/JPEG/GIF/WebP/AVIF 图片会本地内嵌，无网络请求。包展开上限 20MiB，单资源 4MiB，最终 CSS 含内嵌资源最多 1MB，主题库最多 20 项/3MB。适配 Typora 常见正文选择器；页面定位、动画和应用专用选择器仍有兼容边界。
 - **独立备份：**「设置 → 文件」选择备份目录，手动备份或启用按小时间隔备份。快照包含当前工作文件夹中已保存的 Markdown、支持的图片、应用设置、自定义主题和声明式扩展，不包含未保存草稿及密钥字段。自动备份仅在应用运行时执行，重新启动后补执行已到期的计划。恢复前显示摘要、校验文件，恢复到新的 `Markwrite-restored-*` 文件夹，可选择是否恢复设置。没有云端上传。
 - **应用更新：**「设置 → 通用」检查 GitHub 发布，选择是否包含预览版本，下载当前系统安装包并校验 SHA-256。保存工作、退出应用后手动安装。私有仓库可输入有该仓库 Contents 读取权限的令牌，或使用已登录的浏览器发布页；令牌只在当前面板内存中使用，不写入设置和备份。
 - **改名与移动：**「文件 → 重命名 / 移动到…」以及文件管理中的改名，会预览当前工作文件夹和已打开文档的引用变化。选择要更新的文档后保存（包含其未保存编辑），并检查磁盘版本。支持常见相对链接、图片、Wiki 链接与目录移动；同名歧义保留并提示。未勾选引用、其他工作区和无法确认的语法需自行维护。跨文件系统移动不支持，会报错并保留原文件。

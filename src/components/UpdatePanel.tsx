@@ -14,7 +14,7 @@ type Download = { path: string; name: string; sha256: string };
 export default function UpdatePanel({ language }: { language: 'zh-CN' | 'en' }) {
   const t = (zh: string, en: string) => (language === 'en' ? en : zh);
   const [token, setToken] = useState(''),
-    [previews, setPreviews] = useState(true);
+    [previews, setPreviews] = useState(false);
   const [info, setInfo] = useState<Update>(),
     [download, setDownload] = useState<Download>();
   const [busy, setBusy] = useState<'check' | 'download' | null>(null),

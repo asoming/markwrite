@@ -58,6 +58,76 @@ export function escapeTableCell(value: string): string {
     .replace(/\n/g, '<br>');
 }
 
+export type TableReorder = { axis: 'row' | 'column'; from: number; to: number };
+/** Structural edits are explicit, bounded and confined to this table. Header stays fixed when sorting. */
+export function transformTable(
+  raw: string,
+  operation:
+    | TableReorder
+    | {
+        row: number;
+        column: number;
+        paste: string;
+      }
+    | { sort: number; descending: boolean },
+): string {
+  const rows = tableCellRanges(raw).map((row) => row.map((cell) => cell.value));
+  const separators =
+    tableCellRanges(`${raw.split('\n')[1]}\nignored`)[0]?.map((cell) => cell.value) || [];
+  let width = Math.max(...rows.map((row) => row.length));
+  if ('paste' in operation) {
+    const values = operation.paste
+      .replace(/\r\n?/g, '\n')
+      .replace(/\n$/, '')
+      .split('\n')
+      .map((line) => line.split('\t'));
+    width = Math.max(width, operation.column + Math.max(...values.map((row) => row.length)));
+    if (width * Math.max(rows.length, operation.row + values.length) > 10_000)
+      throw new Error(t('表格最多支持 10000 个单元格', 'Tables support up to 10000 cells'));
+    values.forEach((row, r) =>
+      row.forEach((value, c) => {
+        while (rows.length <= operation.row + r) rows.push([]);
+        rows[operation.row + r][operation.column + c] = escapeTableCell(value);
+      }),
+    );
+  } else if ('sort' in operation) {
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+    const body = rows
+      .slice(1)
+      .sort(
+        (a, b) =>
+          collator.compare(
+            tableCellText(a[operation.sort] || ''),
+            tableCellText(b[operation.sort] || ''),
+          ) * (operation.descending ? -1 : 1),
+      );
+    rows.splice(1, rows.length - 1, ...body);
+  } else {
+    const { axis, from, to } = operation;
+    const size = axis === 'row' ? rows.length : width;
+    if (
+      from < (axis === 'row' ? 1 : 0) ||
+      to < (axis === 'row' ? 1 : 0) ||
+      from >= size ||
+      to >= size
+    )
+      return raw;
+    const move = (values: string[]) => values.splice(to, 0, values.splice(from, 1)[0] || '');
+    if (axis === 'row') rows.splice(to, 0, rows.splice(from, 1)[0]);
+    else {
+      rows.forEach(move);
+      move(separators);
+    }
+  }
+  const format = (row: string[], separator = false) =>
+    `| ${Array.from({ length: width }, (_, i) => row[i] || (separator ? '---' : '')).join(' | ')} |`;
+  return [
+    format(rows[0]),
+    format(separators, true),
+    ...rows.slice(1).map((row) => format(row)),
+  ].join('\n');
+}
+
 export function attachDirectTable(
   view: EditorView,
   root: HTMLElement,
@@ -77,6 +147,85 @@ export function attachDirectTable(
   } | null = null;
   const table = root.querySelector('table')!;
   const cells = [...table.rows].map((row) => [...row.cells]);
+  let selectedCell = { row: 1, column: 0 };
+  let dragging: { axis: 'row' | 'column'; from: number } | null = null;
+  const tools = root.querySelector('.live-block-tools') || root;
+  function structural(operation: Parameters<typeof transformTable>[1]) {
+    if (active?.composing || disposed) return;
+    finish();
+    if (view.state.doc.sliceString(position, position + raw.length) !== raw) return;
+    try {
+      const insert = transformTable(raw, operation);
+      if (insert === raw) return;
+      view.dispatch({
+        changes: { from: position, to: position + raw.length, insert },
+        userEvent: 'input.format',
+        annotations: isolateHistory.of('full'),
+      });
+      view.focus();
+    } catch (error) {
+      notice.textContent = String(error instanceof Error ? error.message : error);
+    }
+  }
+  function tool(label: string, symbol: string, run: () => void) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.textContent = symbol;
+    button.addEventListener('mousedown', (event) => event.preventDefault());
+    button.addEventListener('click', (event) => {
+      event.stopPropagation();
+      run();
+    });
+    tools.append(button);
+    return button;
+  }
+  tool(t('上移当前行', 'Move row up'), '↑', () =>
+    structural({ axis: 'row', from: selectedCell.row, to: selectedCell.row - 1 }),
+  );
+  tool(t('下移当前行', 'Move row down'), '↓', () =>
+    structural({ axis: 'row', from: selectedCell.row, to: selectedCell.row + 1 }),
+  );
+  tool(t('左移当前列', 'Move column left'), '←', () =>
+    structural({ axis: 'column', from: selectedCell.column, to: selectedCell.column - 1 }),
+  );
+  tool(t('右移当前列', 'Move column right'), '→', () =>
+    structural({ axis: 'column', from: selectedCell.column, to: selectedCell.column + 1 }),
+  );
+  tool(t('按当前列升序', 'Sort column ascending'), 'A↓', () =>
+    structural({ sort: selectedCell.column, descending: false }),
+  );
+  tool(t('按当前列降序', 'Sort column descending'), 'Z↓', () =>
+    structural({ sort: selectedCell.column, descending: true }),
+  );
+  for (const axis of ['row', 'column'] as const) {
+    const handle = tool(
+      axis === 'row'
+        ? t('拖动当前行到目标单元格', 'Drag row onto a target cell')
+        : t('拖动当前列到目标单元格', 'Drag column onto a target cell'),
+      axis === 'row' ? '↕' : '↔',
+      () => {},
+    );
+    handle.draggable = true;
+    handle.addEventListener('dragstart', (event) => {
+      if (active?.composing) {
+        event.preventDefault();
+        return;
+      }
+      finish();
+      dragging = { axis, from: axis === 'row' ? selectedCell.row : selectedCell.column };
+      event.dataTransfer?.setData('application/x-markwrite-table', axis);
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    });
+    handle.addEventListener('dragend', () => {
+      dragging = null;
+    });
+  }
+  const notice = document.createElement('span');
+  notice.setAttribute('role', 'status');
+  notice.className = 'direct-table-notice';
+  tools.append(notice);
 
   function announceComposition(value: boolean) {
     view.dom.dispatchEvent(new CustomEvent('markwrite:widget-composition', { detail: value }));
@@ -124,6 +273,7 @@ export function attachDirectTable(
     if (disposed || !cells[row]?.[column]) return;
     if (active?.row === row && active.column === column) return;
     finish();
+    selectedCell = { row, column };
     const source = tableCellRanges(raw)[row]?.[column];
     if (!source) return;
     const cell = cells[row][column];
@@ -161,6 +311,10 @@ export function attachDirectTable(
       const text = event.clipboardData?.getData('text/plain');
       if (text == null) return;
       event.preventDefault();
+      if (text.includes('\t')) {
+        structural({ row, column, paste: text });
+        return;
+      }
       input.setRangeText(text, input.selectionStart, input.selectionEnd, 'end');
       commit();
     });
@@ -198,6 +352,20 @@ export function attachDirectTable(
       cell.tabIndex = 0;
       cell.classList.add('direct-table-cell');
       cell.title = t('点击编辑单元格', 'Click to edit cell');
+      cell.addEventListener('dragover', (event) => {
+        if (dragging) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      });
+      cell.addEventListener('drop', (event) => {
+        if (!dragging) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const move = dragging;
+        dragging = null;
+        structural({ ...move, to: move.axis === 'row' ? rowIndex : column });
+      });
       cell.addEventListener('mousedown', (event) => {
         if ((event.target as HTMLElement).closest('a,button,textarea')) return;
         event.preventDefault();

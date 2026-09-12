@@ -1,3 +1,4 @@
+import ShortcutsPanel from './ShortcutsPanel';
 import ThemeManager from './ThemeManager';
 import UpdatePanel from './UpdatePanel';
 import {
@@ -25,7 +26,7 @@ export type SettingsPanelProps = {
   defaultAppAvailable?: boolean;
   filesExtra?: ReactNode;
 };
-type Category = 'files' | 'editor' | 'images' | 'appearance' | 'general';
+type Category = 'files' | 'editor' | 'images' | 'appearance' | 'general' | 'shortcuts';
 
 export default function SettingsPanel({
   settings,
@@ -53,6 +54,12 @@ export default function SettingsPanel({
   const t = (zh: string, en: string) => (settings.language === 'en' ? en : zh);
   const update = (patch: Partial<Settings>) => onChange({ ...settings, ...patch });
   const categories = [
+    {
+      id: 'shortcuts' as const,
+      icon: Type,
+      name: t('快捷键', 'Shortcuts'),
+      detail: t('自定义组合键', 'Customize key bindings'),
+    },
     {
       id: 'files' as const,
       icon: FileText,
@@ -569,13 +576,37 @@ export default function SettingsPanel({
                 </section>
               </>
             )}
+            {category === 'shortcuts' && (
+              <ShortcutsPanel
+                value={settings.shortcuts}
+                onChange={(shortcuts) => update({ shortcuts })}
+              />
+            )}
             {category === 'editor' && (
               <section className="preferences-section">
                 <h4>{t('Markdown 兼容', 'Markdown compatibility')}</h4>
+                <label className="preference-field">
+                  <span>{t('文档来源预设', 'Document syntax preset')}</span>
+                  <select
+                    aria-label={t('文档来源预设', 'Document syntax preset')}
+                    value={settings.markdownProfile || 'technical'}
+                    onChange={(event) =>
+                      update({ markdownProfile: event.target.value as Settings['markdownProfile'] })
+                    }
+                  >
+                    <option value="technical">
+                      {t('技术文档（公式与扩展）', 'Technical documents (math and extensions)')}
+                    </option>
+                    <option value="github">
+                      {t('GitHub（表格、提示块、脚注）', 'GitHub (tables, alerts, footnotes)')}
+                    </option>
+                    <option value="commonmark">{t('纯 CommonMark', 'Plain CommonMark')}</option>
+                  </select>
+                </label>
                 <p className="preference-help">
                   {t(
-                    '默认使用 CommonMark，保留表格、任务列表、删除线、脚注、公式和 Mermaid。文件中的原始语法始终保留。',
-                    'CommonMark with tables, tasks, strikethrough, footnotes, math and Mermaid. Original source syntax is always preserved.',
+                    '预设仅影响显示，不转换或修改源文件。技术文档预设保留全部通用扩展；纯 CommonMark 关闭扩展。',
+                    'Presets change rendering only. Technical documents include common extensions; plain CommonMark disables extensions. Source files are never converted.',
                   )}
                 </p>
                 <label className="preference-field">
@@ -587,6 +618,7 @@ export default function SettingsPanel({
                   </span>
                   <input
                     type="checkbox"
+                    disabled={settings.markdownProfile === 'commonmark'}
                     checked={settings.markdownCompatibility === true}
                     onChange={(event) => update({ markdownCompatibility: event.target.checked })}
                   />

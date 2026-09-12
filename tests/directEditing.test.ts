@@ -93,6 +93,32 @@ function selectImage() {
 }
 
 describe('table cells in the document', () => {
+  it('pastes a rectangular range, expands columns and undoes the entire operation', () => {
+    const source = '正文\n\n| A | B |\n| :--- | ---: |\n| keep | old |\n\n末尾';
+    mount(source);
+    const edit = beginCell(1, 1);
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: { getData: () => 'x\ty|z\n2\t3\n' } });
+    act(() => edit.dispatchEvent(event));
+    expect(view.state.doc.toString()).toBe(
+      '正文\n\n| A | B |  |\n| :--- | ---: | --- |\n| keep | x | y\\|z |\n|  | 2 | 3 |\n\n末尾',
+    );
+    act(() => undo(view));
+    expect(view.state.doc.toString()).toBe(source);
+  });
+  it('sorts body rows numerically and moves columns with their alignment', () => {
+    const source = '正文\n\n| Name | Count |\n| :--- | ---: |\n| ten | 10 |\n| two | 2 |';
+    mount(source);
+    beginCell(1, 1);
+    click('按当前列升序');
+    expect(view.state.doc.toString()).toContain('| two | 2 |\n| ten | 10 |');
+    beginCell(1, 1);
+    click('左移当前列');
+    expect(view.state.doc.toString()).toContain('| Count | Name |\n| ---: | :--- |\n| 2 | two |');
+    act(() => undo(view));
+    act(() => undo(view));
+    expect(view.state.doc.toString()).toBe(source);
+  });
   it('keeps the table structure when text contains even backslashes before a pipe', () => {
     mount('正文\n\n| A | B |\n| --- | --- |\n| a | untouched |');
     const edit = beginCell();
@@ -181,6 +207,39 @@ describe('table cells in the document', () => {
 });
 
 describe('image size and preview', () => {
+  it('applies a caption, alignment and replacement path as one undoable edit', () => {
+    const source = `正文\n\n![截图](${pixel})\n\n末尾`;
+    mount(source);
+    selectImage();
+    input(
+      document.querySelector<HTMLInputElement>('[aria-label="图片路径或网址"]')!,
+      '子目录/新 图.png',
+    );
+    input(document.querySelector<HTMLInputElement>('[aria-label="图注"]')!, '图一 <示例>');
+    const alignment = document.querySelector<HTMLSelectElement>('[aria-label="图片对齐"]')!;
+    alignment.value = 'center';
+    click('应用图片尺寸');
+    const content = view.state.doc.toString();
+    expect(content).toContain('<figure style="text-align: center">');
+    expect(content).toContain('src="子目录/新 图.png"');
+    expect(content).toContain('<figcaption>图一 &lt;示例&gt;</figcaption>');
+    expect(renderMarkdown(content)).toContain('text-align: center');
+    expect(content.endsWith('\n\n末尾')).toBe(true);
+    act(() => undo(view));
+    expect(view.state.doc.toString()).toBe(source);
+  });
+  it('rejects a dangerous replacement path without changing the original document', () => {
+    const source = `正文\n\n![截图](${pixel})`;
+    mount(source);
+    selectImage();
+    input(
+      document.querySelector<HTMLInputElement>('[aria-label="图片路径或网址"]')!,
+      'javascript:alert(1)',
+    );
+    click('应用图片尺寸');
+    expect(view.state.doc.toString()).toBe(source);
+    expect(document.querySelector('.direct-image-error')?.textContent).toContain('路径无效');
+  });
   it('commits drag resizing once and cancels an interrupted drag without changing Markdown', () => {
     const source = `正文\n\n![截图](${pixel})`;
     mount(source);
