@@ -50,7 +50,7 @@ it('checks only on request and offers a verified download without executing an i
   await render();
   expect(mocks.invoke).not.toHaveBeenCalled();
   await click('Check for updates');
-  expect(mocks.invoke).toHaveBeenCalledWith('check_app_update', { token: null, previews: true });
+  expect(mocks.invoke).toHaveBeenCalledWith('check_app_update', { token: null, previews: false });
   expect(host.querySelector('script')).toBeNull();
   await click('Download installer');
   expect(mocks.invoke).toHaveBeenCalledWith('download_app_update', { releaseId: 5, token: null });
