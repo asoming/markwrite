@@ -44,6 +44,14 @@ This is a review view: it never overwrites either document. It compares text, in
 
 Diff computation runs in a Worker. The combined limit is two million characters or 12,000 lines. Complex comparisons stop with a clear timeout message instead of locking the interface. Larger files can still be read side by side.
 
+### One document, independent views
+
+Choose **View → Source + reading (same document)** with just one file open. It starts with source on the left and reading on the right. **Each pane independently supports editing, source and reading**, including editing/editing and reading/source. Use the existing mode controls for the left pane and the toolbar inside the right pane.
+
+Edits in either pane immediately update the other. Both share one document and save state; no file copy is created. Each pane undoes its own edits, while changes from the other pane map through its cursor and undo history. Toggle **Sync scroll**, drag the divider to resize, or close the right pane to return to one view. Opening another file follows that file and resets the layout to source/reading.
+
+![One document: source and reading stay synchronized](screenshots/same-document-en.png)
+
 ## 3. AI: connect your service and review proposed edits
 
 ![An edit preview returned by an isolated local example model](screenshots/ai-en.png)

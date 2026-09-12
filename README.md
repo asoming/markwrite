@@ -19,6 +19,7 @@ Markwrite is a local Markdown reader and editor. Open files where they live, wri
 | 能力 / Capability | 实际用途 / What you can do |
 | --- | --- |
 | **Git 版本管理 / Git version control** | 查看文件状态与差异，选择文件提交，逐块解决三方冲突。 / Review changes, commit selected files, and resolve three-way conflicts. |
+| **同一文档分栏 / One document, two panes** | 左右独立切换编辑、源码、阅读；修改实时同步，只保存一个文件。 / Independently switch each pane between editing, source and reading, with one shared file. |
 | **双文档与文字差异 / Dual documents and text differences** | 两边独立编辑、同步滚动；按行对齐并标出字级新增与删除。 / Edit both documents, link scrolling, and inspect aligned line and character changes. |
 | **原文件优先 / Original files first** | 双击打开任意 Markdown；默认阅读，文件树跟随父目录。 / Open Markdown anywhere in reading mode, with its parent folder tree. |
 | **可选择的 AI 助手 / Optional AI assistance** | 自带 API，测试连接，预览再接受修改；密钥可存系统凭据库。 / Bring your API, test connections, preview edits, and keep keys in the OS credential store. |
@@ -41,4 +42,4 @@ Built around local review and version control for READMEs, technical plans, rese
 
 **技术栈 / Stack:** Tauri 2 · React · TypeScript · Rust · CodeMirror 6.
 
-**源码版本 / Source version:** 1.1.0。已发布安装包以[最新发布页](https://github.com/asoming/markwrite/releases/latest)为准。 / See the latest release page for available installers.
+**源码版本 / Source version:** 1.1.1。已发布安装包以[最新发布页](https://github.com/asoming/markwrite/releases/latest)为准。 / See the latest release page for available installers.
