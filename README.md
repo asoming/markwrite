@@ -1,19 +1,19 @@
-# [下载 / Download Markwrite — Linux & Windows](https://github.com/asoming/markwrite/releases)
+# [下载 / Download Markwrite — Linux & Windows](https://github.com/asoming/markwrite/releases/tag/v0.5.1)
 
-**当前版本 / Current release: 0.5.0（预览版 / Preview）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
+**当前版本 / Current release: 0.5.1（预览版 / Preview）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
 
 Choose the Linux `.deb`, Linux portable archive, or Windows x64 installer from the release page above. Features, installation, and conversion limits are described below.
 
 ## 开发进度 / Development status — 2026-09-12
 
-以下为 0.5.0 发布后的开发进度，不代表已发布安装包的功能。完成代码、通过验收、发布安装包分别记录。
-These changes follow release 0.5.0. Implementation, verification and packaged delivery are tracked separately.
+以下为 0.5.1 的实现和验收状态。功能可用与完整性能/平台验收分别记录，未完成项继续列出。
+This is the implementation and acceptance status of 0.5.1. Feature availability and full performance/platform acceptance are tracked separately; outstanding work remains explicit.
 
 | 工作项 / Work item | 当前状态 / Status |
 | --- | --- |
 | 阅读和 HTML 代码高亮 / Reader and HTML syntax highlighting | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
 | 全目录快速打开 / Recursive quick open | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
-| 窄窗口覆盖侧栏 / Narrow-window sidebar overlay | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
+| 窄窗口覆盖侧栏 / Narrow-window sidebar overlay | 已实现；真实浏览器交互与布局验证通过 / Implemented; real-browser interaction and layout checks passed |
 | Git 冲突解释和标记解决 / Explain and resolve Git conflicts | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
 | 性能与真实输入法 / Performance and real IME acceptance | 部分通过；正式包 IBus 两模式通过，1 秒目标仍未达 / Partial: production IBus checks pass in both modes; one-second target unmet |
 | 文档一致性 / Documentation consistency | 已纠正旧描述，随验收更新 / Corrected; updated with validation |
@@ -24,7 +24,7 @@ Still pending: in-document table range paste/reordering/sorting; image alignment
 恢复历史版本先进入未保存编辑状态，后续保存时记录被替换的磁盘版本；恢复本身不立即生成新的历史条目，也不自动覆盖文件。
 Restoring history creates an unsaved editor buffer. Saving later records the replaced disk version; restoration alone creates neither a history entry nor a source-file write.
 
-## 0.5.1 本地验证完成，跨平台复核中 / Local validation complete; platform verification pending
+## 0.5.1：高亮、快速打开、侧栏与 Git / Highlighting, quick open, sidebar and Git
 
 - 阅读与 HTML 导出按语言高亮代码，语言解析按需在 Worker 加载；未知语言或超过 40,000 字符的单块保留纯文本，源代码内容不变。
 - Ctrl+P 按需递归检索文件名，不读取正文；支持取消和中文子目录，最多返回 500 项。沿用隐藏目录、依赖目录、链接和 32 层深度的扫描边界。
@@ -34,8 +34,8 @@ Restoring history creates an unsaved editor buffer. Saving later records the rep
 
 Reader and HTML code coloring loads language parsers on demand in a worker; unknown languages and blocks over 40,000 characters stay plain. Ctrl+P searches filenames recursively only when opened, with cancellation and 500 results. Narrow windows use a keyboard-accessible sidebar overlay. Git explains conflicts, stages explicitly resolved saved files, and completes reviewed merge commits without pushing. Live editing retains syntax text nodes and stable composition decorations to avoid a WebKitGTK IME/accessibility process crash. Non-UTF-8 or over-8MiB conflict files remain outside in-app resolution.
 
-Windows 首轮 CI 发现新增 Git 测试夹具未使用与实际入口一致的规范化路径（Windows 的 `\\?\` 前缀）；已修正测试夹具，等待重新验证。Linux CI 已通过，安装包尚未发布。
-The first Windows CI run exposed a non-canonical Git test-fixture path; the fixture now matches the canonical production entry point. Windows revalidation is pending; Linux CI passed. Packages have not been released.
+**[Linux / Windows CI 全部通过 / CI passed](https://github.com/asoming/markwrite/actions/runs/34677514192)。** 两平台各 941 项前端测试通过，Linux 81 项、Windows 73 项原生测试通过；各测试集合另有 2 项可选诊断/助手默认跳过。Windows 安装、中文空格路径文件关联、独立进程和恢复、源文件保持、卸载验证通过。
+Both platforms passed 941 frontend tests; Linux passed 81 native tests and Windows passed 73, with two optional diagnostics/helpers skipped in each suite. Windows installation, quoted/Chinese filename associations, independent processes and recovery, unchanged source files, and removal passed.
 
 **0.5.1 验收记录（2026-09-12）：**941 项前端测试、81 项 Linux 原生测试通过，另有 2 项可选前端诊断和 2 项原生助手/诊断未在默认集合执行。最终 deb 解包程序通过实际菜单/键盘验收：阅读 Worker 高亮、中文深层文件快速打开、Git 编辑保存→标记解决→双父合并提交、IBus libpinyin 在源码/即时编辑中的候选提交与撤销重做。浏览器验证窄窗口浮层、明暗高亮、查找和实际 HTML 下载；导出的代码保留原文与高亮样式。
 
