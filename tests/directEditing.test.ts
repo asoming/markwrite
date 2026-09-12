@@ -93,6 +93,27 @@ function selectImage() {
 }
 
 describe('table cells in the document', () => {
+  it('allows native drag initiation and moves one table row with one undo', () => {
+    const source = '正文\n\n| A | B |\n| --- | --- |\n| first | 1 |\n| second | 2 |\n\n末尾';
+    mount(source);
+    beginCell(1, 0);
+    const handle = host.querySelector<HTMLButtonElement>(
+      'button[aria-label="拖动当前行到目标单元格"]',
+    )!;
+    const down = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+    act(() => handle.dispatchEvent(down));
+    expect(down.defaultPrevented).toBe(false);
+    act(() => handle.dispatchEvent(new Event('dragstart', { bubbles: true, cancelable: true })));
+    act(() =>
+      host
+        .querySelector('table')!
+        .rows[2].cells[0].dispatchEvent(new Event('drop', { bubbles: true, cancelable: true })),
+    );
+    expect(view.state.doc.toString()).toContain('| second | 2 |\n| first | 1 |');
+    act(() => undo(view));
+    expect(view.state.doc.toString()).toBe(source);
+  });
+
   it('pastes a rectangular range, expands columns and undoes the entire operation', () => {
     const source = '正文\n\n| A | B |\n| :--- | ---: |\n| keep | old |\n\n末尾';
     mount(source);

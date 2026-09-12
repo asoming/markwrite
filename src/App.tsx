@@ -267,7 +267,8 @@ export default function App() {
   const [recoveryAttempt, setRecoveryAttempt] = useState(0);
   const [docs, setDocs] = useState<Document[]>(initialDocs);
   const docsRef = useRef(docs);
-  docsRef.current = docs;
+  // updateDocs owns this synchronous snapshot. A concurrent render may carry
+  // older React state and must never roll back newer native input.
   const [activeId, setActiveId] = useState(
     recovered?.active && initialDocs.some((d) => d.id === recovered.active)
       ? recovered.active
@@ -571,7 +572,7 @@ export default function App() {
   const exitAfterSave = useRef<Document[] | null>(null);
   const current = docs.find((d) => d.id === activeId) || docs[0];
   const currentRef = useRef(current);
-  currentRef.current = current;
+  currentRef.current = docsRef.current.find((doc) => doc.id === current.id) || current;
   const actions = useRef<{
     save: () => void;
     open: () => void;

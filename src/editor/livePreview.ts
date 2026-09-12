@@ -1,3 +1,4 @@
+import { sourceBlocks } from './sourceBlocks';
 import { t, getLanguage } from '../lib/i18n';
 import {
   StateField,
@@ -8,7 +9,7 @@ import {
 } from '@codemirror/state';
 import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemirror/view';
 import { syntaxTree } from '@codemirror/language';
-import { md, renderMarkdown, hydrateDiagrams } from '../lib/markdown';
+import { renderMarkdown, hydrateDiagrams } from '../lib/markdown';
 import { assetData } from '../lib/platform';
 import katex from 'katex';
 import { inlineSyntaxRules, inlineMatch, syntaxInk } from '../lib/syntax';
@@ -317,19 +318,16 @@ function build(state: EditorState): DecorationSet {
   const add = (from: number, to: number, deco: Decoration) => {
     if (from <= to) entries.push({ from, to, deco });
   };
-  let offset = 0;
-  for (const t of md.lexer(state.doc.toString())) {
-    const from = offset;
-    offset += t.raw.length;
-    const raw = t.raw.replace(/\n+$/, '');
-    const to = from + raw.length;
-    if (['code', 'blockMath', 'html'].includes(t.type)) mathExcluded.push({ from, to });
+  for (const t of sourceBlocks(state.doc.toString())) {
+    const { from, to, raw } = t;
+    if (['fence', 'code_block', 'block_math', 'html_block'].includes(t.type))
+      mathExcluded.push({ from, to });
     const render =
-      t.type === 'table' ||
+      t.type === 'table_open' ||
       t.type === 'hr' ||
-      t.type === 'blockMath' ||
-      (t.type === 'code' && t.lang === 'mermaid') ||
-      ((t.type === 'paragraph' || t.type === 'html') && !!parseImageMarkup(raw));
+      t.type === 'block_math' ||
+      (t.type === 'fence' && t.info === 'mermaid') ||
+      ((t.type === 'paragraph_open' || t.type === 'html_block') && !!parseImageMarkup(raw));
     if (render && to > from && !active(from, to)) {
       add(
         from,

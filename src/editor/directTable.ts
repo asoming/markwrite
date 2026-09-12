@@ -173,7 +173,10 @@ export function attachDirectTable(
     button.title = label;
     button.setAttribute('aria-label', label);
     button.textContent = symbol;
-    button.addEventListener('mousedown', (event) => event.preventDefault());
+    button.addEventListener('mousedown', (event) => {
+      // Cancelling mousedown also cancels native HTML drag initiation.
+      if (!button.draggable) event.preventDefault();
+    });
     button.addEventListener('click', (event) => {
       event.stopPropagation();
       run();

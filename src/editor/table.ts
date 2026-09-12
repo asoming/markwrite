@@ -1,15 +1,13 @@
-import { md } from '../lib/markdown';
+import { sourceBlocks } from './sourceBlocks';
 export type TableAction = 'addRow' | 'removeRow' | 'addColumn' | 'removeColumn';
 export function findTable(content: string, line: number) {
-  let offset = 0,
-    startLine = 1;
-  for (const token of md.lexer(content)) {
-    const raw = token.raw.replace(/\n+$/, '');
-    const lines = raw.split('\n');
-    if (token.type === 'table' && line >= startLine && line < startLine + lines.length)
-      return { from: offset, to: offset + raw.length, lines, row: line - startLine };
-    offset += token.raw.length;
-    startLine += (token.raw.match(/\n/g) || []).length;
+  // Ordinary typing does not need a document parse just to hide table controls.
+  if (!content.split('\n')[line - 1]?.includes('|')) return null;
+  for (const block of sourceBlocks(content)) {
+    if (block.type !== 'table_open' || line < block.fromLine || line >= block.toLine) continue;
+    const lines = block.raw.split('\n');
+    if (line >= block.fromLine + lines.length) return null;
+    return { from: block.from, to: block.to, lines, row: line - block.fromLine };
   }
   return null;
 }

@@ -1,10 +1,11 @@
-import { act, createElement } from 'react';
+import { act, createElement, startTransition } from 'react';
+import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Document, Mode, Settings } from '../src/lib/types';
 import { setLanguage } from '../src/lib/i18n';
 
-const boundary = vi.hoisted(() => ({ openFiles: vi.fn() }));
+const boundary = vi.hoisted(() => ({ openFiles: vi.fn(), edit: (_text: string) => {} }));
 vi.mock('../src/lib/platform', async (original) => ({
   ...(await original<typeof import('../src/lib/platform')>()),
   desktop: false,
@@ -14,8 +15,18 @@ vi.mock('../src/lib/platform', async (original) => ({
 // The real menu, preferences, import dialog, converter, and recovery storage are used.
 vi.mock('../src/editor/lazyEditor', async (original) => ({
   ...(await original<typeof import('../src/editor/lazyEditor')>()),
-  default: ({ content, mode }: { content: string; mode: Mode }) =>
-    createElement('pre', { 'data-testid': 'document-buffer', 'data-mode': mode }, content),
+  default: ({
+    content,
+    mode,
+    onChange,
+  }: {
+    content: string;
+    mode: Mode;
+    onChange: (text: string) => void;
+  }) => {
+    boundary.edit = onChange;
+    return createElement('pre', { 'data-testid': 'document-buffer', 'data-mode': mode }, content);
+  },
   releaseEditor: vi.fn(),
 }));
 vi.mock('../src/Reader', () => ({
@@ -101,6 +112,20 @@ async function openFile(path: string, content: string) {
 }
 
 describe('application preferences and document import', () => {
+  it('retains the newest draft when an urgent UI render interrupts a pending edit render', async () => {
+    await keyboard('n');
+    await act(async () => {
+      startTransition(() => boundary.edit('Latest native input'));
+      flushSync(() => host.querySelector<HTMLButtonElement>('.sidebar-bottom button')!.click());
+      // Flush the recovery snapshot before the lower-priority edit render commits.
+      window.dispatchEvent(new Event('beforeunload'));
+      const stored = JSON.parse(localStorage.getItem('markwrite.session.v1')!);
+      expect(stored.docs.find((doc: Document) => doc.id === stored.active).content).toBe(
+        'Latest native input',
+      );
+    });
+  });
+
   it('starts in reading mode, opens files for reading, and creates new documents ready to edit', async () => {
     expect(currentMode()).toBe('read');
     expect(host.querySelector('[data-testid="reading-buffer"]')).not.toBeNull();
