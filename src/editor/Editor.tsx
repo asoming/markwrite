@@ -124,6 +124,7 @@ export default function Editor({
   const { language } = useI18n();
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  const localEchoes = useRef({ id, sequence: 0, bytes: 0, texts: new Map<string, number>() });
   const synchronizedContent = useRef<{ id: string; content: string } | undefined>(undefined);
   const callbacks = useRef({
     onChange,
@@ -148,6 +149,8 @@ export default function Editor({
   useEffect(() => {
     if (!host.current) return;
     const initial = sessions.get(id);
+    if (localEchoes.current.id !== id)
+      localEchoes.current = { id, sequence: 0, bytes: 0, texts: new Map() };
     let plainPaste = false;
     let compositionEpoch = 0;
     let compositionTimer: ReturnType<typeof setTimeout> | undefined;
@@ -267,7 +270,21 @@ export default function Editor({
             },
           }),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) callbacks.current.onChange(update.state.doc.toString());
+            if (update.docChanged) {
+              const content = update.state.doc.toString();
+              const echoes = localEchoes.current;
+              if (!echoes.texts.has(content)) echoes.bytes += content.length * 2;
+              echoes.texts.set(content, ++echoes.sequence);
+              // Usually only one or two React acknowledgements are outstanding.
+              // Bound retained snapshots for embedding hosts that never acknowledge edits.
+              const budget = Math.max(8 * 1024 * 1024, content.length * 4);
+              while (echoes.bytes > budget && echoes.texts.size > 2) {
+                const oldest = echoes.texts.keys().next().value!;
+                echoes.bytes -= oldest.length * 2;
+                echoes.texts.delete(oldest);
+              }
+              callbacks.current.onChange(content);
+            }
             if (update.docChanged && update.state.doc.length > 1_000_000 !== largeDocument) {
               largeDocument = update.state.doc.length > 1_000_000;
               queueMicrotask(() =>
@@ -347,6 +364,20 @@ export default function Editor({
     const previous = synchronizedContent.current;
     if (previous?.id === id && previous.content === content) return;
     synchronizedContent.current = { id, content };
+    const echoes = localEchoes.current;
+    const acknowledged = echoes.id === id ? echoes.texts.get(content) : undefined;
+    if (acknowledged !== undefined) {
+      for (const [text, sequence] of echoes.texts)
+        if (sequence <= acknowledged) {
+          echoes.texts.delete(text);
+          echoes.bytes -= text.length * 2;
+        }
+      // This is our own edit returning through React. A later native input may
+      // already be present in CodeMirror; acknowledging must never roll it back.
+      return;
+    }
+    echoes.texts.clear();
+    echoes.bytes = 0;
     if (editor.state.doc.toString() !== content)
       editor.dispatch({
         changes: { from: 0, to: editor.state.doc.length, insert: content },

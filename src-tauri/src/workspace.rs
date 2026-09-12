@@ -1053,7 +1053,7 @@ mod tests {
         assert_eq!(versions.base.as_deref(), Some("original\n"));
         assert_eq!(versions.ours.as_deref(), Some("ours\n"));
         assert_eq!(versions.theirs.as_deref(), Some("theirs\n"));
-        let expected = versions.working.unwrap().version;
+        let expected = versions.working.as_ref().unwrap().version.clone();
         assert!(save_resolution(
             &root,
             "冲突.md",
@@ -1093,8 +1093,13 @@ mod tests {
         .is_err());
         assert_eq!(
             fs::read_to_string(root.join("冲突.md")).unwrap(),
-            "resolved\n"
+            if versions.working.as_ref().unwrap().crlf {
+                "resolved\r\n"
+            } else {
+                "resolved\n"
+            }
         );
+        assert_eq!(result.crlf, versions.working.as_ref().unwrap().crlf);
         mark_resolved(&root, "冲突.md").unwrap();
         commit_selected(
             &root,

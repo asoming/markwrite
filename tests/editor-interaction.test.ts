@@ -264,3 +264,15 @@ it('keeps rendered blocks mounted while an IME candidate is composing', async ()
   expect(view!.state.doc.toString()).toContain('输入位置你好');
   expect(host.querySelector('.live-block table')!.textContent).toContain('内容');
 });
+
+it('does not replace newer typing with a delayed acknowledgement from React', () => {
+  mount('base');
+  act(() => view!.dispatch({ changes: { from: 4, insert: 'a' }, userEvent: 'input.type' }));
+  act(() => view!.dispatch({ changes: { from: 5, insert: 'b' }, userEvent: 'input.type' }));
+  mount('basea');
+  expect(view!.state.doc.toString()).toBe('baseab');
+  mount('baseab');
+  expect(view!.state.doc.toString()).toBe('baseab');
+  mount('external replacement');
+  expect(view!.state.doc.toString()).toBe('external replacement');
+});
