@@ -91,6 +91,7 @@ import {
 import { welcome, syntaxSample } from './lib/sample';
 import type { Document, DiskFile, FileEntry, Mode, SearchHit, Settings } from './lib/types';
 import katexCss from 'katex/dist/katex.min.css?inline';
+import './components/workspace.css';
 import EditingMenu, { type EditingAction } from './components/EditingMenu';
 import type { InsertKind } from './components/InsertDialog';
 import type { TableModel } from './editor/formatting';
