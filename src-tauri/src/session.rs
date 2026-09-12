@@ -109,17 +109,37 @@ pub fn save(directory: &Path, json: &str) -> Result<(), String> {
         .map_err(|e| format!("草稿恢复保存失败：{e}。请保存文档后重试。"))
 }
 #[tauri::command]
-pub async fn save_session(json: String, app: tauri::AppHandle) -> Result<(), String> {
+pub async fn save_session(
+    json: String,
+    discard_previous: Option<bool>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let _guard = state.session_writes.lock().map_err(|e| e.to_string())?;
-        save(
-            &app.path().app_local_data_dir().map_err(|e| e.to_string())?,
-            &json,
-        )
+        let directory = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+        if discard_previous.unwrap_or(false) {
+            replace_recovery(&directory, &json)
+        } else {
+            save(&directory, &json)
+        }
     })
     .await
     .map_err(|e| e.to_string())?
+}
+fn replace_recovery(directory: &Path, json: &str) -> Result<(), String> {
+    validate(json)?;
+    // Replace the fallback first. A failed primary write keeps the window open;
+    // a successful exit can never recover the discarded text from either generation.
+    fs::create_dir_all(directory).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(directory, fs::Permissions::from_mode(0o700))
+            .map_err(|e| e.to_string())?;
+    }
+    write_atomic(&directory.join("session.previous.json"), json.as_bytes())?;
+    write_atomic(&directory.join("session.json"), json.as_bytes())
 }
 #[tauri::command]
 pub async fn load_session(app: tauri::AppHandle) -> Result<Option<String>, String> {
@@ -145,6 +165,32 @@ mod tests {
     }
     fn fixture(text: &str) -> String {
         serde_json::json!({"docs":[{"id":"a","content":text,"saved":""}],"settings":{}}).to_string()
+    }
+    #[test]
+    fn discarded_changes_cannot_return_from_the_previous_generation() {
+        let root = root("discard");
+        let disk = root.with_extension("md");
+        fs::write(&disk, "disk original").unwrap();
+        save(&root, &fixture("unsaved first")).unwrap();
+        save(&root, &fixture("unsaved second")).unwrap();
+        let clean = fixture("disk original");
+        replace_recovery(&root, &clean).unwrap();
+        assert_eq!(load(&root).unwrap(), Some(clean.clone()));
+        fs::write(root.join("session.json"), "broken").unwrap();
+        assert_eq!(load(&root).unwrap(), Some(clean));
+        assert_eq!(fs::read_to_string(&disk).unwrap(), "disk original");
+        fs::remove_file(disk).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn failed_discard_backup_keeps_the_current_draft() {
+        let root = root("discard-failure");
+        let original = fixture("unsaved");
+        save(&root, &original).unwrap();
+        fs::create_dir(root.join("session.previous.json")).unwrap();
+        assert!(replace_recovery(&root, &fixture("clean")).is_err());
+        assert_eq!(load(&root).unwrap(), Some(original));
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn large_drafts_roundtrip_and_corruption_falls_back() {

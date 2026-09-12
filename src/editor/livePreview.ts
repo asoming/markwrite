@@ -180,6 +180,7 @@ class RenderedBlock extends WidgetType {
     readonly raw: string,
     readonly path: string,
     readonly position: number,
+    readonly inline = false,
   ) {
     super();
   }
@@ -188,12 +189,13 @@ class RenderedBlock extends WidgetType {
       this.language === other.language &&
       this.raw === other.raw &&
       this.path === other.path &&
-      this.position === other.position
+      this.position === other.position &&
+      this.inline === other.inline
     );
   }
   toDOM(view: EditorView) {
     const element = document.createElement('div');
-    element.className = 'live-block markdown-body';
+    element.className = 'live-block markdown-body' + (this.inline ? ' live-inline-image' : '');
     element.innerHTML = renderMarkdown(this.raw);
     element.title = t('点击编辑 Markdown 源码');
     const record = {
@@ -305,8 +307,41 @@ class RenderedBlock extends WidgetType {
   }
 }
 function build(state: EditorState): DecorationSet {
-  if (!state.facet(liveMode) || state.field(composing) || state.doc.length > 300_000)
-    return Decoration.none;
+  if (!state.facet(liveMode) || state.field(composing)) return Decoration.none;
+  if (state.doc.length > 300_000) {
+    // A pasted data URI can exceed the text-rendering budget on its own. Keep
+    // standalone images visible without enabling rich parsing for the large text.
+    const source = state.doc.toString();
+    if (!source.includes('data:image/')) return Decoration.none;
+    const images = [];
+    let offset = 0,
+      fence: { marker: string; length: number } | undefined;
+    for (const line of source.split('\n')) {
+      const marker = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+      if (marker) {
+        if (!fence) fence = { marker: marker[1][0], length: marker[1].length };
+        else if (
+          marker[1][0] === fence.marker &&
+          marker[1].length >= fence.length &&
+          !marker[2].trim()
+        )
+          fence = undefined;
+      } else if (
+        !fence &&
+        /^ {0,3}(?:!\[|<img\b|<figure\b)/i.test(line) &&
+        parseImageMarkup(line)
+      ) {
+        images.push(
+          Decoration.replace({
+            widget: new RenderedBlock(line, state.facet(documentPath), offset),
+            block: true,
+          }).range(offset, offset + line.length),
+        );
+      }
+      offset += line.length + 1;
+    }
+    return Decoration.set(images);
+  }
   const selected = state.selection.ranges.map((r) => ({
     from: state.doc.lineAt(r.from).from,
     to: state.doc.lineAt(r.to).to,
@@ -322,13 +357,15 @@ function build(state: EditorState): DecorationSet {
     const { from, to, raw } = t;
     if (['fence', 'code_block', 'block_math', 'html_block'].includes(t.type))
       mathExcluded.push({ from, to });
+    const image =
+      (t.type === 'paragraph_open' || t.type === 'html_block') && !!parseImageMarkup(raw);
     const render =
       t.type === 'table_open' ||
       t.type === 'hr' ||
       t.type === 'block_math' ||
       (t.type === 'fence' && t.info === 'mermaid') ||
-      ((t.type === 'paragraph_open' || t.type === 'html_block') && !!parseImageMarkup(raw));
-    if (render && to > from && !active(from, to)) {
+      image;
+    if (render && to > from && (image || !active(from, to))) {
       add(
         from,
         to,
@@ -338,6 +375,25 @@ function build(state: EditorState): DecorationSet {
         }),
       );
       blocks.push({ from, to });
+    } else if (t.type === 'paragraph_open') {
+      // Markdown permits an image on the next line without a blank paragraph.
+      // Rendering that image must not hide or rewrite the neighboring text.
+      let offset = from;
+      for (const line of raw.split('\n')) {
+        if (/^ {0,3}(?:!\[|<img\b)/i.test(line) && parseImageMarkup(line)) {
+          const end = offset + line.length;
+          add(
+            offset,
+            end,
+            Decoration.replace({
+              widget: new RenderedBlock(line, state.facet(documentPath), offset),
+              block: true,
+            }),
+          );
+          blocks.push({ from: offset, to: end });
+        }
+        offset += line.length + 1;
+      }
     }
   }
   syntaxTree(state).iterate({
@@ -345,6 +401,19 @@ function build(state: EditorState): DecorationSet {
       const { from, to, name } = node;
       if (['InlineCode', 'Link', 'Image', 'Escape'].includes(name)) mathExcluded.push({ from, to });
       if (blocks.some((b) => from >= b.from && from < b.to)) return false;
+      if (name === 'Image') {
+        const raw = state.doc.sliceString(from, to);
+        if (parseImageMarkup(raw)) {
+          add(
+            from,
+            to,
+            Decoration.replace({
+              widget: new RenderedBlock(raw, state.facet(documentPath), from, true),
+            }),
+          );
+          return false;
+        }
+      }
       const line = state.doc.lineAt(from);
       if (name === 'TaskMarker') {
         add(

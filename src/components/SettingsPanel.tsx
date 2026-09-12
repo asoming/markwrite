@@ -651,8 +651,8 @@ export default function SettingsPanel({
                 </label>
                 <p className="preference-help">
                   {t(
-                    'assets 方式使用相对路径，移动文档时请一起移动该文件夹。新草稿插入的图片暂时内嵌，保存时不自动迁移；内嵌方式将图片保存在文档内，文件会更大。',
-                    'The assets option uses relative paths: move the folder with your document. Images inserted into drafts stay embedded; saving never migrates them automatically. Embedding keeps images inside Markdown and makes the file larger.',
+                    'assets 方式使用相对路径，移动文档时请一起移动该文件夹。新草稿使用此方式插图时会先选择文档保存位置；内嵌方式将图片保存在文档内，文件会更大。',
+                    'The assets option uses relative paths: move the folder with your document. For new drafts, choose the document save location before inserting a relative image. Embedding keeps images inside Markdown and makes the file larger.',
                   )}
                 </p>
                 <p className="preference-help">

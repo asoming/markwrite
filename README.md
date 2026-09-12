@@ -14,6 +14,16 @@ Choose the Linux `.deb`, Linux portable archive, or Windows x64 installer from t
 **1.0新增：**高级表格和图片排版、双编辑器与同步滚动、自定义快捷键、Git三方解决、中断操作恢复、Markdown渲染预设、可编辑Office公式，以及离线主题资源包。下方说明使用方法、实际验收与兼容边界。
 **New in 1.0:** advanced table/image editing, independent dual editors, linked scrolling, custom shortcuts, three-way Git resolution, interrupted-operation recovery, Markdown profiles, editable Office equations and offline theme packages. Usage, validation and compatibility limits are detailed below.
 
+## 1.0.1 修复 / Patch fixes
+
+- **退出选择：**增加「不保存并退出」，丢弃本次未保存内容并清除对应恢复副本；「保留草稿并退出」仍可下次继续。已自动保存到磁盘的内容不会回退。
+- **粘贴图片：**编辑和源码模式支持截图、剪贴板图片及 Linux 文件管理器复制的图片。默认写入文档旁的相对路径附件；新草稿先选择保存位置。阅读模式提示先切换编辑。
+- **即时图片：**已有 Base64 图片在编辑模式显示为图片，包括紧接普通段落、光标停留及长文档中的图片。源码模式保留原始 Markdown；外部源码编辑器需打开预览才能看到图片。
+
+- **Exit choices:** discard unsaved changes and their recovery copies, keep drafts, save files, or cancel. Discard does not undo changes already saved to disk.
+- **Image paste:** paste screenshots, clipboard images, and copied Linux image files while editing. Relative attachments are the default; choose a file location for new drafts first. Reading remains read-only.
+- **Live images:** embedded Base64 images render in live editing, including long documents and images next to ordinary paragraphs. Source mode preserves the original Markdown; use preview in external source editors.
+
 # Markwrite
 
 <img src="public/assets/app-icon.png" width="96" alt="Markwrite 应用图标" />
@@ -413,7 +423,7 @@ npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
 
 ### 1.0 验收记录 / Validation
 
-当前代码通过 **970项前端测试、85项Linux原生测试、77项Windows原生测试**；默认各有2项可选诊断或辅助入口未执行。1MiB/10MiB可选编辑诊断另行运行并通过。[最终Linux/Windows CI](https://github.com/asoming/markwrite/actions/runs/34683474417) 已通过构建、Windows安装、中文及空格路径关联、独立进程恢复和卸载。
+1.0.0 发布基线通过 **970项前端测试、85项Linux原生测试、77项Windows原生测试**；默认各有2项可选诊断或辅助入口未执行。1MiB/10MiB可选编辑诊断另行运行并通过。[最终Linux/Windows CI](https://github.com/asoming/markwrite/actions/runs/34683474417) 已通过构建、Windows安装、中文及空格路径关联、独立进程恢复和卸载。
 
 最终Linux程序已完成真实双进程键入、终止一方、另一方继续操作并正常退出、双方草稿恢复，源文件内容与修改时间保持不变。IBus libpinyin、Fcitx5 pinyin在X11下的中文候选提交及撤销/重做通过。Wayland原生客户端在隔离Weston中通过阅读/编辑操作；125%/150% GTK字体缩放通过阅读和设置导航，尚不代表物理多屏与合成器分数缩放验收。
 
@@ -423,11 +433,11 @@ npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
 
 1万文件、100.25MB的热缓存磁盘搜索基准：首500条131ms、全扫描2.61秒、首条及取消均<1ms。原生软件画面31个Latin按键采样P95=44.55ms（含像素读回开销），该样本低于50ms，不能代替混合中文与物理显示验收。
 
-最终冻结程序完成 **7200.13秒（至少两小时）、240轮**实际输入/撤销与模式切换，精确草稿校验全部通过，原文件hash和mtime不变。整个进程树RSS范围576.7–656.4MiB，结束636.3MiB；前10轮均值594.2MiB、后10轮626.9MiB。内存包含WebKit，受软件显示和同时运行任务影响；此结果不证明任意负载无泄漏。 外部/proc采样236次：进程树打开文件描述符96–98个，末次96个；PSS范围274.0–416.6MiB。
+1.0.0 冻结程序完成 **7200.13秒（至少两小时）、240轮**实际输入/撤销与模式切换，精确草稿校验全部通过，原文件hash和mtime不变。整个进程树RSS范围576.7–656.4MiB，结束636.3MiB；前10轮均值594.2MiB、后10轮626.9MiB。内存包含WebKit，受软件显示和同时运行任务影响；此结果不证明任意负载无泄漏。 外部/proc采样236次：进程树打开文件描述符96–98个，末次96个；PSS范围274.0–416.6MiB。
 
-The frozen program completed **7200.13 seconds and 240 real input/undo cycles** with mode switches, exact persisted-draft checks and unchanged source hashes/mtimes. Process-tree RSS including WebKit ranged from 576.7 to 656.4MiB and ended at 636.3MiB; the first/last ten-cycle means were 594.2/626.9MiB. Software-display and concurrent-task overhead apply; this does not prove the absence of leaks under every workload. External /proc sampling (236 observations) recorded 96–98 open descriptors, ending at 96, and 274.0–416.6MiB proportional memory (PSS).
+The frozen 1.0.0 program completed **7200.13 seconds and 240 real input/undo cycles** with mode switches, exact persisted-draft checks and unchanged source hashes/mtimes. Process-tree RSS including WebKit ranged from 576.7 to 656.4MiB and ended at 636.3MiB; the first/last ten-cycle means were 594.2/626.9MiB. Software-display and concurrent-task overhead apply; this does not prove the absence of leaks under every workload. External /proc sampling (236 observations) recorded 96–98 open descriptors, ending at 96, and 274.0–416.6MiB proportional memory (PSS).
 
-**English:** 970 frontend, 85 Linux native and 77 Windows native tests pass; two optional/helper cases per default suite are excluded. Opt-in 1MiB/10MiB editor checks also pass. The linked CI verifies builds and the Windows installer, file association, process recovery and uninstaller. Native Linux checks cover real typed-draft recovery across independent processes, IBus/Fcitx5 candidates, nested Wayland, GTK text scaling, interrupted-save fault injection and manual transaction recovery. Browser checks cover real table drag, dual editing, image layout and bundled theme assets. Fresh-process 1MiB startup measured 1.149–4.034 seconds with a warm OS cache and software rendering; the one-second target is unmet. Two-hour endurance verification passed as detailed above. Physical power loss, physical mixed-DPI displays and third-party destination applications are separate compatibility boundaries.
+**English (1.0.0 baseline):** 970 frontend, 85 Linux native and 77 Windows native tests pass; two optional/helper cases per default suite are excluded. Opt-in 1MiB/10MiB editor checks also pass. The linked CI verifies builds and the Windows installer, file association, process recovery and uninstaller. Native Linux checks cover real typed-draft recovery across independent processes, IBus/Fcitx5 candidates, nested Wayland, GTK text scaling, interrupted-save fault injection and manual transaction recovery. Browser checks cover real table drag, dual editing, image layout and bundled theme assets. Fresh-process 1MiB startup measured 1.149–4.034 seconds with a warm OS cache and software rendering; the one-second target is unmet. Two-hour endurance verification passed as detailed above. Physical power loss, physical mixed-DPI displays and third-party destination applications are separate compatibility boundaries.
 
 可选性能诊断：
 
@@ -440,7 +450,7 @@ cargo test --manifest-path src-tauri/Cargo.toml benchmark_workspace_search_100mb
 
 ## 已知边界
 
-- 正文超过 300,000 个 UTF-16 字符单位时暂停即时渲染，超过 1,000,000 个时暂停编辑器 Markdown 语法解析；完整正文仍可编辑。这是字符阈值，不是文件字节数。原生单文件打开上限 32MiB。
+- 正文超过 300,000 个 UTF-16 字符单位时暂停常规即时渲染（独立内嵌图片仍显示），超过 1,000,000 个时暂停编辑器 Markdown 语法解析；完整正文仍可编辑。这是字符阈值，不是文件字节数。原生单文件打开上限 32MiB。
 - Windows真实中文输入法、物理多屏/分数缩放、完整冷盘基准、混合中英文输入到物理画面P95仍未验收；两小时持续运行已按上述环境验收。
 - Word/WPS及公众号/飞书目标端粘贴未验证。LibreOffice 7.3公式排版已通过；隔离WPS测试停在首次许可协议页面，没有记为通过。
 - 不提供多人实时协作、移动端、云端账号同步、全库图谱、自动修复所有引用、高级表格计算或任意方言兼容。

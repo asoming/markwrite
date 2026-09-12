@@ -1,6 +1,6 @@
 [package]
 name = "markwrite"
-version = "1.0.0"
+version = "1.0.1"
 description = "A local-first Markdown editor"
 authors = ["Markwrite"]
 edition = "2021"
@@ -15,6 +15,8 @@ tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 base64 = "0.22"
+png = "0.18"
+url = "2"
 percent-encoding = "2"
 sha2 = "0.10"
 semver = "1"
@@ -26,6 +28,12 @@ trash = "5"
 open = "5"
 tauri-plugin-single-instance = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "multipart"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+arboard = "3.6"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Storage_FileSystem", "Win32_Foundation"] }

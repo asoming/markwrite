@@ -99,6 +99,7 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
     () => readReadingState(identity).bookmarks,
   );
   const [storageError, setStorageError] = useState('');
+  const [pasteHint, setPasteHint] = useState(false);
   const [allSelected, setAllSelected] = useState(false);
   const [copyState, setCopyState] = useState<'idle' | 'preparing' | 'ready' | 'copied' | 'error'>(
     'idle',
@@ -876,6 +877,17 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
           )}
         </div>
       )}
+      {pasteHint && (
+        <div className="reading-storage-error" role="status">
+          {t(
+            '当前为阅读模式。请先切换“编辑”或“源码”，再粘贴图片或文字。',
+            'Reading mode is read-only. Switch to Edit or Source before pasting images or text.',
+          )}
+          <button onClick={() => setPasteHint(false)} aria-label={t('关闭', 'Close')}>
+            ×
+          </button>
+        </div>
+      )}
       <div
         className="reader-scroll"
         ref={viewport}
@@ -888,7 +900,16 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
         onWheel={cancelBoundary}
         onTouchStart={cancelBoundary}
         onCopy={copyDocument}
+        onPaste={(event) => {
+          event.preventDefault();
+          setPasteHint(true);
+        }}
         onKeyDown={(event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+            event.preventDefault();
+            setPasteHint(true);
+            return;
+          }
           if (
             (event.key === 'Home' || event.key === 'End') &&
             !event.shiftKey &&

@@ -6,6 +6,7 @@ const KEY = 'markwrite.session.v1';
 let nativeSession: string | null = null;
 let lastPersisted = '';
 let flushQueue: Promise<void> = Promise.resolve();
+let discarded: { snapshot: Document[]; docs: Document[]; active: string } | undefined;
 let serialized:
   { docs: Document[]; active: string; settings: Settings; root?: string; json: string } | undefined;
 const PREFS = 'markwrite.preferences.v1';
@@ -163,6 +164,12 @@ export function parseSession(json: string | null): Session | null {
 }
 export function writeSession(docs: Document[], active: string, settings: Settings, root?: string) {
   if (deferred) throw new Error('Recovery is still being read; the existing session is preserved.');
+  // Timers and beforeunload may still hold the buffers explicitly discarded for exit.
+  // Keep their clean replacement authoritative until a genuinely new edit occurs.
+  if (discarded?.snapshot === docs) {
+    docs = discarded.docs;
+    active = discarded.active;
+  }
   // Throws on quota or storage failure; callers must surface it, never report success.
   const unchanged =
     serialized?.docs === docs &&
@@ -177,6 +184,53 @@ export function writeSession(docs: Document[], active: string, settings: Setting
     localStorage.setItem(PREFS, JSON.stringify(settings));
   } catch {
     /* The full durable session remains authoritative. */
+  }
+}
+
+export const isDiscardedSession = (docs: Document[]) => discarded?.snapshot === docs;
+
+export function cancelDiscardSession() {
+  discarded = undefined;
+  serialized = undefined;
+  lastPersisted = '';
+}
+
+/** Forget unsaved buffers in both recovery generations without writing source files. */
+export async function discardSessionChanges(
+  snapshot: Document[],
+  active: string,
+  settings: Settings,
+  root?: string,
+) {
+  const docs: Document[] = snapshot
+    .filter((doc) => doc.path)
+    .map((doc) => ({
+      ...doc,
+      content: doc.saved,
+      status: 'clean',
+      error: undefined,
+    }));
+  discarded = {
+    snapshot,
+    docs,
+    active: docs.some((doc) => doc.id === active) ? active : docs[0]?.id || '',
+  };
+  try {
+    writeSession(snapshot, active, settings, root);
+    if (!isTauri()) return;
+    const json = nativeSession!;
+    flushQueue = flushQueue
+      .catch(() => {})
+      .then(async () => {
+        await invoke('save_session', { json, discardPrevious: true });
+        lastPersisted = json;
+      });
+    await flushQueue;
+    // Older desktop versions used localStorage as a fallback recovery source.
+    localStorage.removeItem(KEY);
+  } catch (error) {
+    cancelDiscardSession();
+    throw error;
   }
 }
 export async function flushSession(

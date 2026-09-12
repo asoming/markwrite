@@ -87,6 +87,9 @@ import {
   readSession,
   writeSession,
   flushSession,
+  discardSessionChanges,
+  cancelDiscardSession,
+  isDiscardedSession,
   recoveryPending,
   loadDeferredSession,
   finishRecovery,
@@ -447,6 +450,10 @@ export default function App() {
 
   const [toast, setToast] = useState('');
   const [closeTarget, setCloseTarget] = useState<string>();
+  const [closing, setClosing] = useState(false);
+  const closeInFlight = useRef(false);
+  const dialogRef = useRef(dialog);
+  dialogRef.current = dialog;
   const [diskConflict, setDiskConflict] = useState<(DiskFile & { documentId: string }) | null>(
     null,
   );
@@ -766,6 +773,13 @@ export default function App() {
     asNew = false,
     intent: 'manual' | 'auto' | 'close' = 'manual',
   ) {
+    if (
+      intent === 'auto' &&
+      (dialogRef.current === 'close' ||
+        closeInFlight.current ||
+        isDiscardedSession(docsRef.current))
+    )
+      return false;
     const d = docsRef.current.find((d) => d.id === id);
     if (!d || saving.current.has(d.id)) return false;
     if (!asNew && intent !== 'close' && !editPermission.current.canEdit(d.id)) {
@@ -906,6 +920,13 @@ export default function App() {
       return;
     }
     try {
+      // A relative attachment needs a real document directory. Ask for the first save
+      // instead of silently embedding a potentially huge Base64 string in a new draft.
+      if (platform.desktop && settingsRef.current.attachmentMode === 'relative' && !d.path) {
+        if (!(await save(d.id))) return;
+        d = docsRef.current.find((doc) => doc.id === d.id)!;
+        if (!d?.path) return;
+      }
       const path = await platform.attachImage(
         settingsRef.current.attachmentMode === 'embedded' ? undefined : d.path,
         file,
@@ -921,7 +942,7 @@ export default function App() {
       view.dispatch(
         insertMarkdownTransaction(
           view.state,
-          `![${file.name.replace(/[\[\]]/g, '')}](<${path}>)\n`,
+          `\n\n![${file.name.replace(/[\[\]]/g, '')}](<${path}>)\n`,
           range,
         ),
       );
@@ -1525,77 +1546,97 @@ export default function App() {
   ]
     .reverse()
     .slice(0, 500);
-  async function finishClose(keepDraft: boolean) {
+  async function finishClose(choice: 'save' | 'keep' | 'discard') {
+    if (closeInFlight.current) return;
     if (saving.current.size || recoveryPending()) {
       notify(t('正在完成文件操作，请稍后再关闭。'));
       return;
     }
-    if (closeTarget === 'app') {
-      if (!keepDraft)
-        for (const d of [...docsRef.current]) {
-          if (
-            (d.content !== d.saved || d.status === 'conflict' || d.status === 'error') &&
-            !(await save(d.id, false, 'close'))
-          )
-            return;
-          const latest = docsRef.current.find((item) => item.id === d.id);
-          if (
-            latest &&
-            (latest.content !== latest.saved ||
-              latest.status === 'conflict' ||
-              latest.status === 'error')
-          )
-            return;
+    closeInFlight.current = true;
+    setClosing(true);
+    const keepDraft = choice !== 'save';
+    const restoreDiscard = async () => {
+      if (choice !== 'discard') return;
+      cancelDiscardSession();
+      await flushSession(docsRef.current, activeId, settings, root).catch(() => {});
+    };
+    try {
+      if (closeTarget === 'app') {
+        if (!keepDraft)
+          for (const d of [...docsRef.current]) {
+            if (
+              (d.content !== d.saved || d.status === 'conflict' || d.status === 'error') &&
+              !(await save(d.id, false, 'close'))
+            )
+              return;
+            const latest = docsRef.current.find((item) => item.id === d.id);
+            if (
+              latest &&
+              (latest.content !== latest.saved ||
+                latest.status === 'conflict' ||
+                latest.status === 'error')
+            )
+              return;
+          }
+        let windowToClose;
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          windowToClose = getCurrentWindow();
+        } catch (error) {
+          notify(t('无法准备关闭窗口：{0}', undefined, [errorText(error)]));
+          return;
         }
-      let windowToClose;
-      try {
-        const { getCurrentWindow } = await import('@tauri-apps/api/window');
-        windowToClose = getCurrentWindow();
-      } catch (error) {
-        notify(t('无法准备关闭窗口：{0}', undefined, [errorText(error)]));
+        let snapshot: Document[] | null;
+        try {
+          snapshot = await flushStableCloseSnapshot({
+            documents: () => docsRef.current,
+            saving: () => saving.current.size > 0 || recoveryPending(),
+            flush: (documents) =>
+              choice === 'discard'
+                ? discardSessionChanges(documents, activeId, settings, root)
+                : flushSession(documents, activeId, settings, root),
+          });
+        } catch {
+          await restoreDiscard();
+          notify(t('草稿保存失败，请先另存文件。'));
+          return;
+        }
+        if (!snapshot || (!keepDraft && hasUnsavedWork(snapshot))) {
+          await restoreDiscard();
+          notify(t('关闭期间文档发生了变化，已保留窗口，请再次关闭。'));
+          return;
+        }
+        // Preserve the explicit keep-draft choice only for the snapshot just persisted.
+        // A later native close event revalidates it after the close IPC completes.
+        exitAfterSave.current = snapshot;
+        setDialog(null);
+        try {
+          await windowToClose.close();
+        } catch (error) {
+          exitAfterSave.current = null;
+          await restoreDiscard();
+          notify(t('无法关闭窗口：{0}', undefined, [errorText(error)]));
+        }
+        // Do not clear a fresh unsaved-work dialog opened by that native event.
         return;
+      } else if (closeTarget) {
+        if (!keepDraft && !(await save(closeTarget, false, 'close'))) return;
+        const latest = docsRef.current.find((d) => d.id === closeTarget);
+        if (
+          !keepDraft &&
+          latest &&
+          (latest.content !== latest.saved ||
+            latest.status === 'conflict' ||
+            latest.status === 'error')
+        )
+          return;
+        removeDoc(closeTarget);
       }
-      let snapshot: Document[] | null;
-      try {
-        snapshot = await flushStableCloseSnapshot({
-          documents: () => docsRef.current,
-          saving: () => saving.current.size > 0 || recoveryPending(),
-          flush: (documents) => flushSession(documents, activeId, settings, root),
-        });
-      } catch {
-        notify(t('草稿保存失败，请先另存文件。'));
-        return;
-      }
-      if (!snapshot || (!keepDraft && hasUnsavedWork(snapshot))) {
-        notify(t('关闭期间文档发生了变化，已保留窗口，请再次关闭。'));
-        return;
-      }
-      // Preserve the explicit keep-draft choice only for the snapshot just persisted.
-      // A later native close event revalidates it after the close IPC completes.
-      exitAfterSave.current = snapshot;
       setDialog(null);
-      try {
-        await windowToClose.close();
-      } catch (error) {
-        exitAfterSave.current = null;
-        notify(t('无法关闭窗口：{0}', undefined, [errorText(error)]));
-      }
-      // Do not clear a fresh unsaved-work dialog opened by that native event.
-      return;
-    } else if (closeTarget) {
-      if (!keepDraft && !(await save(closeTarget, false, 'close'))) return;
-      const latest = docsRef.current.find((d) => d.id === closeTarget);
-      if (
-        !keepDraft &&
-        latest &&
-        (latest.content !== latest.saved ||
-          latest.status === 'conflict' ||
-          latest.status === 'error')
-      )
-        return;
-      removeDoc(closeTarget);
+    } finally {
+      closeInFlight.current = false;
+      setClosing(false);
     }
-    setDialog(null);
   }
   function openExport(format: 'html' | 'pdf' | 'docx') {
     setExportFormat(format);
@@ -2497,6 +2538,7 @@ export default function App() {
                     setSelection(!!editor.current && !editor.current.state.selection.main.empty);
                   }}
                   onLink={(href) => void followLink(href)}
+                  onPasteError={notify}
                   onImage={(file) => void image(file)}
                   onMarkdownFiles={(files) => void importDroppedFiles(files)}
                   onEditTable={({ from }) => {
@@ -2645,6 +2687,7 @@ export default function App() {
                     if (active) composing.current.add(compareId);
                     else composing.current.delete(compareId);
                   }}
+                  onPasteError={notify}
                   onImage={(file, view) =>
                     void image(
                       file,
@@ -3276,13 +3319,22 @@ export default function App() {
       )}
       {dialog === 'close' && (
         <Modal
-          title={closeTarget === 'app' ? t('退出前，保留你的文字') : t('这篇文档还有未保存的修改')}
+          title={
+            closeTarget === 'app'
+              ? t('退出前如何处理修改？', 'What would you like to do with your changes?')
+              : t('这篇文档还有未保存的修改')
+          }
           subtitle={
             closeTarget === 'app'
-              ? t('可以先保存文件，或保留草稿，下次继续。')
+              ? t(
+                  '保存到原文件、保留草稿，或不保存并丢弃本次修改。',
+                  'Save files, keep drafts for next time, or discard unsaved changes.',
+                )
               : t('保存到文件后再关闭，或明确放弃这次修改。')
           }
-          onClose={() => setDialog(null)}
+          onClose={() => {
+            if (!closeInFlight.current) setDialog(null);
+          }}
         >
           <div className="close-description">
             <FileText size={25} />
@@ -3294,12 +3346,27 @@ export default function App() {
                 : docs.find((d) => d.id === closeTarget)?.name}
             </span>
           </div>
-          <div className="modal-footer">
-            <button onClick={() => setDialog(null)}>{t('取消')}</button>
-            <button onClick={() => void finishClose(true)}>
+          <div className="modal-footer close-actions" aria-busy={closing}>
+            {closeTarget === 'app' && (
+              <button
+                className="discard-exit"
+                disabled={closing}
+                onClick={() => void finishClose('discard')}
+              >
+                {t('不保存并退出', 'Discard changes and exit')}
+              </button>
+            )}
+            <button disabled={closing} onClick={() => setDialog(null)}>
+              {t('取消')}
+            </button>
+            <button disabled={closing} onClick={() => void finishClose('keep')}>
               {closeTarget === 'app' ? t('保留草稿并退出') : t('放弃修改')}
             </button>
-            <button className="primary-button" onClick={() => void finishClose(false)}>
+            <button
+              disabled={closing}
+              className="primary-button"
+              onClick={() => void finishClose('save')}
+            >
               {closeTarget === 'app' ? t('保存文件并退出') : t('保存并关闭')}
             </button>
           </div>

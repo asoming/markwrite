@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod ai;
 mod backup;
+mod clipboard;
 mod document_windows;
 mod history;
 mod imports;
@@ -877,6 +878,7 @@ fn main() {
             save_export,
             session::save_session,
             session::load_session,
+            clipboard::read_clipboard_image,
             ai::ai_transform,
             transfer::upload_image,
             transfer::publish_html,

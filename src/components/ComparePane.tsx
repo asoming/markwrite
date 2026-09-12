@@ -35,6 +35,7 @@ type Props = {
   onSave: (asNew?: boolean) => void;
   onComposition: (active: boolean) => void;
   onImage: (file: File, view: EditorView) => void;
+  onPasteError?: (message: string) => void;
   onLink: (href: string) => void;
   onFocused: () => void;
   linked: boolean;
@@ -195,6 +196,7 @@ export default forwardRef<CompareHandle, Props>(function ComparePane(props, ref)
               }}
               onSelection={() => {}}
               onComposition={props.onComposition}
+              onPasteError={props.onPasteError}
               onImage={(file) => {
                 if (editor.current) props.onImage(file, editor.current);
               }}

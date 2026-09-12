@@ -10,12 +10,19 @@ import { undo } from '@codemirror/commands';
 import { applyFormatting } from '../src/editor/formatting';
 import { getSearchQuery, openSearchPanel, SearchQuery, setSearchQuery } from '@codemirror/search';
 
+const nativePaste = vi.hoisted(() => vi.fn());
+vi.mock('../src/lib/clipboardImage', async (original) => ({
+  ...(await original<typeof import('../src/lib/clipboardImage')>()),
+  nativeClipboardImage: nativePaste,
+}));
+
 let host: HTMLDivElement;
 let root: Root;
 let view: EditorView | null = null;
 let id = '';
 beforeEach(() => {
   setLanguage('zh-CN');
+  nativePaste.mockReset();
   (
     globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
   ).IS_REACT_ACT_ENVIRONMENT = true;
@@ -41,7 +48,13 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
-function mount(content: string, onLink = vi.fn(), onEditTable = vi.fn()) {
+function mount(
+  content: string,
+  onLink = vi.fn(),
+  onEditTable = vi.fn(),
+  onImage = vi.fn(),
+  onPasteError = vi.fn(),
+) {
   act(() =>
     root.render(
       createElement(Editor, {
@@ -53,7 +66,8 @@ function mount(content: string, onLink = vi.fn(), onEditTable = vi.fn()) {
           view = editor;
         },
         onSelection: vi.fn(),
-        onImage: vi.fn(),
+        onImage,
+        onPasteError,
         onComposition: vi.fn(),
         onLink,
         onEditTable,
@@ -275,4 +289,64 @@ it('does not replace newer typing with a delayed acknowledgement from React', ()
   expect(view!.state.doc.toString()).toBe('baseab');
   mount('external replacement');
   expect(view!.state.doc.toString()).toBe('external replacement');
+});
+
+it('keeps an embedded image visible on the next paragraph line and when its line is selected', () => {
+  const url = 'data:image/png;base64,' + 'A'.repeat(204000);
+  const source = 'Text before the image\n![screenshot](<' + url + '>)';
+  mount(source);
+  expect(host.querySelector('.live-block img')).not.toBeNull();
+  act(() => view!.dispatch({ selection: { anchor: source.length - 2 } }));
+  expect(host.querySelector('.live-block img')).not.toBeNull();
+  expect(view!.state.doc.toString()).toBe(source);
+});
+it('renders a large embedded image while leaving fenced source examples untouched', () => {
+  const image = '![shot](<data:image/png;base64,' + 'A'.repeat(320000) + '>)';
+  const source = '```md\n![example](data:image/png;base64,AAAA)\n```\n' + image;
+  mount(source);
+  expect(host.querySelectorAll('.live-block img')).toHaveLength(1);
+  expect(view!.state.doc.toString()).toBe(source);
+});
+
+it('renders an inline image without hiding surrounding text or changing its source', () => {
+  const source = 'before ![picture](data:image/png;base64,AAAA) after';
+  mount(source);
+  expect(host.querySelector('.live-inline-image img')).not.toBeNull();
+  expect(view!.state.doc.toString()).toBe(source);
+});
+
+it('falls back to native image paste when WebKit emits no paste event', async () => {
+  const onImage = vi.fn();
+  const picture = new File(['png'], 'shot.png', { type: 'image/png' });
+  nativePaste.mockResolvedValue(picture);
+  mount('body', vi.fn(), vi.fn(), onImage);
+  act(() =>
+    view!.contentDOM.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true }),
+    ),
+  );
+  await vi.waitFor(() => expect(onImage).toHaveBeenCalledExactlyOnceWith(picture));
+  expect(nativePaste).toHaveBeenCalledOnce();
+});
+it('does not insert a delayed clipboard image after the user changes the document', async () => {
+  let resolve!: (file: File) => void;
+  nativePaste.mockReturnValue(
+    new Promise<File>((done) => {
+      resolve = done;
+    }),
+  );
+  const onImage = vi.fn(),
+    error = vi.fn();
+  mount('body', vi.fn(), vi.fn(), onImage, error);
+  act(() =>
+    view!.contentDOM.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true, cancelable: true }),
+    ),
+  );
+  await vi.waitFor(() => expect(nativePaste).toHaveBeenCalledOnce());
+  act(() => view!.dispatch({ changes: { from: 0, insert: 'new ' } }));
+  resolve(new File(['png'], 'shot.png', { type: 'image/png' }));
+  await vi.waitFor(() => expect(error).toHaveBeenCalledOnce());
+  expect(onImage).not.toHaveBeenCalled();
+  expect(view!.state.doc.toString()).toBe('new body');
 });

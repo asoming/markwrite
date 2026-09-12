@@ -1259,6 +1259,13 @@ input::placeholder {
   color: var(--muted);
   padding-left: 0;
 }
+.close-actions {
+  flex-wrap: wrap;
+}
+.close-actions > .discard-exit {
+  margin-right: auto;
+  color: #b53e36;
+}
 .shortcut-list > div {
   display: flex;
   justify-content: space-between;
@@ -1834,4 +1841,13 @@ input::placeholder {
   color: var(--muted);
   padding: 5px 10px;
   border-top: 1px solid var(--border);
+}
+
+.live-inline-image {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.live-inline-image > p {
+  margin: 0;
 }

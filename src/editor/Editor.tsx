@@ -1,4 +1,5 @@
 import { t, useI18n } from '../lib/i18n';
+import { nativeClipboardImage, transferredImage, htmlClipboardImage } from '../lib/clipboardImage';
 import { useEffect, useRef } from 'react';
 import { Compartment, EditorState, Transaction } from '@codemirror/state';
 import {
@@ -103,6 +104,7 @@ export default function Editor({
   onReady,
   onSelection,
   onImage,
+  onPasteError,
   onComposition,
   onMarkdownFiles,
   onEditTable,
@@ -116,6 +118,7 @@ export default function Editor({
   onReady: (view: EditorView | null) => void;
   onSelection: (line: number, column: number) => void;
   onImage: (file: File) => void;
+  onPasteError?: (message: string) => void;
   onComposition: (active: boolean) => void;
   onMarkdownFiles?: (files: File[]) => void;
   onEditTable?: (range: { from: number; to: number }) => void;
@@ -131,6 +134,7 @@ export default function Editor({
     onReady,
     onSelection,
     onImage,
+    onPasteError,
     onComposition,
     onMarkdownFiles,
     onEditTable,
@@ -141,6 +145,7 @@ export default function Editor({
     onReady,
     onSelection,
     onImage,
+    onPasteError,
     onComposition,
     onMarkdownFiles,
     onEditTable,
@@ -152,6 +157,43 @@ export default function Editor({
     if (localEchoes.current.id !== id)
       localEchoes.current = { id, sequence: 0, bytes: 0, texts: new Map() };
     let plainPaste = false;
+    let pasteEpoch = 0;
+    let pasteTimer: ReturnType<typeof setTimeout> | undefined;
+    function pasteNative(editor: EditorView, epoch: number) {
+      const original = editor.state.doc;
+      const selection = editor.state.selection;
+      void nativeClipboardImage()
+        .then((image) => {
+          if (epoch !== pasteEpoch) return;
+          if (!image) {
+            callbacks.current.onPasteError?.(
+              t(
+                '剪贴板中没有可粘贴的图片，请重新复制图片或使用插入图片。',
+                'No image is available. Copy the image again or use Insert image.',
+              ),
+            );
+            return;
+          }
+          if (
+            view.current !== editor ||
+            editor.state.doc !== original ||
+            !editor.state.selection.eq(selection)
+          ) {
+            callbacks.current.onPasteError?.(
+              t(
+                '粘贴位置已改变，请重新粘贴图片。',
+                'The paste location changed. Please paste the image again.',
+              ),
+            );
+            return;
+          }
+          callbacks.current.onImage(image);
+        })
+        .catch((error) => {
+          if (epoch === pasteEpoch) callbacks.current.onPasteError?.(String(error));
+        });
+    }
+
     let compositionEpoch = 0;
     let compositionTimer: ReturnType<typeof setTimeout> | undefined;
     let largeDocument = content.length > 1_000_000;
@@ -194,11 +236,25 @@ export default function Editor({
           pathCompartment.of(documentPath.of(path || '')),
           livePreview,
           EditorView.domEventHandlers({
-            keydown: (event) => {
+            keydown: (event, editor) => {
               plainPaste =
                 (event.ctrlKey || event.metaKey) &&
                 event.shiftKey &&
                 event.key.toLowerCase() === 'v';
+              if (
+                (event.ctrlKey || event.metaKey) &&
+                event.key.toLowerCase() === 'v' &&
+                !event.shiftKey &&
+                !event.altKey &&
+                !event.isComposing
+              ) {
+                const epoch = ++pasteEpoch;
+                clearTimeout(pasteTimer);
+                // Some WebKit clipboard formats never produce a DOM paste event.
+                pasteTimer = setTimeout(() => {
+                  if (epoch === pasteEpoch) pasteNative(editor, epoch);
+                }, 120);
+              }
               return false;
             },
             compositionstart: () => {
@@ -227,25 +283,43 @@ export default function Editor({
               }, 75);
             },
             paste: (event, editor) => {
+              clearTimeout(pasteTimer);
+              pasteEpoch++;
               const pastePlain = plainPaste;
               plainPaste = false;
               if (pastePlain) return false;
-              const file = [...(event.clipboardData?.files || [])].find((f) =>
-                f.type.startsWith('image/'),
-              );
+              const file = transferredImage(event.clipboardData);
               if (file) {
                 event.preventDefault();
                 callbacks.current.onImage(file);
                 return true;
               }
               const html = event.clipboardData?.getData('text/html');
-              if (html && editor.state.facet(liveMode) && !editor.composing) {
+              const htmlImage = htmlClipboardImage(html || '');
+              if (htmlImage) {
+                event.preventDefault();
+                callbacks.current.onImage(htmlImage);
+                return true;
+              }
+              if (
+                html &&
+                (editor.state.facet(liveMode) || /<img\b/i.test(html)) &&
+                !editor.composing
+              ) {
                 const text = clipboardMarkdown(html);
                 if (text) {
                   event.preventDefault();
                   editor.dispatch(insertMarkdownTransaction(editor.state, text));
                   return true;
                 }
+              }
+              if (
+                !event.clipboardData?.getData('text/plain') ||
+                /^file:\/\//m.test(event.clipboardData?.getData('text/uri-list') || '')
+              ) {
+                event.preventDefault();
+                pasteNative(editor, pasteEpoch);
+                return true;
               }
               return false;
             },
@@ -324,6 +398,8 @@ export default function Editor({
     if (initial) editor.scrollDOM.scrollTop = initial.scroll;
     return () => {
       clearTimeout(compositionTimer);
+      clearTimeout(pasteTimer);
+      pasteEpoch++;
       compositionEpoch++;
       callbacks.current.onComposition(false);
       sessions.set(id, { state: editor.state, scroll: editor.scrollDOM.scrollTop });
