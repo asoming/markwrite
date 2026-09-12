@@ -38,10 +38,22 @@ function Wait-Window($process, $name) {
   }
   throw "Process $($process.Id) did not show document title $name; got '$($process.MainWindowTitle)'"
 }
+function Get-ComparableDocumentPath([string]$filePath) {
+  # Rust canonicalize emits extended Windows paths; preserve UNC server/share roots.
+  if ($filePath.StartsWith('\\?\UNC\', [StringComparison]::OrdinalIgnoreCase)) {
+    $filePath = '\\' + $filePath.Substring(8)
+  } elseif ($filePath.StartsWith('\\?\', [StringComparison]::Ordinal)) {
+    $filePath = $filePath.Substring(4)
+  }
+  return [IO.Path]::GetFullPath($filePath)
+}
 function Read-Session($case) {
   try {
     $value = Get-Content -LiteralPath $case.Session -Raw -Encoding utf8 | ConvertFrom-Json
-    $document = @($value.docs | Where-Object { $_.path -ceq $case.Path })
+    $expectedPath = Get-ComparableDocumentPath $case.Path
+    $document = @($value.docs | Where-Object {
+      [string]::Equals((Get-ComparableDocumentPath $_.path), $expectedPath, [StringComparison]::OrdinalIgnoreCase)
+    })
     if ($document.Count -eq 1 -and $document[0].content -ceq $case.Content -and $document[0].saved -ceq $case.Content) { return $value }
   } catch { }
   return $null
