@@ -673,7 +673,15 @@ mod tests {
         let attachment = f.dir.join("说明.pdf");
         fs::write(&image, [1, 2, 3]).unwrap();
         fs::write(&attachment, b"PDF").unwrap();
-        f.state.access.lock().unwrap().roots.insert(f.dir.clone());
+        // Real picker grants are canonical, including Windows \\?\ prefixes.
+        let authorized_root = f.dir.canonicalize().unwrap();
+        f.state
+            .access
+            .lock()
+            .unwrap()
+            .roots
+            .insert(authorized_root.clone());
+        assert_eq!(f.state.check_directory(&f.dir).unwrap(), authorized_root);
         let original = fs::read(&f.doc).unwrap();
         let modified = fs::metadata(&f.doc).unwrap().modified().unwrap();
         let image_time = fs::metadata(&image).unwrap().modified().unwrap();
