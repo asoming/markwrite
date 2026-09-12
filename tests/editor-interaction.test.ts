@@ -350,3 +350,70 @@ it('does not insert a delayed clipboard image after the user changes the documen
   expect(onImage).not.toHaveBeenCalled();
   expect(view!.state.doc.toString()).toBe('new body');
 });
+
+it.each([false, true])(
+  'synchronizes same-document editors immediately with independent modes, cursors and undo (StrictMode: %s)',
+  (strict) => {
+    let latest = '正文';
+    const peers: (EditorView | null)[] = [null, null];
+    const changes = vi.fn((text: string) => {
+      latest = text;
+    });
+    function renderPair(right = true, mode: 'source' | 'live' = 'source') {
+      const elements = [true, right].map((visible, index) =>
+        visible
+          ? createElement(Editor, {
+              key: index,
+              id: index ? `compare:${id}` : id,
+              sharedDocumentId: id,
+              content: latest,
+              mode: index ? mode : 'source',
+              onChange: changes,
+              onReady: (editor) => {
+                peers[index] = editor;
+              },
+              onSelection: vi.fn(),
+              onImage: vi.fn(),
+              onComposition: vi.fn(),
+            })
+          : createElement('article', { key: index }, latest),
+      );
+      act(() => root.render(createElement(strict ? StrictMode : 'div', {}, ...elements)));
+    }
+    try {
+      renderPair();
+      act(() => {
+        peers[1]!.dispatch({ selection: { anchor: 2 } });
+        peers[0]!.dispatch({ changes: { from: 0, insert: '左' }, userEvent: 'input' });
+        expect(peers[1]!.state.doc.toString()).toBe('左正文');
+        expect(peers[1]!.state.selection.main.head).toBe(3);
+        // A second pane may receive native input before a React acknowledgement.
+        peers[1]!.dispatch({ changes: { from: 3, insert: '右' }, userEvent: 'input' });
+        expect(peers[0]!.state.doc.toString()).toBe('左正文右');
+      });
+      expect(changes).toHaveBeenCalledTimes(2);
+      renderPair(true, 'live');
+      expect(latest).toBe('左正文右');
+      act(() => {
+        undo(peers[1]!);
+      });
+      expect(latest).toBe('左正文');
+      expect(peers[0]!.state.doc.toString()).toBe(latest);
+      act(() => {
+        undo(peers[0]!);
+      });
+      expect(latest).toBe('正文');
+      renderPair(false);
+      act(() => {
+        peers[0]!.dispatch({ changes: { from: 2, insert: '更新' }, userEvent: 'input' });
+      });
+      renderPair();
+      expect(peers[1]!.state.doc.toString()).toBe('正文更新');
+      expect(peers[0]!.state.doc.toString()).toBe('正文更新');
+      expect(changes).toHaveBeenCalledTimes(5);
+    } finally {
+      act(() => root.unmount());
+      releaseEditor(`compare:${id}`);
+    }
+  },
+);

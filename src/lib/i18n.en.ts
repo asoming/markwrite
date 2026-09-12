@@ -353,6 +353,7 @@ const english: Record<string, string> = {
   分隔线: 'Horizontal rule',
   视图: 'View',
   阅读模式: 'Reading mode',
+  '源码 + 阅读（同一文档）': 'Source + reading (same document)',
   文档并排对照: 'Compare documents side by side',
   工作区管理: 'Manage workspace',
   版本历史: 'Version history',

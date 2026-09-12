@@ -21,6 +21,7 @@ export type CompareHandle = {
   mode: Mode;
 };
 type Props = {
+  sameDocument?: boolean;
   document: Document;
   documents: Document[];
   mode: Mode;
@@ -121,23 +122,38 @@ export default forwardRef<CompareHandle, Props>(function ComparePane(props, ref)
   return (
     <section
       className="compare-pane"
-      aria-label={t('右侧对照文档', 'Right comparison document')}
+      aria-label={
+        props.sameDocument
+          ? t('同一文档右侧视图', 'Right view of the same document')
+          : t('右侧对照文档', 'Right comparison document')
+      }
       onFocusCapture={props.onFocused}
       onPointerDownCapture={props.onFocused}
     >
       <div className="compare-toolbar">
-        <select
-          aria-label={t('对照文档')}
-          value={props.document.id}
-          onChange={(event) => props.onSelect(event.target.value)}
+        {props.sameDocument ? (
+          <span>
+            {t('同一文档', 'Same document')} · {props.document.name}
+          </span>
+        ) : (
+          <select
+            aria-label={t('对照文档')}
+            value={props.document.id}
+            onChange={(event) => props.onSelect(event.target.value)}
+          >
+            {props.documents.map((doc) => (
+              <option key={doc.id} value={doc.id}>
+                {doc.name}
+              </option>
+            ))}
+          </select>
+        )}
+        <button
+          aria-label={
+            props.sameDocument ? t('关闭同文分栏', 'Close same-document split') : t('关闭并排对照')
+          }
+          onClick={props.onClose}
         >
-          {props.documents.map((doc) => (
-            <option key={doc.id} value={doc.id}>
-              {doc.name}
-            </option>
-          ))}
-        </select>
-        <button aria-label={t('关闭并排对照')} onClick={props.onClose}>
           <X size={16} />
         </button>
       </div>
@@ -182,6 +198,7 @@ export default forwardRef<CompareHandle, Props>(function ComparePane(props, ref)
           <Suspense fallback={<p>{t('正在打开编辑器…', 'Opening editor…')}</p>}>
             <Editor
               id={`compare:${props.document.id}`}
+              sharedDocumentId={props.document.id}
               content={props.document.content}
               path={props.document.path}
               mode={props.mode}

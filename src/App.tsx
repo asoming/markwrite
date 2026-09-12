@@ -290,7 +290,7 @@ export default function App() {
   );
   function setMode(next: Mode) {
     const id = currentRef.current.id;
-    editPermission.current.select(id, next);
+    editPermission.current.select(id, next === 'read' && sameDocument ? compareMode : next);
     if (next === 'read') {
       pendingEditorAction.current = undefined;
       const view = editor.current;
@@ -402,7 +402,14 @@ export default function App() {
   const moveCompletion = useRef<
     { resolve: (path: string) => void; reject: (error: unknown) => void } | undefined
   >(undefined);
-  const [compareId, setCompareId] = useState<string | null>(null);
+  const [comparisonDocumentId, setComparisonDocumentId] = useState<string | null>(null);
+  const [sameDocument, setSameDocument] = useState(false);
+  const compareId = sameDocument ? activeId : comparisonDocumentId;
+  function setCompareId(id: string | null) {
+    if (sameDocument) editPermission.current.select(activeId, mode);
+    setSameDocument(false);
+    setComparisonDocumentId(id);
+  }
   const [textComparison, setTextComparison] = useState(false);
   const [compareMode, setCompareMode] = useState<Mode>('read');
   const [linkedScroll, setLinkedScroll] = useState(false);
@@ -416,13 +423,24 @@ export default function App() {
     setCompareId(id);
   }
   useEffect(() => {
-    if (compareId && (!docs.some((doc) => doc.id === compareId) || compareId === activeId)) {
+    if (
+      !sameDocument &&
+      compareId &&
+      (!docs.some((doc) => doc.id === compareId) || compareId === activeId)
+    ) {
       const other = docs.find((doc) => doc.id !== activeId);
       if (other) selectComparison(other.id);
       else setCompareId(null);
       focusedPane.current = 'main';
     }
-  }, [activeId, compareId, docs.length]);
+  }, [activeId, compareId, docs.length, sameDocument]);
+  useEffect(() => {
+    if (sameDocument) {
+      setCompareMode('read');
+      setMode('source');
+    }
+    // Opening another file keeps the source/preview layout on that file.
+  }, [sameDocument, activeId]);
 
   const [recents, setRecents] = useState(readRecents);
   const [insertDialog, setInsertDialog] = useState<{
@@ -1914,6 +1932,7 @@ export default function App() {
     if (
       focusedPane.current === 'compare' &&
       compareId &&
+      !sameDocument &&
       [
         'app:openWindow',
         'app:encoding',
@@ -2162,9 +2181,21 @@ export default function App() {
       case 'view:sidebar':
         setSidebar((v) => !v);
         break;
+      case 'view:split':
+        setWorkspaceTab(null);
+        setTextComparison(false);
+        focusedPane.current = 'main';
+        if (sameDocument) setCompareId(null);
+        else {
+          setCompareMode('read');
+          setSameDocument(true);
+          setLinkedScroll(true);
+          setMode('source');
+        }
+        break;
       case 'view:compare':
         setWorkspaceTab(null);
-        if (compareId) setCompareId(null);
+        if (compareId && !sameDocument) setCompareId(null);
         else {
           const other = docs.find((d) => d.id !== current.id);
           if (other) selectComparison(other.id);
@@ -2541,6 +2572,7 @@ export default function App() {
               >
                 <Editor
                   id={current.id}
+                  sharedDocumentId={current.id}
                   content={current.content}
                   path={current.path}
                   mode={mode}
@@ -2685,12 +2717,16 @@ export default function App() {
                   document={docs.find((doc) => doc.id === compareId)!}
                   documents={docs.filter((doc) => doc.id !== current.id)}
                   mode={compareMode}
+                  sameDocument={sameDocument}
                   settings={settings}
                   revision={syntaxRevision}
-                  onCompare={() => setTextComparison(true)}
+                  onCompare={sameDocument ? undefined : () => setTextComparison(true)}
                   onSelect={selectComparison}
                   onMode={(next) => {
-                    editPermission.current.select(compareId, next);
+                    editPermission.current.select(
+                      compareId,
+                      next === 'read' && sameDocument ? mode : next,
+                    );
                     setCompareMode(next);
                   }}
                   onClose={() => {
@@ -2963,7 +2999,7 @@ export default function App() {
           </Suspense>
         </Modal>
       )}
-      {textComparison && compareId && docs.some((doc) => doc.id === compareId) && (
+      {textComparison && !sameDocument && compareId && docs.some((doc) => doc.id === compareId) && (
         <Modal
           title={t('文字差异', 'Text differences')}
           wide

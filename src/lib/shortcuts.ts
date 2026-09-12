@@ -22,6 +22,12 @@ export const shortcutBindings: Binding[] = [
   { action: 'app:settings', label: '设置', en: 'Settings', key: 'Mod+,' },
   { action: 'view:sidebar', label: '显示或隐藏侧栏', en: 'Toggle sidebar', key: 'Mod+\\' },
   { action: 'view:focus', label: '专注模式', en: 'Focus mode', key: 'F8' },
+  {
+    action: 'view:split',
+    label: '源码 + 阅读（同一文档）',
+    en: 'Source + reading (same document)',
+    key: '',
+  },
   { action: 'view:compare', label: '并排对照', en: 'Side by side', key: '' },
   { action: 'app:undo', label: '撤销', en: 'Undo', key: 'Mod+Z', context: 'edit' },
   { action: 'app:redo', label: '重做', en: 'Redo', key: 'Mod+Shift+Z', context: 'edit' },

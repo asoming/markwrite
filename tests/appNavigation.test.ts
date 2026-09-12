@@ -11,18 +11,39 @@ const boundary = vi.hoisted(() => ({
   parentFolder: vi.fn(),
   listFolderShallow: vi.fn(),
   readFile: vi.fn(),
+  editorChanges: new Map<string, (content: string) => void>(),
 }));
 vi.mock('../src/lib/platform', async (original) => ({
   ...(await original<typeof import('../src/lib/platform')>()),
   desktop: false,
-  ...boundary,
+  openFiles: boundary.openFiles,
+  openFolder: boundary.openFolder,
+  parentFolder: boundary.parentFolder,
+  listFolderShallow: boundary.listFolderShallow,
+  readFile: boundary.readFile,
 }));
 // App owns navigation and request ordering; editor rendering is tested separately.
 // Keep the actual menu, FileNavigator, settings, and recovery code in this suite.
 vi.mock('../src/editor/lazyEditor', async (original) => ({
   ...(await original<typeof import('../src/editor/lazyEditor')>()),
-  default: ({ content, mode }: { content: string; mode: Mode }) =>
-    createElement('pre', { 'data-testid': 'document-buffer', 'data-mode': mode }, content),
+  default: ({
+    id,
+    content,
+    mode,
+    onChange,
+  }: {
+    id: string;
+    content: string;
+    mode: Mode;
+    onChange: (text: string) => void;
+  }) => {
+    boundary.editorChanges.set(id, onChange);
+    return createElement(
+      'pre',
+      { 'data-testid': 'document-buffer', 'data-mode': mode, 'data-id': id },
+      content,
+    );
+  },
   releaseEditor: vi.fn(),
 }));
 vi.mock('../src/Reader', () => ({
@@ -60,7 +81,8 @@ beforeEach(() => {
   ).IS_REACT_ACT_ENVIRONMENT = true;
   localStorage.clear();
   setLanguage('zh-CN');
-  for (const mock of Object.values(boundary)) mock.mockReset();
+  for (const mock of Object.values(boundary)) if (typeof mock === 'function') mock.mockReset();
+  boundary.editorChanges.clear();
   boundary.parentFolder.mockImplementation(async (path: string) =>
     folder(path.slice(0, path.lastIndexOf('/'))),
   );
@@ -99,8 +121,8 @@ async function click(element: HTMLElement) {
     element.click();
   });
 }
-async function menuAction(label: string) {
-  await click(button('文件', '.editing-menu-group>button'));
+async function menuAction(label: string, group = '文件') {
+  await click(button(group, '.editing-menu-group>button'));
   const action = [...host.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].find(
     (element) => element.querySelector('span:nth-child(2)')?.textContent === label,
   );
@@ -409,4 +431,48 @@ describe('file navigation at the application boundary', () => {
     expect(host.querySelector('.file-navigator [aria-current="page"]')).toBeNull();
     expect(host.querySelector('.file-navigator .document-row.selected')).not.toBeNull();
   });
+});
+
+it('shares one document across independent left and right modes without duplicating the file', async () => {
+  await openDocument('/notes/current.md');
+  await menuAction('源码 + 阅读（同一文档）', '视图');
+  await vi.waitFor(async () => {
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(host.querySelector('.compare-pane')).not.toBeNull();
+  });
+  const left = () => host.querySelector('.document-surface')!;
+  const right = () => host.querySelector('.compare-pane')!;
+  const rightButton = (label: string) =>
+    [...right().querySelectorAll('button')].find((b) => b.textContent === label)!;
+  expect(left().querySelector('[data-mode="source"]')).not.toBeNull();
+  expect(right().querySelector('[data-testid="reading-buffer"]')).not.toBeNull();
+  expect(right().querySelector('select')).toBeNull();
+  expect((right().querySelector('input[type="checkbox"]') as HTMLInputElement).checked).toBe(true);
+  const leftId = left().querySelector('[data-id]')!.getAttribute('data-id')!;
+  act(() => boundary.editorChanges.get(leftId)!('# Updated from left'));
+  expect(right().textContent).toContain('# Updated from left');
+  await click(rightButton('编辑'));
+  expect(right().querySelector('[data-mode="live"]')).not.toBeNull();
+  await click(button('阅读模式'));
+  expect(left().querySelector('[data-testid="reading-buffer"]')).not.toBeNull();
+  act(() => boundary.editorChanges.get(`compare:${leftId}`)!('# Updated from right'));
+  expect(left().textContent).toContain('# Updated from right');
+  await click(rightButton('源码'));
+  expect(right().querySelector('[data-mode="source"]')).not.toBeNull();
+  await click(button('编辑模式'));
+  expect(left().querySelector('[data-mode="live"]')).not.toBeNull();
+  await click(rightButton('阅读'));
+  act(() => boundary.editorChanges.get(leftId)!('# Left remains editable'));
+  expect(right().textContent).toContain('# Left remains editable');
+  await click(button('阅读模式'));
+  act(() => boundary.editorChanges.get(leftId)!('Must not change in read/read'));
+  expect(left().textContent).toContain('# Left remains editable');
+  const state = snapshot() as unknown as { docs: { path?: string; content: string }[] };
+  expect(state.docs.filter((doc) => doc.path === '/notes/current.md')).toHaveLength(1);
+  await openDocument('/notes/next.md');
+  expect(right().textContent).toContain('# /notes/next.md');
+  await click(button('关闭同文分栏'));
+  expect(host.querySelector('.compare-pane')).toBeNull();
 });

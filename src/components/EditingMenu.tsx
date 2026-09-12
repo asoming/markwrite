@@ -60,6 +60,7 @@ export type EditingAction =
   | 'view:read'
   | 'view:focus'
   | 'view:sidebar'
+  | 'view:split'
   | 'view:compare'
   | 'view:history'
   | 'view:backlinks'
@@ -179,6 +180,7 @@ const menus: { label: string; items: Item[] }[] = [
       'separator',
       { label: '专注模式', action: 'view:focus' },
       { label: '显示 / 隐藏侧栏', action: 'view:sidebar' },
+      { label: '源码 + 阅读（同一文档）', action: 'view:split' },
       { label: '文档并排对照', action: 'view:compare' },
       'separator',
       { label: '工作区管理', action: 'view:workspace' },

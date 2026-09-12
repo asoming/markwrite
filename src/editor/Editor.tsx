@@ -1,7 +1,7 @@
 import { t, useI18n } from '../lib/i18n';
 import { nativeClipboardImage, transferredImage, htmlClipboardImage } from '../lib/clipboardImage';
 import { useEffect, useRef } from 'react';
-import { Compartment, EditorState, Transaction } from '@codemirror/state';
+import { Annotation, Compartment, EditorState, Transaction } from '@codemirror/state';
 import {
   EditorView,
   keymap,
@@ -43,6 +43,20 @@ import {
   type FormatAction,
 } from './formatting';
 
+const synchronizedEdit = Annotation.define<boolean>();
+const sharedViews = new Map<string, Set<EditorView>>();
+// Preserve unchanged ranges so peer cursors and undo entries map through an edit.
+function textChange(before: string, after: string) {
+  let from = 0;
+  while (from < before.length && from < after.length && before[from] === after[from]) from++;
+  let oldEnd = before.length,
+    newEnd = after.length;
+  while (oldEnd > from && newEnd > from && before[oldEnd - 1] === after[newEnd - 1]) {
+    oldEnd--;
+    newEnd--;
+  }
+  return { from, to: oldEnd, insert: after.slice(from, newEnd) };
+}
 const sessions = new Map<string, { state: EditorState; scroll: number }>();
 export function releaseEditor(id: string) {
   sessions.delete(id);
@@ -97,6 +111,7 @@ const syntaxExtensions = () => [
 export type EditorHandle = EditorView;
 export default function Editor({
   id,
+  sharedDocumentId,
   content,
   path,
   mode,
@@ -111,6 +126,7 @@ export default function Editor({
   onLink,
 }: {
   id: string;
+  sharedDocumentId?: string;
   content: string;
   path?: string;
   mode: Mode;
@@ -357,7 +373,21 @@ export default function Editor({
                 echoes.bytes -= oldest.length * 2;
                 echoes.texts.delete(oldest);
               }
-              callbacks.current.onChange(content);
+              if (
+                !update.transactions.some((transaction) => transaction.annotation(synchronizedEdit))
+              ) {
+                // Update peers before React renders, including rapid alternating input.
+                for (const peer of sharedViews.get(sharedDocumentId || id) || []) {
+                  if (peer === update.view || peer.state.doc.eq(update.state.doc)) continue;
+                  peer.dispatch({
+                    changes: peer.state.doc.eq(update.startState.doc)
+                      ? update.changes
+                      : textChange(peer.state.doc.toString(), content),
+                    annotations: [synchronizedEdit.of(true), Transaction.addToHistory.of(false)],
+                  });
+                }
+                callbacks.current.onChange(content);
+              }
             }
             if (update.docChanged && update.state.doc.length > 1_000_000 !== largeDocument) {
               largeDocument = update.state.doc.length > 1_000_000;
@@ -396,7 +426,13 @@ export default function Editor({
       ],
     });
     if (initial) editor.scrollDOM.scrollTop = initial.scroll;
+    const sharedKey = sharedDocumentId || id;
+    const peers = sharedViews.get(sharedKey) || new Set<EditorView>();
+    peers.add(editor);
+    sharedViews.set(sharedKey, peers);
     return () => {
+      peers.delete(editor);
+      if (!peers.size) sharedViews.delete(sharedKey);
       clearTimeout(compositionTimer);
       clearTimeout(pasteTimer);
       pasteEpoch++;
@@ -411,7 +447,7 @@ export default function Editor({
       editor.destroy();
       view.current = null;
     };
-  }, [id]); // One document session owns its state and undo stack, independently of React renders.
+  }, [id, sharedDocumentId]); // One document session owns its state and undo stack, independently of React renders.
   useEffect(() => {
     const editor = view.current;
     if (!editor) return;
@@ -456,8 +492,8 @@ export default function Editor({
     echoes.bytes = 0;
     if (editor.state.doc.toString() !== content)
       editor.dispatch({
-        changes: { from: 0, to: editor.state.doc.length, insert: content },
-        annotations: Transaction.addToHistory.of(false),
+        changes: textChange(editor.state.doc.toString(), content),
+        annotations: [synchronizedEdit.of(true), Transaction.addToHistory.of(false)],
       });
   }, [content, id]);
   useEffect(() => {
