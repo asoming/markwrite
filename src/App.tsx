@@ -72,6 +72,10 @@ import { loadExtensions, type ExtensionPack } from './lib/extensions';
 import { findTable, changeTable, type TableAction } from './editor/table';
 import * as platform from './lib/platform';
 import { getHeadings, renderMarkdown, hydrateDiagrams, escapeHtml } from './lib/markdown';
+import { highlightCodeBlocks } from './lib/codeHighlight';
+import codeHighlightCss from './codeHighlight.css?inline';
+import { useQuickOpenFiles } from './lib/useQuickOpenFiles';
+import { ResponsiveSidebar, useNarrowLayout } from './components/ResponsiveSidebar';
 import {
   defaultSettings,
   readSession,
@@ -310,7 +314,8 @@ export default function App() {
       };
     }
   }
-  const [sidebar, setSidebar] = useState(true);
+  const [desktopSidebar, setDesktopSidebar] = useState(true);
+  const [overlaySidebar, setOverlaySidebar] = useState(false);
   const [sideTab, setSideTab] = useState<'files' | 'outline' | 'search'>('files');
   const [root, setRoot] = useState<string | undefined>(
     platform.desktop ? recovered?.root : undefined,
@@ -321,6 +326,7 @@ export default function App() {
   const folderRequest = useRef(0);
   const navigationRequest = useRef(0);
   function selectDocument(id: string) {
+    setOverlaySidebar(false);
     if (currentRef.current && currentRef.current.id !== id) rememberNavigation();
     navigationRequest.current++;
     setActiveId(id);
@@ -360,6 +366,7 @@ export default function App() {
     | null
   >(null);
   const [palette, setPalette] = useState('');
+  const quickSearch = useQuickOpenFiles(dialog === 'quickopen', root, palette);
   const [transfer, setTransfer] = useState<{
     kind: 'image' | 'publish';
     html?: string;
@@ -415,6 +422,12 @@ export default function App() {
     value: string;
   } | null>(null);
   const [sideWidth, setSideWidth] = useState(248);
+  const narrow = useNarrowLayout(sideWidth);
+  const sidebar = narrow ? overlaySidebar : desktopSidebar;
+  const setSidebar = narrow ? setOverlaySidebar : setDesktopSidebar;
+  useEffect(() => {
+    setOverlaySidebar(false);
+  }, [narrow, dialog]);
   const editor = useRef<EditorView | null>(null);
   const reader = useRef<ReaderHandle | null>(null);
   const pendingReaderAction = useRef<
@@ -685,6 +698,7 @@ export default function App() {
     };
   }, [settings.followFileParent, current.path]);
   async function openPath(path: string, line?: number) {
+    setOverlaySidebar(false);
     const request = ++navigationRequest.current;
     const existing = docsRef.current.find(
       (d) => d.id === path || (d.path && pathKey(d.path) === pathKey(path)),
@@ -966,6 +980,7 @@ export default function App() {
     node.className = 'markdown-body';
     node.innerHTML = renderMarkdown(current.content);
     await hydrateDiagrams(node);
+    await highlightCodeBlocks(node);
     for (const img of node.querySelectorAll<HTMLImageElement>('img[data-asset]')) {
       if (!current.path) throw new Error(t('图片路径无法解析，请先保存文档或打开所在文件夹。'));
       img.src = await platform.assetData(current.path, img.dataset.asset!);
@@ -1027,7 +1042,7 @@ export default function App() {
           mathCss = mathCss.split(url).join(data);
         }
       }
-      const html = `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(current.name)}</title><style>body{max-width:800px;margin:60px auto;padding:0 28px;color:#24272e;font:17px/1.85 system-ui,sans-serif}h1,h2,h3{line-height:1.4}h1{font-size:2em}h2{margin-top:2em}a{color:#4361d9}pre{padding:20px;background:#f3f4f6;overflow:auto;border-radius:8px}code{font-family:monospace}table{border-collapse:collapse;width:100%}td,th{padding:10px 14px;border:1px solid #e4e7ec;text-align:left}blockquote{border-left:3px solid #4361d9;margin-left:0;padding-left:20px;color:#657080}img,svg{max-width:100%}hr{border:0;border-top:1px solid #e4e7ec;margin:32px 0}${mathCss}${exportOptions.theme === 'dark' ? 'body{background:#20232a;color:#e1e5ec}pre{background:#272c35}a{color:#93a8ff}td,th{border-color:#4b5261}' : ''}${exportOptions.template === 'academic' ? 'body{font-family:serif;max-width:720px}h1{text-align:center}' : exportOptions.template === 'compact' ? 'body{font-size:14px;line-height:1.55;max-width:1000px}' : ''}</style></head><body>${node.outerHTML}</body></html>`;
+      const html = `<!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(current.name)}</title><style>body{max-width:800px;margin:60px auto;padding:0 28px;color:#24272e;font:17px/1.85 system-ui,sans-serif}h1,h2,h3{line-height:1.4}h1{font-size:2em}h2{margin-top:2em}a{color:#4361d9}pre{padding:20px;background:#f3f4f6;overflow:auto;border-radius:8px}code{font-family:monospace}table{border-collapse:collapse;width:100%}td,th{padding:10px 14px;border:1px solid #e4e7ec;text-align:left}blockquote{border-left:3px solid #4361d9;margin-left:0;padding-left:20px;color:#657080}img,svg{max-width:100%}hr{border:0;border-top:1px solid #e4e7ec;margin:32px 0}${mathCss}${codeHighlightCss}${exportOptions.theme === 'dark' ? 'body{background:#20232a;color:#e1e5ec}pre{background:#272c35}a{color:#93a8ff}td,th{border-color:#4b5261}' : ''}${exportOptions.template === 'academic' ? 'body{font-family:serif;max-width:720px}h1{text-align:center}' : exportOptions.template === 'compact' ? 'body{font-size:14px;line-height:1.55;max-width:1000px}' : ''}</style></head><body data-theme="${exportOptions.theme === 'dark' ? 'dark' : 'light'}">${node.outerHTML}</body></html>`;
       if (format === 'publish') {
         const r = editor.current?.state.selection.main;
         setTransfer({
@@ -1477,13 +1492,21 @@ export default function App() {
     },
   ];
   const allFiles = (nodes: FileEntry[]): FileEntry[] =>
-    nodes.flatMap((n) => (n.children ? allFiles(n.children) : [n]));
+    nodes.flatMap((n) => (n.directory ? allFiles(n.children || []) : [n]));
   const quickFiles = [
-    ...docs.map((d) => ({ name: d.name, path: d.path || d.id, id: d.id })),
-    ...allFiles(entries)
-      .filter((e) => !docs.some((d) => d.path === e.path))
-      .map((e) => ({ ...e, id: '' })),
-  ].filter((e) => e.name.toLowerCase().includes(palette.toLowerCase()));
+    ...new Map(
+      [
+        ...docs.map((d) => ({ name: d.name, path: d.path || d.id, id: d.id })),
+        ...allFiles(entries).map((e) => ({ name: e.name, path: e.path, id: '' })),
+        ...quickSearch.files.map((e) => ({ ...e, id: '' })),
+      ]
+        .filter((e) => e.name.toLowerCase().includes(palette.toLowerCase()))
+        .reverse()
+        .map((e) => [pathKey(e.path), e]),
+    ).values(),
+  ]
+    .reverse()
+    .slice(0, 500);
   async function finishClose(keepDraft: boolean) {
     if (saving.current.size || recoveryPending()) {
       notify(t('正在完成文件操作，请稍后再关闭。'));
@@ -2065,7 +2088,7 @@ export default function App() {
         onNotify={(message) => notify(message)}
       />
       {sidebar && !focus && (
-        <aside className="sidebar">
+        <ResponsiveSidebar overlay={narrow} onDismiss={() => setOverlaySidebar(false)}>
           <div className="sidebar-header">
             <span className="sidebar-brand">
               <strong lang="zh-CN">墨页</strong>
@@ -2247,9 +2270,9 @@ export default function App() {
             }}
             onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
           />
-        </aside>
+        </ResponsiveSidebar>
       )}
-      <main className="main">
+      <main className="main" inert={narrow && sidebar && !focus ? true : undefined}>
         {!focus && (
           <header className="compact-header">
             {!sidebar && (
@@ -2847,9 +2870,24 @@ export default function App() {
                     <ChevronRight size={14} />
                   </button>
                 ))}
-            {dialog === 'quickopen' && !quickFiles.length && (
-              <p className="empty-results">{t('没有找到文档，试试其他关键词。')}</p>
+            {dialog === 'quickopen' && quickSearch.pending && (
+              <p role="status">{t('正在查找子目录…', 'Searching subfolders…')}</p>
             )}
+            {dialog === 'quickopen' && quickSearch.error && <p role="alert">{quickSearch.error}</p>}
+            {dialog === 'quickopen' && quickFiles.length === 500 && (
+              <p>
+                {t(
+                  '显示前 500 项，请输入更完整的文件名。',
+                  'Showing 500 results. Refine the filename to find more.',
+                )}
+              </p>
+            )}
+            {dialog === 'quickopen' &&
+              !quickSearch.pending &&
+              !quickSearch.error &&
+              !quickFiles.length && (
+                <p className="empty-results">{t('没有找到文档，试试其他关键词。')}</p>
+              )}
           </div>
           <div className="palette-footer">
             <span>

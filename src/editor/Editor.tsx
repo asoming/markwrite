@@ -149,6 +149,8 @@ export default function Editor({
     if (!host.current) return;
     const initial = sessions.get(id);
     let plainPaste = false;
+    let compositionEpoch = 0;
+    let compositionTimer: ReturnType<typeof setTimeout> | undefined;
     let largeDocument = content.length > 1_000_000;
     const formatKey = (key: string, action: FormatAction) => ({
       key,
@@ -197,12 +199,29 @@ export default function Editor({
               return false;
             },
             compositionstart: () => {
+              clearTimeout(compositionTimer);
+              const epoch = ++compositionEpoch;
               callbacks.current.onComposition(true);
-              queueMicrotask(() => view.current?.dispatch({ effects: compositionState.of(true) }));
+              queueMicrotask(() => {
+                if (epoch === compositionEpoch && view.current === editor)
+                  editor.dispatch({ effects: compositionState.of(true) });
+              });
             },
             compositionend: () => {
-              callbacks.current.onComposition(false);
-              setTimeout(() => view.current?.dispatch({ effects: compositionState.of(false) }), 0);
+              const epoch = ++compositionEpoch;
+              // WebKit can deliver the final DOM change after compositionend.
+              // CodeMirror clears its composition view on a 50ms timer; rebuilding
+              // rich decorations earlier can erase the accepted candidate.
+              compositionTimer = setTimeout(() => {
+                if (
+                  epoch !== compositionEpoch ||
+                  view.current !== editor ||
+                  editor.compositionStarted
+                )
+                  return;
+                editor.dispatch({ effects: compositionState.of(false) });
+                callbacks.current.onComposition(false);
+              }, 75);
             },
             paste: (event, editor) => {
               const pastePlain = plainPaste;
@@ -280,12 +299,16 @@ export default function Editor({
     view.current = editor;
     editor.dispatch({
       effects: [
+        compositionState.of(false),
         modeCompartment.reconfigure(liveMode.of(mode === 'live')),
         pathCompartment.reconfigure(documentPath.of(path || '')),
       ],
     });
     if (initial) editor.scrollDOM.scrollTop = initial.scroll;
     return () => {
+      clearTimeout(compositionTimer);
+      compositionEpoch++;
+      callbacks.current.onComposition(false);
       sessions.set(id, { state: editor.state, scroll: editor.scrollDOM.scrollTop });
       callbacks.current.onReady(null);
       editor.dom.removeEventListener('markwrite:edit-table', editTable);

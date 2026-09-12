@@ -1691,3 +1691,28 @@ input::placeholder {
   padding: 8px;
   border-radius: 5px;
 }
+
+/* An overlay keeps at least 560px available for the document in narrow windows. */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgb(0 0 0 / 20%);
+  cursor: default;
+}
+.sidebar.sidebar-overlay {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 41;
+  width: min(var(--sidebar-width), calc(100vw - 48px));
+  box-shadow: 8px 0 24px rgb(0 0 0 / 12%);
+}
+.sidebar-overlay .sidebar-resize {
+  display: none;
+}
+
+/* Keep syntax text in the editable DOM; zero-width replacement widgets can break WebKit IME/AX. */
+.cm-hidden-syntax {
+  font-size: 0 !important;
+  letter-spacing: 0 !important;
+}

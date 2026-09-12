@@ -265,3 +265,38 @@ it('pages Git entries and retains selections from multiple batches', async () =>
   expect(more()).toBeUndefined();
   expect(host.querySelector('.primary.panel-wide')?.textContent).toContain('2');
 });
+
+it('explains conflicts and refuses to stage a dirty editor buffer', async () => {
+  invoke.mockResolvedValue({
+    ...git('/a'),
+    merging: true,
+    entries: [{ path: 'note.md', index: 'U', worktree: 'U' }],
+  });
+  await render({
+    tab: 'git',
+    docs: [{ ...current, content: 'unsaved resolution', status: 'dirty' }],
+  });
+  expect(host.textContent).toContain('双方修改冲突');
+  const button = [...host.querySelectorAll('button')].find(
+    (node) => node.textContent === '标记已解决',
+  )!;
+  await click(button);
+  expect(invoke.mock.calls.some(([command]) => command === 'git_mark_resolved')).toBe(false);
+  expect(host.textContent).toContain('未保存修改');
+});
+
+it('marks saved conflicts resolved and refreshes the repository state', async () => {
+  invoke.mockImplementation((command) =>
+    Promise.resolve(
+      command === 'git_status'
+        ? { ...git('/a'), merging: true, entries: [{ path: 'note.md', index: 'U', worktree: 'U' }] }
+        : undefined,
+    ),
+  );
+  await render({ tab: 'git' });
+  await click(
+    [...host.querySelectorAll('button')].find((node) => node.textContent === '标记已解决')!,
+  );
+  expect(invoke).toHaveBeenCalledWith('git_mark_resolved', { path: '/a', file: 'note.md' });
+  expect(invoke.mock.calls.filter(([command]) => command === 'git_status')).toHaveLength(2);
+});

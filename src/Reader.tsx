@@ -33,6 +33,8 @@ import type { ReaderHandle, ReadingBlock, ReadingChunk, ReadingHit } from './lib
 import { prepareReadingClipboard, type ReadingClipboard } from './lib/readingClipboard';
 import './editor/directEditing.css';
 import './reading.css';
+import './codeHighlight.css';
+import { highlightCodeBlocks } from './lib/codeHighlight';
 
 export type { ReaderHandle, ReadingLocation };
 export type ReaderProps = {
@@ -992,10 +994,25 @@ function ReaderBlock({
 }) {
   const root = useRef<HTMLDivElement>(null),
     body = useRef<HTMLDivElement>(null);
-  const html = useMemo(
+  const originalHtml = useMemo(
     () => (chunk ? sanitizeRenderedMarkdown(chunk.html, { preserveHeadingIds: true }) : ''),
     [chunk],
   );
+  const [colored, setColored] = useState<{ source: string; html: string }>();
+  useEffect(() => {
+    if (!originalHtml.includes('language-')) return;
+    let cancelled = false;
+    const container = document.createElement('div');
+    container.innerHTML = originalHtml;
+    void highlightCodeBlocks(container).then(() => {
+      if (!cancelled && container.innerHTML !== originalHtml)
+        setColored({ source: originalHtml, html: container.innerHTML });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [originalHtml]);
+  const html = colored?.source === originalHtml ? colored.html : originalHtml;
   useLayoutEffect(() => {
     if (body.current) highlightReadingMatches(body.current, query, active, caseSensitive);
   }, [html, query, active, caseSensitive]);

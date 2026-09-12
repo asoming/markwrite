@@ -4,7 +4,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { X, RefreshCw, FolderOpen, FileText, Trash2 } from 'lucide-react';
 import type { DiskFile, Document, FileEntry } from '../lib/types';
 import { desktop } from '../lib/platform';
-import { fileName, type IndexedDocument } from '../lib/workspace';
+import { fileName, pathKey, type IndexedDocument } from '../lib/workspace';
+import { isGitConflict, gitStateLabel } from '../lib/gitStatus';
 import { useReferenceIndex } from '../lib/useReferenceIndex';
 import { workspaceDocuments, invalidateWorkspaceIndex } from '../lib/workspaceCache';
 import DiffView from './DiffView';
@@ -20,6 +21,7 @@ type GitState = {
   entries: { path: string; index: string; worktree: string }[];
   available: boolean;
   repository: boolean;
+  merging?: boolean;
 };
 type Props = {
   tab: WorkspaceTab;
@@ -582,33 +584,102 @@ export default function WorkspacePanel(p: Props) {
                   <strong>{git.branch || t('尚无提交')}</strong>
                 </p>
                 <p className="panel-note">
-                  {t('只提交明确选择的文件，不会自动推送到远程。冲突文件须编辑解决后再提交。')}
+                  {git.merging
+                    ? t(
+                        '正在合并。先编辑并保存冲突文件，再标记已解决。合并提交包含全部已暂存文件，不会自动推送。',
+                        'Merge in progress. Edit and save conflicts, then mark them resolved. The merge commit includes all staged files and never pushes automatically.',
+                      )
+                    : t('只提交明确选择的文件，不会自动推送到远程。冲突文件须编辑解决后再提交。')}
                 </p>
+                {git.merging && (
+                  <button
+                    className="panel-wide"
+                    disabled={loading || git.entries.some(isGitConflict)}
+                    onClick={() =>
+                      setSelected(
+                        git.entries
+                          .filter((entry) => entry.index.trim() && entry.index !== '?')
+                          .map((entry) => entry.path),
+                      )
+                    }
+                  >
+                    {t('选择全部已暂存文件', 'Select all staged files')}
+                  </button>
+                )}
                 {git.entries.slice(0, limit).map((entry) => (
-                  <div className="git-row" key={entry.path}>
-                    <input
-                      type="checkbox"
-                      aria-label={t('提交 {0}', undefined, [entry.path])}
-                      checked={selected.includes(entry.path)}
-                      onChange={() => toggle(entry.path)}
-                    />
-                    <button
-                      onClick={() =>
-                        void run(async (isCurrent) => {
-                          const diff = await invoke<string>('git_diff', {
-                            path: p.root,
-                            file: entry.path,
-                          });
-                          if (isCurrent()) setGitDiff(diff);
-                        })
-                      }
-                    >
-                      <code>
-                        {entry.index}
-                        {entry.worktree}
-                      </code>{' '}
-                      {entry.path}
-                    </button>
+                  <div className="git-file" key={entry.path}>
+                    <div className="git-row">
+                      <input
+                        type="checkbox"
+                        aria-label={t('提交 {0}', undefined, [entry.path])}
+                        checked={selected.includes(entry.path)}
+                        disabled={
+                          isGitConflict(entry) ||
+                          loading ||
+                          (git.merging && (!entry.index.trim() || entry.index === '?'))
+                        }
+                        onChange={() => toggle(entry.path)}
+                      />
+                      <button
+                        onClick={() =>
+                          void run(async (isCurrent) => {
+                            const diff = await invoke<string>('git_diff', {
+                              path: p.root,
+                              file: entry.path,
+                            });
+                            if (isCurrent()) setGitDiff(diff);
+                          })
+                        }
+                      >
+                        <small title={entry.index + entry.worktree}>{gitStateLabel(entry)}</small>{' '}
+                        {entry.path}
+                      </button>
+                    </div>
+                    {isGitConflict(entry) && (
+                      <div className="git-conflict-actions">
+                        <p>
+                          {t(
+                            '先保存修改。标记解决会暂存磁盘上的内容；文件已删除时会保留删除。',
+                            'Save edits first. Marking resolved stages the disk contents, or retains the deletion if the file was removed.',
+                          )}
+                        </p>
+                        <button onClick={() => p.onOpen(`${p.root}/${entry.path}`)}>
+                          {t('打开文件', 'Open file')}
+                        </button>
+                        <button
+                          disabled={loading}
+                          onClick={() =>
+                            void run(async (isCurrent) => {
+                              const file = `${p.root}/${entry.path}`;
+                              if (
+                                p.docs.some(
+                                  (doc) =>
+                                    doc.path &&
+                                    pathKey(doc.path) === pathKey(file) &&
+                                    (doc.content !== doc.saved ||
+                                      doc.status === 'conflict' ||
+                                      doc.status === 'error'),
+                                )
+                              ) {
+                                throw new Error(
+                                  t(
+                                    '此文件还有未保存修改或磁盘冲突，请先保存并处理。',
+                                    'This file has unsaved edits or a disk conflict. Save and resolve it first.',
+                                  ),
+                                );
+                              }
+                              await invoke('git_mark_resolved', { path: p.root, file: entry.path });
+                              if (isCurrent()) {
+                                setGitDiff('');
+                                setRevision((value) => value + 1);
+                              }
+                            })
+                          }
+                        >
+                          {t('标记已解决', 'Mark resolved')}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ))}
                 {git.entries.length > limit && (
@@ -630,7 +701,12 @@ export default function WorkspacePanel(p: Props) {
                 />
                 <button
                   className="primary panel-wide"
-                  disabled={!selected.length || !message.trim() || loading}
+                  disabled={
+                    (!selected.length && !git.merging) ||
+                    !message.trim() ||
+                    loading ||
+                    git.entries.some(isGitConflict)
+                  }
                   onClick={() =>
                     void run(async (isCurrent) => {
                       const id = await invoke<string>('git_commit', {
@@ -647,8 +723,9 @@ export default function WorkspacePanel(p: Props) {
                     })
                   }
                 >
-                  {t('提交选中的') + ' '}
-                  {selected.length} {' ' + t('个文件')}
+                  {git.merging
+                    ? t('完成合并提交', 'Complete merge commit')
+                    : t('提交选中的') + ' ' + selected.length + ' ' + t('个文件')}
                 </button>
               </>
             )}

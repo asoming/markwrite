@@ -38,6 +38,8 @@ struct AppState {
     session_writes: Mutex<()>,
     search_generation: Arc<AtomicU64>,
     search_request: Mutex<Option<String>>,
+    filename_generation: Arc<AtomicU64>,
+    filename_request: Mutex<Option<String>>,
     watcher: Mutex<Option<notify::RecommendedWatcher>>,
 }
 fn persist_access(directory: &Path, access: &Access) -> Result<(), String> {
@@ -840,6 +842,8 @@ fn main() {
             rename_document,
             workspace::search_folder,
             workspace::cancel_search,
+            workspace::find_files,
+            workspace::cancel_find_files,
             backup::backup_config,
             backup::backup_pick_destination,
             backup::backup_update_schedule,
@@ -862,6 +866,7 @@ fn main() {
             workspace::git_diff,
             workspace::git_init,
             workspace::git_commit,
+            workspace::git_mark_resolved,
             watch_folder,
             save_export,
             session::save_session,

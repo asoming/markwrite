@@ -1,0 +1,47 @@
+.markdown-body .tok-keyword,
+.markdown-body .tok-operator {
+  color: #a626a4;
+}
+.markdown-body .tok-string,
+.markdown-body .tok-string2 {
+  color: #287b35;
+}
+.markdown-body .tok-number,
+.markdown-body .tok-bool,
+.markdown-body .tok-atom {
+  color: #98601a;
+}
+.markdown-body .tok-comment,
+.markdown-body .tok-meta {
+  color: #687486;
+}
+.markdown-body .tok-typeName,
+.markdown-body .tok-className,
+.markdown-body .tok-propertyName {
+  color: #125b9b;
+}
+.markdown-body .tok-invalid {
+  text-decoration: underline wavy #c0392b;
+}
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-keyword,
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-operator {
+  color: #da9de6;
+}
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-string,
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-string2 {
+  color: #a8d68d;
+}
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-number,
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-bool,
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-atom {
+  color: #e8be84;
+}
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-comment,
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-meta {
+  color: #a0aabe;
+}
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-typeName,
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-className,
+:is([data-theme='dark'], [data-theme='night']) .markdown-body .tok-propertyName {
+  color: #92c8ee;
+}

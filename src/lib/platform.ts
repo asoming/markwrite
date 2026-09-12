@@ -173,6 +173,40 @@ export async function listFolderShallow(path: string): Promise<FileEntry[]> {
   if (!h) throw new Error('请重新打开文件夹。 / Please reopen this folder.');
   return scan(h, path, 0, false);
 }
+export async function findFiles(
+  path: string,
+  query: string,
+  requestId: string,
+  signal: AbortSignal,
+): Promise<{ name: string; path: string }[]> {
+  if (signal.aborted) return [];
+  if (desktop) {
+    const cancel = () => {
+      void invoke('cancel_find_files', { requestId }).catch(() => {});
+    };
+    signal.addEventListener('abort', cancel, { once: true });
+    try {
+      return await invoke('find_files', { path, query, requestId });
+    } finally {
+      signal.removeEventListener('abort', cancel);
+    }
+  }
+  const result: { name: string; path: string }[] = [];
+  let count = 0;
+  const visit = async (directory: string, depth: number) => {
+    if (depth > 32) throw new Error('目录超过 32 层 / Folder depth exceeds 32');
+    for (const entry of await listFolderShallow(directory)) {
+      if (signal.aborted || result.length >= 500) return;
+      if (entry.directory) await visit(entry.path, depth + 1);
+      else {
+        if (++count > 100_000) throw new Error('请缩小搜索范围 / Please narrow the search folder');
+        if (entry.name.toLowerCase().includes(query.toLowerCase())) result.push(entry);
+      }
+    }
+  };
+  await visit(path, 0);
+  return result;
+}
 /** Reveal exactly the parent of an already opened document. No picker is opened. */
 export async function parentFolder(
   documentPath: string,

@@ -390,7 +390,9 @@ function build(state: EditorState): DecorationSet {
         let end = to;
         if (['HeaderMark', 'QuoteMark'].includes(name) && state.doc.sliceString(to, to + 1) === ' ')
           end++;
-        if (end > from) add(from, end, Decoration.replace({}));
+        // Keep editable text nodes instead of empty replacement widgets: WebKitGTK
+        // can abort its web process when IME/AT-SPI traverses those replacements.
+        if (end > from) add(from, end, Decoration.mark({ class: 'cm-hidden-syntax' }));
       }
     },
   });
@@ -443,13 +445,17 @@ function build(state: EditorState): DecorationSet {
 }
 const decorations = StateField.define<DecorationSet>({
   create: build,
-  update: (old, tr) =>
-    tr.docChanged ||
-    tr.selection ||
-    tr.reconfigured ||
-    tr.effects.some((e) => e.is(compositionState) || e.is(syntaxChanged))
+  update: (old, tr) => {
+    // Keep the DOM around an active IME candidate stable. Removing every decoration
+    // on compositionstart can destroy WebKit's composition context and lose the commit.
+    if (tr.state.field(composing)) return old.map(tr.changes);
+    return tr.docChanged ||
+      tr.selection ||
+      tr.reconfigured ||
+      tr.effects.some((e) => e.is(compositionState) || e.is(syntaxChanged))
       ? build(tr.state)
-      : old,
+      : old;
+  },
   provide: (f) => EditorView.decorations.from(f),
 });
 export const livePreview = [composing, decorations];

@@ -4,6 +4,36 @@
 
 Choose the Linux `.deb`, Linux portable archive, or Windows x64 installer from the release page above. Features, installation, and conversion limits are described below.
 
+## 开发进度 / Development status — 2026-09-12
+
+以下为 0.5.0 发布后的开发进度，不代表已发布安装包的功能。完成代码、通过验收、发布安装包分别记录。
+These changes follow release 0.5.0. Implementation, verification and packaged delivery are tracked separately.
+
+| 工作项 / Work item | 当前状态 / Status |
+| --- | --- |
+| 阅读和 HTML 代码高亮 / Reader and HTML syntax highlighting | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
+| 全目录快速打开 / Recursive quick open | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
+| 窄窗口覆盖侧栏 / Narrow-window sidebar overlay | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
+| Git 冲突解释和标记解决 / Explain and resolve Git conflicts | 已实现；Linux 原生和浏览器验证通过 / Implemented; native Linux and browser checks passed |
+| 性能与真实输入法 / Performance and real IME acceptance | 部分通过；IBus 两种模式通过，正式包复测中，1 秒目标未达 / Partial: both IBus modes pass; production retest pending; one-second target unmet |
+| 文档一致性 / Documentation consistency | 已纠正旧描述，随验收更新 / Corrected; updated with validation |
+
+仍未实现的后续增强：正文表格多格粘贴、行列拖动/排序，图片对齐/图注/重新链接，双编辑器与同步滚动，自定义快捷键，逐块/三方合并，批量文件操作中断自动恢复界面，GitHub 提示块和来源预设，可编辑 Office 公式。Typora CSS 主题为有边界的适配，不保证完整主题包原样还原。
+Still pending: in-document table range paste/reordering/sorting; image alignment/captions/relinking; dual editors and synchronized scrolling; configurable shortcuts; hunk/three-way merge; interrupted multi-file operation recovery UI; GitHub alerts/source presets; editable Office equations. Imported Typora themes remain a bounded adaptation.
+
+恢复历史版本先进入未保存编辑状态，后续保存时记录被替换的磁盘版本；恢复本身不立即生成新的历史条目，也不自动覆盖文件。
+Restoring history creates an unsaved editor buffer. Saving later records the replaced disk version; restoration alone creates neither a history entry nor a source-file write.
+
+## 0.5.1 验证中 / 0.5.1 verification in progress
+
+- 阅读与 HTML 导出按语言高亮代码，语言解析按需在 Worker 加载；未知语言或超过 40,000 字符的单块保留纯文本，源代码内容不变。
+- Ctrl+P 按需递归检索文件名，不读取正文；支持取消和中文子目录，最多返回 500 项。沿用隐藏目录、依赖目录、链接和 32 层深度的扫描边界。
+- 正文可用宽度不足约 560px 时，侧栏改为浮层，支持 Esc、背景点击关闭与键盘焦点约束；宽窗口恢复原侧栏状态。
+- Git 显示冲突原因，允许保存后标记已解决；完成合并时明确选择全部暂存项，支持保留删除或保留本地内容，不自动推送。冲突标记未清除、非 UTF-8 或超过 8MiB 的冲突文件仍需先处理；不会把编辑器里未保存的草稿误当作已解决。
+- 修复 WebKitGTK 在即时编辑隐藏语法节点与中文输入交互时的渲染进程崩溃；组合输入期间保留文档装饰，提交后再恢复即时排版。
+
+Reader and HTML code coloring loads language parsers on demand in a worker; unknown languages and blocks over 40,000 characters stay plain. Ctrl+P searches filenames recursively only when opened, with cancellation and 500 results. Narrow windows use a keyboard-accessible sidebar overlay. Git explains conflicts, stages explicitly resolved saved files, and completes reviewed merge commits without pushing. Live editing retains syntax text nodes and stable composition decorations to avoid a WebKitGTK IME/accessibility process crash. Non-UTF-8 or over-8MiB conflict files remain outside in-app resolution.
+
 # Markwrite
 
 <img src="public/assets/app-icon.png" width="96" alt="Markwrite 应用图标" />
@@ -240,7 +270,7 @@ Reference updates attempt rollback on ordinary errors and retain recovery copies
 
 ### 实际排版边界
 
-- PDF 的行内公式和图片单独占行，阅读次序保留；DOCX 支持将公式图形放在段落内。
+- PDF 行内公式与相邻文字保持同行；图片和过宽公式可独立成段。DOCX 支持将公式图形放在段落内。
 - DOCX 中的公式和流程图是图形，不是可继续编辑的 Office 数学公式或流程图对象。
 - PDF 中文字体提供常规和粗体，没有独立斜体字形；DOCX 保留斜体属性，由阅读器显示。
 - DOCX 正文不内嵌完整中文字体，目标系统的字体回退可能影响分页。Word、WPS、LibreOffice 的显示效果可能不同。

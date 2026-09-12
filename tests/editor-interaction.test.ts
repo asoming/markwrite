@@ -249,3 +249,18 @@ it('synchronizes a changed reading buffer before announcing the restored editor'
   expect(document.content()).toBe('# 磁盘更新');
   expect(view!.state.doc.toString()).toBe('# 磁盘更新');
 });
+
+it('keeps rendered blocks mounted while an IME candidate is composing', async () => {
+  const { compositionState } = await import('../src/editor/livePreview');
+  mount('| 标题 |\n| --- |\n| 内容 |\n\n输入位置');
+  act(() => view!.dispatch({ selection: { anchor: view!.state.doc.length } }));
+  const table = host.querySelector('.live-block table');
+  expect(table).not.toBeNull();
+  act(() => view!.dispatch({ effects: compositionState.of(true) }));
+  expect(host.querySelector('.live-block table')).toBe(table);
+  act(() => view!.dispatch({ changes: { from: view!.state.doc.length, insert: '你好' } }));
+  expect(host.querySelector('.live-block table')).toBe(table);
+  act(() => view!.dispatch({ effects: compositionState.of(false) }));
+  expect(view!.state.doc.toString()).toContain('输入位置你好');
+  expect(host.querySelector('.live-block table')!.textContent).toContain('内容');
+});

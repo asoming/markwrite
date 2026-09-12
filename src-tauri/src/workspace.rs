@@ -181,6 +181,72 @@ pub async fn workspace_documents(
     .await
     .map_err(|e| e.to_string())?
 }
+
+#[derive(Clone, Debug, Serialize)]
+pub struct NamedFile {
+    name: String,
+    path: String,
+}
+fn find_names(
+    root: &Path,
+    query: &str,
+    cancelled: &dyn Fn() -> bool,
+) -> Result<Vec<NamedFile>, String> {
+    let query = query.to_lowercase();
+    let mut files = vec![];
+    visit_markdown(root, 0, &mut 0, cancelled, &mut |path| {
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        if name.to_lowercase().contains(&query) {
+            files.push(NamedFile {
+                name: name.into_owned(),
+                path: path.to_string_lossy().into_owned(),
+            });
+        }
+        Ok(files.len() < 500)
+    })?;
+    files.sort_by(|a, b| {
+        a.name
+            .to_lowercase()
+            .cmp(&b.name.to_lowercase())
+            .then(a.path.cmp(&b.path))
+    });
+    Ok(files)
+}
+/// Enumerate names on demand without reading documents or building the reference index.
+#[tauri::command]
+pub async fn find_files(
+    path: String,
+    query: String,
+    request_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<NamedFile>, String> {
+    let root = state.check_directory(Path::new(&path))?;
+    let own;
+    {
+        let mut current = state.filename_request.lock().map_err(|e| e.to_string())?;
+        own = state.filename_generation.fetch_add(1, Ordering::AcqRel) + 1;
+        *current = Some(request_id);
+    }
+    let generation = Arc::clone(&state.filename_generation);
+    tauri::async_runtime::spawn_blocking(move || {
+        find_names(&root, &query, &|| generation.load(Ordering::Acquire) != own)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub fn cancel_find_files(request_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    if state
+        .filename_request
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        == Some(&request_id)
+    {
+        state.filename_generation.fetch_add(1, Ordering::AcqRel);
+    }
+    Ok(())
+}
 #[tauri::command]
 pub async fn history_list(
     path: String,
@@ -434,6 +500,7 @@ pub struct GitStatus {
     entries: Vec<GitEntry>,
     available: bool,
     repository: bool,
+    merging: bool,
 }
 fn parse_status(data: &[u8]) -> Vec<GitEntry> {
     let mut parts = data.split(|c| *c == 0);
@@ -464,6 +531,7 @@ pub async fn git_status(path: String, state: State<'_, AppState>) -> Result<GitS
             entries: vec![],
             available: false,
             repository: false,
+            merging: false,
         });
     }
     let Ok(root) = git_root(&path, &state) else {
@@ -472,11 +540,18 @@ pub async fn git_status(path: String, state: State<'_, AppState>) -> Result<GitS
             entries: vec![],
             available: true,
             repository: false,
+            merging: false,
         });
     };
     let entries = parse_status(&success(
         git(&root)
-            .args(["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+            .args([
+                "status",
+                "--porcelain=v1",
+                "-z",
+                "--untracked-files=all",
+                "--no-renames",
+            ])
             .output()
             .map_err(|e| e.to_string())?,
     )?);
@@ -492,7 +567,59 @@ pub async fn git_status(path: String, state: State<'_, AppState>) -> Result<GitS
         entries,
         available: true,
         repository: true,
+        merging: merging(&root),
     })
+}
+fn merging(root: &Path) -> bool {
+    git(root)
+        .args(["rev-parse", "--verify", "-q", "MERGE_HEAD"])
+        .output()
+        .is_ok_and(|output| output.status.success())
+}
+fn mark_resolved(root: &Path, file: &str) -> Result<(), String> {
+    let target = safe_relative(root, file)?;
+    if success(
+        git(root)
+            .args(["ls-files", "--unmerged", "-z", "--", file])
+            .output()
+            .map_err(|e| e.to_string())?,
+    )?
+    .is_empty()
+    {
+        return Err("该文件已无未解决冲突，请刷新状态。 / This file no longer has an unresolved conflict; refresh status.".into());
+    }
+    if target.exists() {
+        let meta = fs::symlink_metadata(&target).map_err(|e| e.to_string())?;
+        if !meta.is_file() || meta.len() > 8 * 1024 * 1024 {
+            return Err("请选择不超过 8MiB 的普通文本冲突文件。 / Choose a regular text conflict file up to 8MiB.".into());
+        }
+        let bytes = fs::read(&target).map_err(|e| e.to_string())?;
+        let text = std::str::from_utf8(&bytes).map_err(|_| "非 UTF-8 冲突请使用系统 Git 工具解决。 / Resolve non-UTF-8 conflicts with your Git tool.")?;
+        if text.lines().any(|line| {
+            ["<<<<<<<", ">>>>>>>", "|||||||"]
+                .iter()
+                .any(|marker| line.starts_with(marker))
+        }) {
+            return Err("文件仍含冲突标记，请编辑并保存后再标记解决。 / Conflict markers remain. Edit and save before marking resolved.".into());
+        }
+    }
+    success(
+        git(root)
+            .args(["add", "--", file])
+            .output()
+            .map_err(|e| e.to_string())?,
+    )?;
+    Ok(())
+}
+#[tauri::command]
+pub async fn git_mark_resolved(
+    path: String,
+    file: String,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let root = git_root(&path, &state)?;
+    let _guard = state.writes.lock().map_err(|e| e.to_string())?;
+    mark_resolved(&root, &file)
 }
 #[tauri::command]
 pub async fn git_diff(
@@ -578,10 +705,13 @@ pub async fn git_commit(
     if message.trim().is_empty() {
         return Err("请输入提交说明。".into());
     }
-    if paths.is_empty() || paths.len() > 1000 {
+    if paths.len() > 1000 {
         return Err("请选择 1–1000 个要提交的文件。".into());
     }
     let root = git_root(&path, &state)?;
+    if paths.is_empty() && !merging(&root) {
+        return Err("请选择要提交的文件。 / Select files to commit.".into());
+    }
     for name in &paths {
         safe_relative(&root, name)?;
     }
@@ -598,6 +728,30 @@ fn commit_selected(root: &Path, paths: Vec<String>, message: String) -> Result<S
     .is_empty()
     {
         return Err("仓库有未解决的合并冲突。请先查看差异并解决冲突。".into());
+    }
+    if merging(root) {
+        let staged = success(
+            git(root)
+                .args(["diff", "--cached", "--name-only", "-z", "--no-renames"])
+                .output()
+                .map_err(|e| e.to_string())?,
+        )?;
+        let staged: std::collections::BTreeSet<_> = staged
+            .split(|byte| *byte == 0)
+            .filter(|item| !item.is_empty())
+            .map(|item| String::from_utf8_lossy(item).into_owned())
+            .collect();
+        if staged != paths.into_iter().collect() {
+            return Err("合并提交包含全部已暂存文件，请刷新并选择全部已暂存项。 / A merge commit includes all staged files. Refresh and select all staged paths.".into());
+        }
+        let result = success(
+            git(root)
+                .args(["-c", "commit.gpgsign=false", "commit", "-m"])
+                .arg(message)
+                .output()
+                .map_err(|e| e.to_string())?,
+        )?;
+        return Ok(String::from_utf8_lossy(&result).trim().to_string());
     }
     // --only commits the explicitly selected paths; unrelated staged work is retained.
     success(
@@ -621,6 +775,143 @@ fn commit_selected(root: &Path, paths: Vec<String>, message: String) -> Result<S
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn filename_search_is_recursive_name_only_bounded_and_cancellable() {
+        let root = std::env::temp_dir().join(format!(
+            "markwrite-names-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(root.join("深层/another")).unwrap();
+        fs::create_dir_all(root.join("node_modules")).unwrap();
+        // Invalid UTF-8 confirms that finding a filename does not read/decode its contents.
+        fs::write(root.join("深层/another/目标.MD"), [255u8, 254]).unwrap();
+        fs::write(root.join("other.md"), "目标").unwrap();
+        fs::write(root.join("node_modules/目标.md"), "ignored").unwrap();
+        let hits = find_names(&root, "目标", &|| false).unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].name, "目标.MD");
+        assert!(find_names(&root, "", &|| true)
+            .unwrap_err()
+            .contains("CANCELLED"));
+        for n in 0..550 {
+            fs::write(root.join(format!("file-{n}.md")), "").unwrap();
+        }
+        assert_eq!(find_names(&root, "file-", &|| false).unwrap().len(), 500);
+        fs::remove_dir_all(root).unwrap();
+    }
+    fn conflicted_test_repository(label: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "markwrite-resolve-{label}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        for args in [
+            vec!["init"],
+            vec!["config", "user.name", "Test"],
+            vec!["config", "user.email", "test@example.invalid"],
+        ] {
+            success(git(&root).args(args).output().unwrap()).unwrap();
+        }
+        fs::write(root.join("冲突.md"), "original\n").unwrap();
+        fs::write(root.join("other.md"), "original\n").unwrap();
+        commit_selected(
+            &root,
+            vec!["冲突.md".into(), "other.md".into()],
+            "base".into(),
+        )
+        .unwrap();
+        success(
+            git(&root)
+                .args(["checkout", "-b", "other"])
+                .output()
+                .unwrap(),
+        )
+        .unwrap();
+        fs::write(root.join("冲突.md"), "theirs\n").unwrap();
+        commit_selected(&root, vec!["冲突.md".into()], "theirs".into()).unwrap();
+        success(
+            git(&root)
+                .args(["checkout", "-b", "ours", "HEAD~1"])
+                .output()
+                .unwrap(),
+        )
+        .unwrap();
+        fs::write(root.join("冲突.md"), "ours\n").unwrap();
+        commit_selected(&root, vec!["冲突.md".into()], "ours".into()).unwrap();
+        assert!(!git(&root)
+            .args(["merge", "other"])
+            .output()
+            .unwrap()
+            .status
+            .success());
+        root
+    }
+    #[test]
+    fn resolved_merge_requires_explicit_selection_of_all_staged_files() {
+        let root = conflicted_test_repository("content");
+        assert!(mark_resolved(&root, "冲突.md")
+            .unwrap_err()
+            .contains("Conflict markers"));
+        assert!(mark_resolved(&root, "../escape.md").is_err());
+        fs::write(root.join("冲突.md"), "both combined\n").unwrap();
+        mark_resolved(&root, "冲突.md").unwrap();
+        assert!(mark_resolved(&root, "冲突.md").is_err());
+        fs::write(root.join("other.md"), "also staged\n").unwrap();
+        success(git(&root).args(["add", "--", "other.md"]).output().unwrap()).unwrap();
+        assert!(
+            commit_selected(&root, vec!["冲突.md".into()], "merge".into())
+                .unwrap_err()
+                .contains("all staged")
+        );
+        commit_selected(
+            &root,
+            vec!["冲突.md".into(), "other.md".into()],
+            "merge resolved".into(),
+        )
+        .unwrap();
+        assert!(!merging(&root));
+        let parents = success(
+            git(&root)
+                .args(["rev-list", "--parents", "-n", "1", "HEAD"])
+                .output()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&parents).split_whitespace().count(),
+            3
+        );
+        assert_eq!(
+            fs::read_to_string(root.join("冲突.md")).unwrap(),
+            "both combined\n"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn merge_can_keep_ours_with_no_staged_content_changes() {
+        let root = conflicted_test_repository("unchanged");
+        fs::write(root.join("冲突.md"), "ours\n").unwrap();
+        mark_resolved(&root, "冲突.md").unwrap();
+        commit_selected(&root, vec![], "resolve by retaining ours".into()).unwrap();
+        assert!(!merging(&root));
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn resolving_a_conflict_can_explicitly_retain_deletion() {
+        let root = conflicted_test_repository("delete");
+        fs::remove_file(root.join("冲突.md")).unwrap();
+        mark_resolved(&root, "冲突.md").unwrap();
+        commit_selected(&root, vec!["冲突.md".into()], "keep deletion".into()).unwrap();
+        assert!(!root.join("冲突.md").exists());
+        assert!(!merging(&root));
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test]
     fn git_status_handles_spaces_and_renames() {
         let result = parse_status(" M a b.md\0R  new.md\0old.md\0?? 文档.md\0".as_bytes());

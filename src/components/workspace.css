@@ -398,3 +398,22 @@ textarea:focus-visible {
   padding: 12px 25px;
   border: 1px solid var(--border);
 }
+
+.git-file {
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+}
+.git-conflict-actions p {
+  font-size: 12px;
+  color: var(--muted);
+}
+.git-conflict-actions button {
+  padding: 6px 10px;
+  margin: 4px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+.git-row small {
+  color: var(--muted);
+}
