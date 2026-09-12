@@ -1,10 +1,10 @@
 [package]
 name = "markwrite"
-version = "0.4.0"
+version = "0.5.0"
 description = "A local-first Markdown editor"
 authors = ["Markwrite"]
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -18,6 +18,9 @@ base64 = "0.22"
 percent-encoding = "2"
 sha2 = "0.10"
 semver = "1"
+encoding_rs = "0.8"
+fs2 = "0.4"
+zip = { version = "2", default-features = false }
 notify = "8"
 trash = "5"
 open = "5"

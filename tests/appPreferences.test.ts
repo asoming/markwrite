@@ -12,7 +12,8 @@ vi.mock('../src/lib/platform', async (original) => ({
 }));
 // This suite verifies App state transitions, not the editor's rendering machinery.
 // The real menu, preferences, import dialog, converter, and recovery storage are used.
-vi.mock('../src/editor/Editor', () => ({
+vi.mock('../src/editor/lazyEditor', async (original) => ({
+  ...(await original<typeof import('../src/editor/lazyEditor')>()),
   default: ({ content, mode }: { content: string; mode: Mode }) =>
     createElement('pre', { 'data-testid': 'document-buffer', 'data-mode': mode }, content),
   releaseEditor: vi.fn(),
@@ -64,11 +65,11 @@ function button(label: string, selector = 'button') {
   expect(result, label).toBeDefined();
   return result!;
 }
-function click(element: HTMLElement) {
-  act(() => element.click());
+async function click(element: HTMLElement) {
+  await act(async () => element.click());
 }
-function keyboard(key: string) {
-  act(() =>
+async function keyboard(key: string) {
+  await act(async () =>
     window.dispatchEvent(
       new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true, cancelable: true }),
     ),
@@ -83,7 +84,9 @@ function change(label: string, value: string) {
   });
 }
 function currentMode() {
-  return host.querySelector('[data-testid="document-buffer"]')?.getAttribute('data-mode');
+  return host.querySelector('[data-testid="reading-buffer"]')
+    ? 'read'
+    : host.querySelector('[data-testid="document-buffer"]')?.getAttribute('data-mode');
 }
 function snapshot(): { docs: Document[]; active: string; settings: Settings } {
   act(() => window.dispatchEvent(new Event('beforeunload')));
@@ -101,7 +104,7 @@ describe('application preferences and document import', () => {
   it('starts in reading mode, opens files for reading, and creates new documents ready to edit', async () => {
     expect(currentMode()).toBe('read');
     expect(host.querySelector('[data-testid="reading-buffer"]')).not.toBeNull();
-    keyboard('n');
+    await keyboard('n');
     expect(currentMode()).toBe('live');
     await openFile('/notes/文件.md', '# 文件\n\n保存与编辑');
     expect(currentMode()).toBe('read');
@@ -117,17 +120,20 @@ describe('application preferences and document import', () => {
   });
 
   it('applies the changed opening preference to later opens without changing the current document', async () => {
-    keyboard(',');
-    click(button('编辑器', '[role="tab"]'));
+    await keyboard(',');
+    await act(async () => {
+      await import('../src/components/SettingsPanel');
+    });
+    await click(button('编辑器', '[role="tab"]'));
     change('默认打开模式', 'source');
     expect(currentMode()).toBe('read');
-    click(button('关闭设置'));
+    await click(button('关闭设置'));
     await openFile('/notes/source.md', '# 原文\n\n**不改写正文**');
     expect(currentMode()).toBe('source');
     expect(host.querySelector('[data-testid="document-buffer"]')?.textContent).toBe(
       '# 原文\n\n**不改写正文**',
     );
-    keyboard('n');
+    await keyboard('n');
     expect(currentMode()).toBe('live');
     await openFile('/notes/source.md', '# 原文\n\n**不改写正文**');
     expect(currentMode()).toBe('source');
@@ -136,16 +142,22 @@ describe('application preferences and document import', () => {
 
   it('switches the application to English and confirms an imported document as an unsaved draft', async () => {
     const before = snapshot();
-    keyboard(',');
+    await keyboard(',');
+    await act(async () => {
+      await import('../src/components/SettingsPanel');
+    });
     change('界面语言', 'en');
     expect(host.querySelector('.editing-menu-group>button')?.textContent).toBe('File');
     expect(snapshot().docs).toEqual(before.docs);
-    click(button('Close preferences'));
-    click(button('File', '.editing-menu-group>button'));
+    await click(button('Close preferences'));
+    await click(button('File', '.editing-menu-group>button'));
     const importAction = [...host.querySelectorAll<HTMLButtonElement>('[role="menu"] button')].find(
       (item) => item.textContent?.includes('Import files'),
     )!;
-    click(importAction);
+    await click(importAction);
+    await act(async () => {
+      await import('../src/components/ImportPanel');
+    });
     expect(host.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe(
       'Import documents',
     );
@@ -158,7 +170,7 @@ describe('application preferences and document import', () => {
     await act(async () => fileInput.dispatchEvent(new Event('change', { bubbles: true })));
     expect(host.querySelector('.import-preview pre')?.textContent).toBe('文件\n保存与编辑');
     expect(snapshot().docs).toEqual(before.docs);
-    click(button('Import as Markdown (1)'));
+    await click(button('Import as Markdown (1)'));
     expect(host.querySelector('.import-panel')).toBeNull();
     const state = snapshot();
     expect(state.settings.language).toBe('en');

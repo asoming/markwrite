@@ -6,6 +6,18 @@ import './editing.css';
 
 export type EditingAction =
   | `format:${FormatAction}`
+  | 'app:portable'
+  | 'app:newWindow'
+  | 'app:openWindow'
+  | 'app:windows'
+  | 'app:encoding'
+  | 'app:clipboard'
+  | 'view:back'
+  | 'view:forward'
+  | 'view:previousFile'
+  | 'view:nextFile'
+  | 'view:bookmark'
+  | 'view:bookmarks'
   | 'app:new'
   | 'app:open'
   | 'app:import'
@@ -67,9 +79,13 @@ const menus: { label: string; items: Item[] }[] = [
     label: '文件',
     items: [
       { label: '新建文档', action: 'app:new', shortcut: 'Ctrl N' },
+      { label: '新建独立窗口', action: 'app:newWindow', shortcut: 'Ctrl Shift N' },
+      { label: '当前文件在独立窗口打开', action: 'app:openWindow' },
+      { label: '恢复独立窗口…', action: 'app:windows' },
       { label: '打开文档…', action: 'app:open', shortcut: 'Ctrl O' },
       { label: '导入文件…', action: 'app:import' },
       { label: '打开文件夹…', action: 'app:folder' },
+      { label: '选择编码重新打开…', action: 'app:encoding' },
       { label: '快速打开…', action: 'app:quickOpen', shortcut: 'Ctrl P' },
       'separator',
       { label: '保存', action: 'app:save', shortcut: 'Ctrl S' },
@@ -77,9 +93,11 @@ const menus: { label: string; items: Item[] }[] = [
       { label: '重命名', action: 'app:rename' },
       { label: '移动到…', action: 'app:move' },
       'separator',
+      { label: '文档与附件打包 ZIP…', action: 'app:portable' },
       { label: '导出 HTML…', action: 'app:exportHtml' },
       { label: '导出 PDF…', action: 'app:exportPdf' },
       { label: '导出 Word 文档…', action: 'app:exportDocx' },
+      { label: '复制到公众号 / 飞书…', action: 'app:clipboard' },
       { label: '打印…', action: 'app:print' },
       'separator',
       { label: '关闭当前文档', action: 'app:close', shortcut: 'Ctrl W' },
@@ -149,6 +167,13 @@ const menus: { label: string; items: Item[] }[] = [
       { label: '即时渲染编辑', action: 'view:live' },
       { label: 'Markdown 源码', action: 'view:source' },
       { label: '阅读模式', action: 'view:read' },
+      'separator',
+      { label: '后退', action: 'view:back', shortcut: 'Alt ←' },
+      { label: '前进', action: 'view:forward', shortcut: 'Alt →' },
+      { label: '同目录上一篇', action: 'view:previousFile', shortcut: 'Alt ↑' },
+      { label: '同目录下一篇', action: 'view:nextFile', shortcut: 'Alt ↓' },
+      { label: '添加 / 移除段落书签', action: 'view:bookmark', shortcut: 'Ctrl D' },
+      { label: '段落书签…', action: 'view:bookmarks' },
       'separator',
       { label: '专注模式', action: 'view:focus' },
       { label: '显示 / 隐藏侧栏', action: 'view:sidebar' },

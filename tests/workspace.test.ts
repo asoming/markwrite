@@ -104,7 +104,7 @@ describe('document navigation', () => {
     );
     expect(host.querySelector('a')?.getAttribute('href')).toBe(href);
     expect(host.querySelector('a strong')?.textContent).toBe('文件');
-    expect(host.querySelectorAll('a')[1].getAttribute('href')).toBeNull();
+    expect(host.querySelector('a[href^="javascript:"]')).toBeNull();
     expect(host.querySelector('img')?.getAttribute('src')).toBeNull();
     expect(host.querySelector('[data-local-href]')).toBeNull();
     expect(
@@ -132,7 +132,7 @@ describe('declarative editing extensions', () => {
     const source = '正文 ==高亮文字== 与 %%重点%%。';
     configureInlineSyntax([starterExtension]);
     const host = document.createElement('div');
-    host.innerHTML = renderMarkdown(source);
+    host.innerHTML = renderMarkdown(source, { compatibility: true });
     expect(host.querySelectorAll('mark.syntax-highlight')).toHaveLength(2);
     expect(host.querySelector('mark')?.textContent).toBe('高亮文字');
     expect(source).toBe('正文 ==高亮文字== 与 %%重点%%。');
@@ -144,6 +144,7 @@ describe('declarative editing extensions', () => {
     const host = document.createElement('div');
     host.innerHTML = renderMarkdown(
       '==<img src=x onerror=alert(1)>==\n\n`==literal==`\n\n```md\n%%literal%%\n```',
+      { compatibility: true },
     );
     expect(host.querySelector('img')).toBeNull();
     expect(host.querySelector('mark')?.textContent).toBe('<img src=x onerror=alert(1)>');

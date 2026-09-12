@@ -56,25 +56,29 @@ it('passes Linux, Windows drive, extended, and UNC document paths unchanged to n
     const response = { path: documentPath.slice(0, -5), entries: [] };
     boundary.invoke.mockResolvedValueOnce(response);
     expect(await parentFolder(documentPath)).toBe(response);
-    expect(boundary.invoke).toHaveBeenLastCalledWith('parent_folder', { documentPath });
+    expect(boundary.invoke).toHaveBeenLastCalledWith('parent_folder_shallow', { documentPath });
   }
   boundary.invoke.mockRejectedValueOnce(new Error('Not authorized'));
   await expect(parentFolder('/private/secret.md')).rejects.toThrow('Not authorized');
 });
 
-it('returns only a known browser parent and preserves its recursive tree', async () => {
+it('reads only expanded browser folders and returns a shallow parent', async () => {
   const nested = directory('nested', [file('third.md')]);
   const notes = directory('notes', [file('文档.md'), file('sibling.md'), nested]);
   browser.showDirectoryPicker = vi.fn(async () =>
     directory('workspace', [notes, file('other.md')]),
   );
-  const { openFolder, parentFolder, listFolder } = await import('../src/lib/platform');
-  await openFolder();
+  const { openFolder, parentFolder, listFolderShallow } = await import('../src/lib/platform');
+  const top = await openFolder();
+  expect(top?.entries.find((entry) => entry.directory)?.children).toBeUndefined();
+  expect(await parentFolder('workspace/notes/文档.md')).toBeNull();
+  await listFolderShallow('workspace/notes');
   const parent = await parentFolder('workspace/notes/文档.md');
   expect(parent?.path).toBe('workspace/notes');
   expect(parent?.entries.map((entry) => entry.name)).toEqual(['nested', 'sibling.md', '文档.md']);
-  expect(parent?.entries[0].children?.[0].name).toBe('third.md');
-  expect(await listFolder(parent!.path)).toEqual(parent!.entries);
+  expect(parent?.entries[0].children).toBeUndefined();
+  expect((await listFolderShallow('workspace/notes/nested'))[0].name).toBe('third.md');
+  expect(await listFolderShallow(parent!.path)).toEqual(parent!.entries);
   expect(browser.showDirectoryPicker).toHaveBeenCalledOnce();
   expect(boundary.invoke).not.toHaveBeenCalled();
 });

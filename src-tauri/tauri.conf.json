@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Markwrite",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "identifier": "app.markwrite.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -26,12 +26,17 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["deb"],
+    "targets": [
+      "deb"
+    ],
     "category": "Productivity",
     "shortDescription": "Local-first Markdown editor",
     "fileAssociations": [
       {
-        "ext": ["md", "markdown"],
+        "ext": [
+          "md",
+          "markdown"
+        ],
         "mimeType": "text/markdown",
         "description": "Markdown document",
         "role": "Editor",

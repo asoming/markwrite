@@ -57,13 +57,25 @@ pub fn list(root: &Path, document: &Path) -> Result<Vec<Version>, String> {
         .map(|v| v.0)
         .collect())
 }
+#[cfg(test)]
 pub fn read(root: &Path, document: &Path, id: &str) -> Result<DiskFile, String> {
+    read_with_encoding(root, document, id, None)
+}
+pub fn read_with_encoding(
+    root: &Path,
+    document: &Path,
+    id: &str,
+    encoding: Option<crate::text_encoding::TextEncoding>,
+) -> Result<DiskFile, String> {
     // Never use caller text as an unchecked path component.
     let entry = versions(&directory(root, document))?
         .into_iter()
         .find(|v| v.0.id == id)
         .ok_or("历史版本不存在或已按保留规则清理。")?;
-    let mut file = storage::read(&entry.1)?;
+    let mut file = match encoding {
+        Some(encoding) => crate::text_encoding::read(&entry.1, encoding)?,
+        None => storage::read(&entry.1)?,
+    };
     file.path = document.to_string_lossy().into_owned();
     Ok(file)
 }

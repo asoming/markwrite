@@ -1,12 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 mod ai;
 mod backup;
+mod document_windows;
 mod history;
 mod imports;
 mod native_settings;
+mod portable_export;
 mod reference_changes;
 mod session;
 mod storage;
+mod text_encoding;
 mod transfer;
 mod updates;
 mod workspace;
@@ -85,6 +88,14 @@ impl AppState {
         document_path: &Path,
         access_directory: &Path,
     ) -> Result<Folder, String> {
+        self.parent_folder_mode(document_path, access_directory, false)
+    }
+    fn parent_folder_mode(
+        &self,
+        document_path: &Path,
+        access_directory: &Path,
+        shallow: bool,
+    ) -> Result<Folder, String> {
         // The document must already be granted by the picker, OS open event, or a
         // workspace. Canonical paths retain Windows drive/UNC prefixes correctly.
         let document = self.check(document_path)?;
@@ -95,7 +106,11 @@ impl AppState {
             .parent()
             .ok_or("这个文档没有可浏览的父文件夹。")?
             .to_path_buf();
-        let entries = scan(&parent, 0, &mut 0)?;
+        let entries = if shallow {
+            scan_shallow(&parent)?
+        } else {
+            scan(&parent, 0, &mut 0)?
+        };
         // Keep the grant and its durable record consistent. A failed scan or write
         // cannot grant a new root, and previously authorized folders remain intact.
         let mut access = self.access.lock().map_err(|e| e.to_string())?;
@@ -190,6 +205,55 @@ fn scan(path: &Path, depth: usize, count: &mut usize) -> Result<Vec<Entry>, Stri
     });
     Ok(entries)
 }
+fn scan_shallow(path: &Path) -> Result<Vec<Entry>, String> {
+    let mut entries = Vec::new();
+    for (visited, item) in fs::read_dir(path).map_err(|e| e.to_string())?.enumerate() {
+        if visited >= 100_000 {
+            return Err(
+                "当前目录超过 100,000 项，请选择更小的目录 / Folder exceeds 100,000 entries."
+                    .into(),
+            );
+        }
+        let item = item.map_err(|e| e.to_string())?;
+        let kind = item.file_type().map_err(|e| e.to_string())?;
+        let name = item.file_name().to_string_lossy().into_owned();
+        if kind.is_symlink()
+            || name.starts_with('.')
+            || ["node_modules", "target"].contains(&name.as_str())
+        {
+            continue;
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::MetadataExt;
+            if item
+                .metadata()
+                .map_err(|e| e.to_string())?
+                .file_attributes()
+                & 0x400
+                != 0
+            {
+                continue;
+            }
+        }
+        let path = item.path();
+        if !kind.is_dir() && !(kind.is_file() && is_markdown(&path)) {
+            continue;
+        }
+        entries.push(Entry {
+            name,
+            path: path.to_string_lossy().into_owned(),
+            directory: kind.is_dir(),
+            children: None,
+        });
+    }
+    entries.sort_by(|a, b| {
+        b.directory
+            .cmp(&a.directory)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    Ok(entries)
+}
 #[tauri::command]
 async fn choose_files(
     app: tauri::AppHandle,
@@ -217,6 +281,7 @@ struct Folder {
 async fn choose_folder(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    shallow: Option<bool>,
 ) -> Result<Option<Folder>, String> {
     let Some(path) = app.dialog().file().blocking_pick_folder() else {
         return Ok(None);
@@ -233,15 +298,40 @@ async fn choose_folder(
         .roots
         .insert(path.clone());
     state.persist(&app)?;
-    start_watcher(&app, &state, &path)?;
+    start_watcher(&app, &state, &path, false)?;
     Ok(Some(Folder {
-        entries: scan(&path, 0, &mut 0)?,
+        entries: if shallow.unwrap_or(false) {
+            scan_shallow(&path)?
+        } else {
+            scan(&path, 0, &mut 0)?
+        },
         path: path.to_string_lossy().into_owned(),
     }))
 }
 #[tauri::command]
 async fn list_folder(path: String, state: State<'_, AppState>) -> Result<Vec<Entry>, String> {
     scan(&state.check_directory(Path::new(&path))?, 0, &mut 0)
+}
+#[tauri::command]
+async fn list_folder_shallow(path: String, app: tauri::AppHandle) -> Result<Vec<Entry>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        scan_shallow(&app.state::<AppState>().check_directory(Path::new(&path))?)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+#[tauri::command]
+async fn parent_folder_shallow(
+    document_path: String,
+    app: tauri::AppHandle,
+) -> Result<Folder, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let directory = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+        app.state::<AppState>()
+            .parent_folder_mode(Path::new(&document_path), &directory, true)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
 async fn parent_folder(document_path: String, app: tauri::AppHandle) -> Result<Folder, String> {
@@ -256,24 +346,33 @@ async fn parent_folder(document_path: String, app: tauri::AppHandle) -> Result<F
     .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-async fn read_document(path: String, state: State<'_, AppState>) -> Result<DiskFile, String> {
-    storage::read(&state.check(Path::new(&path))?)
+async fn read_document(
+    path: String,
+    state: State<'_, AppState>,
+    encoding: Option<text_encoding::TextEncoding>,
+) -> Result<DiskFile, String> {
+    let path = state.check(Path::new(&path))?;
+    match encoding {
+        Some(encoding) => text_encoding::read(&path, encoding),
+        None => storage::read(&path),
+    }
 }
 #[tauri::command]
 async fn save_document(
     file: DiskFile,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    encoding: Option<text_encoding::TextEncoding>,
 ) -> Result<DiskFile, String> {
     let _guard = state.writes.lock().map_err(|e| e.to_string())?;
     let p = state.check(Path::new(&file.path))?;
     storage::atomic_write(
         &p,
-        &storage::serialize(&file),
+        &text_encoding::serialize(&file, encoding.unwrap_or_default())?,
         Some(&file.version),
         &recovery(&app)?,
     )?;
-    storage::read(&p)
+    text_encoding::read(&p, encoding.unwrap_or_default())
 }
 #[tauri::command]
 async fn save_as(
@@ -281,6 +380,9 @@ async fn save_as(
     name: String,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    encoding: Option<text_encoding::TextEncoding>,
+    bom: Option<bool>,
+    crlf: Option<bool>,
 ) -> Result<Option<DiskFile>, String> {
     let Some(path) = app
         .dialog()
@@ -293,8 +395,19 @@ async fn save_as(
     };
     let p = path.into_path().map_err(|e| e.to_string())?;
     let _guard = state.writes.lock().map_err(|e| e.to_string())?;
-    storage::atomic_write(&p, content.as_bytes(), None, &recovery(&app)?)?;
-    let file = storage::read(&state.allow_file(&p)?)?;
+    let encoding = encoding.unwrap_or_default();
+    let bytes = text_encoding::serialize(
+        &DiskFile {
+            path: p.to_string_lossy().into_owned(),
+            content,
+            version: String::new(),
+            bom: bom.unwrap_or(false),
+            crlf: crlf.unwrap_or(false),
+        },
+        encoding,
+    )?;
+    storage::atomic_write(&p, &bytes, None, &recovery(&app)?)?;
+    let file = text_encoding::read(&state.allow_file(&p)?, encoding)?;
     state.persist(&app)?;
     Ok(Some(file))
 }
@@ -536,25 +649,34 @@ async fn open_external(url: String) -> Result<(), String> {
     Ok(())
 }
 #[tauri::command]
-async fn initial_documents(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<Vec<DiskFile>, String> {
-    let mut result = vec![];
-    for arg in std::env::args().skip(1) {
-        let p = Path::new(&arg);
-        if p.is_file() && is_markdown(p) {
-            result.push(storage::read(&state.allow_file(p)?)?);
+async fn initial_documents(app: tauri::AppHandle) -> Result<Vec<DiskFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut result = vec![];
+        let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
+        for p in document_windows::document_arguments(&std::env::args().collect::<Vec<_>>(), &cwd) {
+            if p.is_file() && is_markdown(&p) {
+                let p = state.allow_file(&p)?;
+                state.persist(&app)?;
+                result.push(storage::read(&p)?);
+            }
         }
-    }
-    state.persist(&app)?;
-    Ok(result)
+        state.persist(&app)?;
+        Ok(result)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[derive(Clone, Serialize)]
 struct WorkspaceChange {
     paths: Vec<String>,
 }
-fn start_watcher(app: &tauri::AppHandle, state: &AppState, path: &Path) -> Result<(), String> {
+fn start_watcher(
+    app: &tauri::AppHandle,
+    state: &AppState,
+    path: &Path,
+    recursive: bool,
+) -> Result<(), String> {
     let app = app.clone();
     let root = path.to_path_buf();
     let mut watcher =
@@ -583,7 +705,14 @@ fn start_watcher(app: &tauri::AppHandle, state: &AppState, path: &Path) -> Resul
         })
         .map_err(|e| format!("无法监听文件夹：{e}"))?;
     watcher
-        .watch(path, notify::RecursiveMode::Recursive)
+        .watch(
+            path,
+            if recursive {
+                notify::RecursiveMode::Recursive
+            } else {
+                notify::RecursiveMode::NonRecursive
+            },
+        )
         .map_err(|e| e.to_string())?;
     *state.watcher.lock().map_err(|e| e.to_string())? = Some(watcher);
     Ok(())
@@ -593,9 +722,10 @@ async fn watch_folder(
     path: String,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    recursive: Option<bool>,
 ) -> Result<(), String> {
     let path = state.check_directory(Path::new(&path))?;
-    start_watcher(&app, &state, &path)
+    start_watcher(&app, &state, &path, recursive.unwrap_or(false))
 }
 #[tauri::command]
 async fn save_export(
@@ -651,18 +781,16 @@ fn accept_documents(app: &tauri::AppHandle, paths: impl IntoIterator<Item = Path
     }
 }
 fn main() {
+    let mut context = tauri::generate_context!();
+    if let Err(error) = document_windows::configure(&mut context) {
+        eprintln!("{error}");
+        return;
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             accept_documents(
                 app,
-                args.into_iter().skip(1).map(|arg| {
-                    let path = PathBuf::from(arg);
-                    if path.is_absolute() {
-                        path
-                    } else {
-                        Path::new(&cwd).join(path)
-                    }
-                }),
+                document_windows::document_arguments(&args, Path::new(&cwd)),
             );
         }))
         .on_window_event(|window, event| {
@@ -673,6 +801,9 @@ fn main() {
         .manage(AppState::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            storage::configure_lock_directory(
+                document_windows::shared_directory(app.handle())?.join("document-locks"),
+            );
             let path = app.path().app_local_data_dir()?.join("access.json");
             if let Ok(data) = fs::read(&path) {
                 if let Ok(access) = serde_json::from_slice::<Access>(&data) {
@@ -683,12 +814,25 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             choose_files,
+            document_windows::new_document_window,
+            document_windows::reopen_document_window,
+            document_windows::list_document_windows,
+            document_windows::window_context,
             imports::choose_import_files,
             native_settings::default_markdown_status,
             native_settings::request_markdown_default,
             choose_folder,
             list_folder,
+            list_folder_shallow,
             parent_folder,
+            parent_folder_shallow,
+            text_encoding::read_with_encoding,
+            text_encoding::document_stamp,
+            portable_export::prepare_portable,
+            portable_export::save_portable,
+            portable_export::discard_portable,
+            portable_export::authorize_asset_folder,
+            text_encoding::choose_file_for_encoding,
             read_document,
             save_document,
             save_as,
@@ -731,13 +875,39 @@ fn main() {
             open_external,
             initial_documents
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("无法启动 Markwrite");
 }
 
 #[cfg(test)]
 mod native_tests {
     use super::*;
+    #[test]
+    fn shallow_tree_never_reads_nested_directories() {
+        let base = parent_fixture("shallow");
+        let mut deep = base.join("notes/child");
+        for _ in 0..40 {
+            deep = deep.join("next");
+        }
+        fs::create_dir_all(&deep).unwrap();
+        fs::write(deep.join("too-deep.md"), "nested").unwrap();
+        fs::write(base.join("notes/file.txt"), "excluded").unwrap();
+        let entries = scan_shallow(&base.join("notes")).unwrap();
+        assert_eq!(entries.len(), 3);
+        assert!(entries.iter().all(|entry| entry.children.is_none()));
+        assert!(entries[0].directory);
+        assert!(scan(&base.join("notes"), 0, &mut 0).is_err());
+        let state = AppState::default();
+        let document = base.join("notes/文档.MD");
+        state.allow_file(&document).unwrap();
+        let folder = state
+            .parent_folder_mode(&document, &base.join("settings"), true)
+            .unwrap();
+        assert_eq!(folder.entries.len(), 3);
+        assert!(state.check_directory(&base.join("notes")).is_ok());
+        assert!(state.check(&base.join("private.md")).is_err());
+        fs::remove_dir_all(base).unwrap();
+    }
     fn parent_fixture(name: &str) -> PathBuf {
         let base = std::env::temp_dir().join(format!(
             "markwrite-parent-{name}-{}-{}",

@@ -9,7 +9,7 @@ const boundary = vi.hoisted(() => ({
   openFiles: vi.fn(),
   openFolder: vi.fn(),
   parentFolder: vi.fn(),
-  listFolder: vi.fn(),
+  listFolderShallow: vi.fn(),
   readFile: vi.fn(),
 }));
 vi.mock('../src/lib/platform', async (original) => ({
@@ -19,7 +19,8 @@ vi.mock('../src/lib/platform', async (original) => ({
 }));
 // App owns navigation and request ordering; editor rendering is tested separately.
 // Keep the actual menu, FileNavigator, settings, and recovery code in this suite.
-vi.mock('../src/editor/Editor', () => ({
+vi.mock('../src/editor/lazyEditor', async (original) => ({
+  ...(await original<typeof import('../src/editor/lazyEditor')>()),
   default: ({ content, mode }: { content: string; mode: Mode }) =>
     createElement('pre', { 'data-testid': 'document-buffer', 'data-mode': mode }, content),
   releaseEditor: vi.fn(),
@@ -63,7 +64,7 @@ beforeEach(() => {
   boundary.parentFolder.mockImplementation(async (path: string) =>
     folder(path.slice(0, path.lastIndexOf('/'))),
   );
-  boundary.listFolder.mockResolvedValue([]);
+  boundary.listFolderShallow.mockResolvedValue([]);
   boundary.readFile.mockImplementation(async (path: string) => disk(path));
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -175,9 +176,10 @@ describe('file navigation at the application boundary', () => {
     await click(button('current.md', '.tabs .tab>button:first-child'));
     expect(boundary.parentFolder).toHaveBeenLastCalledWith('/first/current.md');
     expect(visibleRoot()).toBe('/first');
-    expect(host.querySelector('[data-testid="document-buffer"]')?.textContent).toBe(
-      '# /first/current.md',
-    );
+    expect(
+      host.querySelector('[data-testid="document-buffer"], [data-testid="reading-buffer"]')
+        ?.textContent,
+    ).toBe('# /first/current.md');
   });
 
   it('switches modes and enters and exits focus from the floating controls without changing the document', async () => {
@@ -188,7 +190,10 @@ describe('file navigation at the application boundary', () => {
     expect(host.querySelector('[data-testid="document-buffer"]')?.getAttribute('data-mode')).toBe(
       'source',
     );
-    expect(host.querySelector('[data-testid="document-buffer"]')?.textContent).toBe(original);
+    expect(
+      host.querySelector('[data-testid="document-buffer"], [data-testid="reading-buffer"]')
+        ?.textContent,
+    ).toBe(original);
     await click(button('进入专注模式'));
     expect(host.querySelector('.compact-header')).toBeNull();
     expect(host.querySelector('.statusbar')).toBeNull();
@@ -222,9 +227,9 @@ describe('file navigation at the application boundary', () => {
     expect(boundary.parentFolder).toHaveBeenCalledTimes(followed);
     expect(visibleRoot()).toBe('/project');
     expect(treeFiles().map((element) => element.title)).toContain('/project/project.md');
-    boundary.listFolder.mockResolvedValueOnce(folder('/project', ['refreshed.md']).entries);
+    boundary.listFolderShallow.mockResolvedValueOnce(folder('/project', ['refreshed.md']).entries);
     await click(button('刷新文件树'));
-    expect(boundary.listFolder).toHaveBeenCalledWith('/project');
+    expect(boundary.listFolderShallow).toHaveBeenCalledWith('/project');
     expect(treeFiles().map((element) => element.title)).toContain('/project/refreshed.md');
     await click(button('跟随当前文件'));
     expect(boundary.parentFolder).toHaveBeenLastCalledWith('/second/next.md');
@@ -279,9 +284,9 @@ describe('file navigation at the application boundary', () => {
   it('discards a pinned-folder refresh that completes after another folder was selected', async () => {
     await openWorkspace(folder('/first-project', ['first.md']));
     const pending = deferred<FileEntry[]>();
-    boundary.listFolder.mockReturnValueOnce(pending.promise);
+    boundary.listFolderShallow.mockReturnValueOnce(pending.promise);
     await click(button('刷新文件树'));
-    expect(boundary.listFolder).toHaveBeenCalledWith('/first-project');
+    expect(boundary.listFolderShallow).toHaveBeenCalledWith('/first-project');
     await openWorkspace(folder('/second-project', ['second.md']));
     await act(async () => pending.resolve(folder('/first-project', ['stale.md']).entries));
     expect(visibleRoot()).toBe('/second-project');
@@ -297,7 +302,7 @@ describe('file navigation at the application boundary', () => {
     await openDocument('/notes/current.md');
     await openWorkspace(folder('/project', ['project.md']));
     const pending = deferred<FileEntry[]>();
-    boundary.listFolder.mockReturnValueOnce(pending.promise);
+    boundary.listFolderShallow.mockReturnValueOnce(pending.promise);
     await click(button('刷新文件树'));
     await click(button('跟随当前文件'));
     expect(visibleRoot()).toBe('/notes');
@@ -361,14 +366,16 @@ describe('file navigation at the application boundary', () => {
       '/project/b.md',
     ]);
     await act(async () => second.resolve(disk('/project/b.md')));
-    expect(host.querySelector('[data-testid="document-buffer"]')?.textContent).toBe(
-      '# /project/b.md',
-    );
+    expect(
+      host.querySelector('[data-testid="document-buffer"], [data-testid="reading-buffer"]')
+        ?.textContent,
+    ).toBe('# /project/b.md');
     const latest = snapshot();
     await act(async () => first.resolve(disk('/project/a.md')));
-    expect(host.querySelector('[data-testid="document-buffer"]')?.textContent).toBe(
-      '# /project/b.md',
-    );
+    expect(
+      host.querySelector('[data-testid="document-buffer"], [data-testid="reading-buffer"]')
+        ?.textContent,
+    ).toBe('# /project/b.md');
     expect(document.title).toBe('b.md — Markwrite');
     expect(snapshot()).toMatchObject({
       active: latest.active,
@@ -382,14 +389,19 @@ describe('file navigation at the application boundary', () => {
   it('keeps an existing draft active when a previously clicked file finishes loading', async () => {
     await openWorkspace(folder('/project', ['a.md']));
     const before = snapshot();
-    const draftContent = host.querySelector('[data-testid="document-buffer"]')?.textContent;
+    const draftContent = host.querySelector(
+      '[data-testid="document-buffer"], [data-testid="reading-buffer"]',
+    )?.textContent;
     const pending = deferred<DiskFile>();
     boundary.readFile.mockReturnValueOnce(pending.promise);
     await click(treeFiles().find((element) => element.title === '/project/a.md')!);
     const draft = host.querySelector<HTMLButtonElement>('.file-navigator .document-row')!;
     await click(draft);
     await act(async () => pending.resolve(disk('/project/a.md')));
-    expect(host.querySelector('[data-testid="document-buffer"]')?.textContent).toBe(draftContent);
+    expect(
+      host.querySelector('[data-testid="document-buffer"], [data-testid="reading-buffer"]')
+        ?.textContent,
+    ).toBe(draftContent);
     expect(snapshot()).toMatchObject({
       active: before.active,
       root: '/project',

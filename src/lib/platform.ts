@@ -1,5 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import type { DiskFile, FileEntry, SearchHit } from './types';
+import type { DiskFile, FileEntry, SearchHit, TextEncoding } from './types';
 import { normalizeContent, serializeContent } from './markdown';
 export const desktop = isTauri();
 // Browser handles are intentionally session-scoped. Restored buffers remain drafts until reopened.
@@ -74,14 +74,14 @@ export async function openFiles(): Promise<DiskFile[]> {
     input.click();
   });
 }
-export async function readFile(path: string): Promise<DiskFile> {
-  if (desktop) return invoke('read_document', { path });
+export async function readFile(path: string, encoding?: TextEncoding): Promise<DiskFile> {
+  if (desktop) return invoke('read_document', { path, encoding });
   const h = handles.get(path);
   if (!h) throw new Error('请重新打开这个文件，恢复与原文件的连接。当前草稿已保留。');
   return fromHandle(path, h);
 }
 export async function writeFile(file: DiskFile): Promise<DiskFile> {
-  if (desktop) return invoke('save_document', { file });
+  if (desktop) return invoke('save_document', { file, encoding: file.encoding });
   const handle = handles.get(file.path);
   if (!handle) throw new Error('请使用“另存为”选择保存位置。');
   const disk = await fromHandle(file.path, handle);
@@ -96,8 +96,12 @@ export async function writeFile(file: DiskFile): Promise<DiskFile> {
   }
   return fromHandle(file.path, handle);
 }
-export async function saveAs(content: string, name: string): Promise<DiskFile | null> {
-  if (desktop) return invoke('save_as', { content, name });
+export async function saveAs(
+  content: string,
+  name: string,
+  options?: Pick<DiskFile, 'encoding' | 'bom' | 'crlf'>,
+): Promise<DiskFile | null> {
+  if (desktop) return invoke('save_as', { content, name, ...options });
   if (!pickers.showSaveFilePicker) {
     download(content, name, 'text/markdown');
     return null;
@@ -121,6 +125,7 @@ async function scan(
   handle: FileSystemDirectoryHandle,
   prefix: string,
   depth = 0,
+  recursive = true,
 ): Promise<FileEntry[]> {
   const entries: FileEntry[] = [];
   if (depth > 12) return entries;
@@ -135,7 +140,9 @@ async function scan(
         name,
         path,
         directory: true,
-        children: await scan(item as FileSystemDirectoryHandle, path, depth + 1),
+        children: recursive
+          ? await scan(item as FileSystemDirectoryHandle, path, depth + 1)
+          : undefined,
       });
     } else {
       handles.set(path, item as FileSystemFileHandle);
@@ -147,12 +154,12 @@ async function scan(
   );
 }
 export async function openFolder(): Promise<{ path: string; entries: FileEntry[] } | null> {
-  if (desktop) return invoke('choose_folder');
+  if (desktop) return invoke('choose_folder', { shallow: true });
   if (!pickers.showDirectoryPicker)
     throw new Error('当前浏览器不支持打开文件夹，请使用桌面版或 Chrome。');
-  const h = await pickers.showDirectoryPicker({ mode: 'readwrite' });
+  const h = await pickers.showDirectoryPicker({ mode: 'read' });
   folders.set(h.name, h);
-  return { path: h.name, entries: await scan(h, h.name) };
+  return { path: h.name, entries: await scan(h, h.name, 0, false) };
 }
 export async function listFolder(path: string): Promise<FileEntry[]> {
   if (desktop) return invoke('list_folder', { path });
@@ -160,11 +167,17 @@ export async function listFolder(path: string): Promise<FileEntry[]> {
   if (!h) throw new Error('请重新打开文件夹。');
   return scan(h, path);
 }
+export async function listFolderShallow(path: string): Promise<FileEntry[]> {
+  if (desktop) return invoke('list_folder_shallow', { path });
+  const h = folders.get(path);
+  if (!h) throw new Error('请重新打开文件夹。 / Please reopen this folder.');
+  return scan(h, path, 0, false);
+}
 /** Reveal exactly the parent of an already opened document. No picker is opened. */
 export async function parentFolder(
   documentPath: string,
 ): Promise<{ path: string; entries: FileEntry[] } | null> {
-  if (desktop) return invoke('parent_folder', { documentPath });
+  if (desktop) return invoke('parent_folder_shallow', { documentPath });
   const document = handles.get(documentPath);
   if (!document) return null;
   // Browser file handles cannot disclose their parent. Reuse only directory
@@ -173,7 +186,7 @@ export async function parentFolder(
     const parentPath = path.slice(0, path.lastIndexOf('/'));
     const parent = folders.get(parentPath);
     if (parent && (file === document || (await file.isSameEntry(document))))
-      return { path: parentPath, entries: await scan(parent, parentPath) };
+      return { path: parentPath, entries: await scan(parent, parentPath, 0, false) };
   }
   return null;
 }

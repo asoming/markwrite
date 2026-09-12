@@ -365,10 +365,12 @@ fn update_access(state: &AppState, from: &Path, to: &Path, data_dir: &Path) -> R
 
 fn execute(
     state: &AppState,
-    mut plan: Plan,
+    plan: Plan,
     history_root: &Path,
     data_dir: &Path,
 ) -> Result<ReferenceResult, String> {
+    #[cfg(test)]
+    let mut plan = plan;
     let journal = journal(&plan, history_root)?;
     let mut attempted = 0;
     let mut moved = false;

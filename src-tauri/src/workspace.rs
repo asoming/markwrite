@@ -196,9 +196,10 @@ pub async fn history_read(
     id: String,
     app: tauri::AppHandle,
     state: State<'_, AppState>,
+    encoding: Option<crate::text_encoding::TextEncoding>,
 ) -> Result<storage::DiskFile, String> {
     let path = state.check(Path::new(&path))?;
-    history::read(&recovery(&app)?, &path, &id)
+    history::read_with_encoding(&recovery(&app)?, &path, &id, encoding)
 }
 #[derive(Serialize)]
 pub struct TrashFailure {

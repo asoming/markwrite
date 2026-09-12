@@ -1,4 +1,17 @@
 const english: Record<string, string> = {
+  '文档与附件打包 ZIP…': 'Package document and attachments as ZIP…',
+  新建独立窗口: 'New independent window',
+  当前文件在独立窗口打开: 'Open this file in an independent window',
+  '恢复独立窗口…': 'Restore independent windows…',
+  '选择编码重新打开…': 'Reopen with encoding…',
+  '复制到公众号 / 飞书…': 'Copy for WeChat / Feishu…',
+  后退: 'Back',
+  前进: 'Forward',
+  同目录上一篇: 'Previous file in folder',
+  同目录下一篇: 'Next file in folder',
+  '添加 / 移除段落书签': 'Toggle paragraph bookmark',
+  '段落书签…': 'Paragraph bookmarks…',
+
   '移动到…': 'Move to…',
   '打印…': 'Print…',
   '导入文件…': 'Import files…',

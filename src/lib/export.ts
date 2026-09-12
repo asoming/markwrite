@@ -1,3 +1,9 @@
+import {
+  browserInlineMetrics,
+  inlineFormulaLines,
+  type InlineMetrics,
+  type InlineParagraphStyle,
+} from './exportInline';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import type { Content, ContentText, TDocumentDefinitions } from 'pdfmake/interfaces';
 import type { ParagraphChild, FileChild } from 'docx';
@@ -76,6 +82,8 @@ type TextStyle = {
   bold?: boolean;
   italic?: boolean;
   strike?: boolean;
+  superscript?: boolean;
+  subscript?: boolean;
   code?: boolean;
   link?: string;
 };
@@ -87,6 +95,8 @@ export type ExportImage = {
   width: number;
   height: number;
   alt: string;
+  inline?: boolean;
+  baseline?: number;
 };
 export type ExportBlock =
   | {
@@ -246,7 +256,12 @@ async function inline(nodes: Iterable<Node>, style: TextStyle = {}): Promise<Exp
         decodeURIComponent(node.getAttribute('data-tex')!),
         node.getAttribute('data-display') === 'true',
       );
-      result.push(svgImage(template.content.querySelector('svg')!, '公式'));
+      const svg = template.content.querySelector('svg')!;
+      result.push({
+        ...svgImage(svg, '公式'),
+        inline: node.getAttribute('data-display') !== 'true',
+        baseline: Number(svg.getAttribute('data-baseline')) || undefined,
+      });
     } else if (node.matches('.katex')) {
       throw new Error('公式缺少原始表达式，无法完整导出，请重新打开导出窗口。');
     } else if (node instanceof HTMLImageElement) {
@@ -255,6 +270,13 @@ async function inline(nodes: Iterable<Node>, style: TextStyle = {}): Promise<Exp
       result.push(svgImage(node, '图表'));
     } else if (node.matches('br')) {
       result.push({ kind: 'text', text: '\n', ...style });
+    } else if (node.matches('.footnote-backref')) {
+      result.push({
+        kind: 'text',
+        text: '[back]',
+        ...style,
+        link: node.getAttribute('href') || undefined,
+      });
     } else if (node.matches('.task-check')) {
       result.push({
         kind: 'text',
@@ -266,6 +288,8 @@ async function inline(nodes: Iterable<Node>, style: TextStyle = {}): Promise<Exp
       if (node.matches('strong,b')) next.bold = true;
       if (node.matches('em,i')) next.italic = true;
       if (node.matches('s,del')) next.strike = true;
+      if (node.matches('sup')) next.superscript = true;
+      if (node.matches('sub')) next.subscript = true;
       if (node.matches('code')) next.code = true;
       if (node.matches('a')) {
         const href = node.getAttribute('href') || '';
@@ -374,12 +398,36 @@ function pdfText(run: Extract<ExportRun, { kind: 'text' }>): ContentText {
     bold: run.bold,
     italics: run.italic,
     decoration: run.strike ? 'lineThrough' : undefined,
+    sup: run.superscript,
+    sub: run.subscript,
     background: run.code ? '#f2f3f6' : undefined,
     color: run.link ? '#4361d9' : undefined,
     link: run.link?.startsWith('#') ? undefined : run.link,
   };
 }
-function pdfRuns(runs: ExportRun[], maxWidth: number, maxHeight: number): Content[] {
+function pdfRuns(
+  runs: ExportRun[],
+  maxWidth: number,
+  maxHeight: number,
+  style: InlineParagraphStyle,
+): Content[] {
+  if (runs.some((run) => run.kind === 'image' && run.inline && run.svg)) {
+    const result: Content[] = [];
+    let inline: ExportRun[] = [];
+    const flush = () => {
+      if (inline.length) result.push(...inlineFormulaLines(inline, maxWidth, { ...style, maxHeight }));
+      inline = [];
+    };
+    for (const run of runs) {
+      if (run.kind === 'text' || (run.inline && run.svg)) inline.push(run);
+      else {
+        flush();
+        result.push(...pdfRuns([run], maxWidth, maxHeight, style));
+      }
+    }
+    flush();
+    return result;
+  }
   const content: Content[] = [];
   let text: ContentText[] = [];
   const flush = () => {
@@ -407,6 +455,7 @@ export function pdfDefinition(
   blocks: ExportBlock[],
   title: string,
   options: ExportOptions = {},
+  inlineMetrics?: InlineMetrics,
 ): TDocumentDefinitions {
   const missing = new Set<string>();
   const checked = new Set<number>();
@@ -474,7 +523,11 @@ export function pdfDefinition(
           widths: block.rows[0].map(() => '*'),
           body: block.rows.map((row, ri) =>
             row.map((cell) => ({
-              stack: pdfRuns(cell, width / row.length - 18, maxImageHeight - 20),
+              stack: pdfRuns(cell, width / row.length - 18, maxImageHeight - 20, {
+                size: p.size,
+                lineHeight: p.lineHeight,
+                metrics: inlineMetrics,
+              }),
               fillColor: ri === 0 && block.header ? '#f3f4f7' : undefined,
               margin: [4, 5, 4, 5],
             })),
@@ -483,7 +536,17 @@ export function pdfDefinition(
         layout: 'lightHorizontalLines',
         margin: [0, 4, 0, p.gap],
       };
-    const paragraph = pdfRuns(block.runs, width - (block.indent || 0) * 14, maxImageHeight);
+    const paragraph = pdfRuns(block.runs, width - (block.indent || 0) * 14, maxImageHeight, {
+      size: block.heading
+        ? [24, 19, 16, 14, 12, 11][block.heading - 1]
+        : block.code
+          ? p.size - 1
+          : p.size,
+      bold: Boolean(block.heading),
+      lineHeight: block.heading ? 1.2 : p.lineHeight,
+      color: block.quote ? '#657080' : undefined,
+      metrics: inlineMetrics,
+    });
     if (options.toc && plainHeading(block)) {
       const text = paragraph.find((item) => typeof item === 'object' && 'text' in item);
       if (text)
@@ -601,6 +664,15 @@ export async function buildPdf(
 ): Promise<Uint8Array> {
   const { default: pdfMake } = await import('pdfmake/build/pdfmake');
   const vfs = fontData || (await loadFonts());
+  const hasInlineMath = blocks.some((block) =>
+    block.kind === 'paragraph'
+      ? block.runs.some((run) => run.kind === 'image' && run.inline)
+      : block.kind === 'table' &&
+        block.rows.some((row) =>
+          row.some((cell) => cell.some((run) => run.kind === 'image' && run.inline)),
+        ),
+  );
+  const metrics = hasInlineMath ? await browserInlineMetrics(vfs) : undefined;
   const family = {
     normal: 'NotoSansCJKsc-Regular.otf',
     bold: 'NotoSansCJKsc-Bold.otf',
@@ -612,7 +684,7 @@ export async function buildPdf(
       // Every font and image is local, so the synchronous stream constructor
       // surfaces layout failures here instead of losing an async callback error.
       const stream = pdfMake
-        .createPdf(pdfDefinition(blocks, title, options), undefined, { Noto: family }, vfs)
+        .createPdf(pdfDefinition(blocks, title, options, metrics), undefined, { Noto: family }, vfs)
         .getStream();
       const chunks: Uint8Array[] = [];
       stream.on('data', (chunk: Uint8Array) => chunks.push(chunk));
@@ -684,6 +756,8 @@ export async function buildDocx(
             bold: run.bold,
             italics: run.italic,
             strike: run.strike,
+            superScript: run.superscript,
+            subScript: run.subscript,
             font: run.code ? { ascii: 'Consolas', eastAsia: 'Noto Sans CJK SC' } : undefined,
             color: run.link ? '4361D9' : undefined,
           });
@@ -946,4 +1020,25 @@ export async function saveExportBytes(
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
   return true;
+}
+
+/** Convert an already-hydrated, sanitized local graphic without any upload or fetch. */
+export async function graphicPng(
+  svg: SVGElement,
+): Promise<{ source: string; width: number; height: number }> {
+  if (
+    [...svg.querySelectorAll('[href],[xlink\\:href]')].some((node) => {
+      const href = node.getAttribute('href') || node.getAttribute('xlink:href') || '';
+      return href && !href.startsWith('#');
+    })
+  )
+    throw new Error(
+      '图形含有外部资源，离线复制已停止。 · The graphic references external resources.',
+    );
+  const image = svgImage(svg, '图形 · Graphic');
+  return {
+    source: await rasterize(image.svg!, image.width, image.height),
+    width: image.width,
+    height: image.height,
+  };
 }

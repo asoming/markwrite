@@ -31,6 +31,7 @@ vi.mock('../src/lib/platform', async (original) => ({
   openFiles: boundary.openFiles,
   parentFolder: boundary.parentFolder,
   listFolder: boundary.listFolder,
+  listFolderShallow: boundary.listFolder,
   readFile: boundary.readFile,
   writeFile: boundary.writeFile,
 }));
@@ -192,6 +193,9 @@ async function menuAction(label: string, menu = '文件') {
 async function openDocument(file: DiskFile) {
   boundary.openFiles.mockResolvedValueOnce([{ ...file }]);
   await menuAction('打开文档…');
+  await act(async () => {
+    await import('../src/editor/editorRuntime');
+  });
 }
 async function switchDocument(name: string) {
   await click(button(name, '.tabs .tab>button:first-child'));
@@ -228,6 +232,9 @@ async function rename(name: string) {
     input.dispatchEvent(new Event('input', { bubbles: true }));
   });
   await click(button('确定', '.modal-footer button'));
+  await act(async () => {
+    await import('../src/components/RenameReferencesDialog');
+  });
   expect(host.querySelector('.reference-dialog')).not.toBeNull();
 }
 function selection(path: string) {

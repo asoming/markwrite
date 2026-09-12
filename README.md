@@ -1,6 +1,6 @@
 # [下载 / Download Markwrite — Linux & Windows](https://github.com/asoming/markwrite/releases)
 
-**当前版本 / Current release: 0.4.0（预览版 / Preview）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
+**当前版本 / Current release: 0.5.0（预览版 / Preview）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
 
 Choose the Linux `.deb`, Linux portable archive, or Windows x64 installer from the release page above. Features, installation, and conversion limits are described below.
 
@@ -22,7 +22,7 @@ The sidebar displays the bilingual brand; the application, installer, and deskto
 
 1. **打开或新建。** 在「文件」选择「打开文档…」「打开文件夹…」或「新建文档」。打开文档默认进入阅读模式；要修改内容，将鼠标移到正文右下角、状态栏上方，在浮动工具条选择「编辑」，或选择「视图 → 即时渲染编辑」。
 2. **排版。** 选中文字，在「格式」选择粗体、斜体或删除线；把光标放在某段，在「段落」选择标题、正文、引用或列表。
-3. **保存。** 按 `Ctrl+S`。新草稿先选择保存位置和 `.md` 文件名；已有路径的文档默认自动保存。底部状态栏会显示保存结果，失败或冲突会提供处理入口。
+3. **保存。** 按 `Ctrl+S`。新草稿先选择保存位置和 `.md` 文件名；明确进入编辑后，已有路径的文档默认自动保存；阅读模式保留草稿而不写入原文件。底部状态栏会显示保存结果，失败或冲突会提供处理入口。
 4. **输出。** 在「文件」选择导出 HTML、PDF 或 Word 文档，选择模板后点击「选择位置并导出」。导出读取当前编辑内容，无需先覆盖原文件。
 5. **设置。** 按 `Ctrl+,`，或选择「主题 → 排版与主题设置…」。左侧选择分类，右侧修改选项；设置保存在本机。
 
@@ -30,7 +30,7 @@ The sidebar displays the bilingual brand; the application, installer, and deskto
 
 1. **Open or create a document** from **File**. Documents open in reading mode by default. Hover above the status bar at the bottom right to reveal the mode controls, or use **View** to switch to editing or Markdown source.
 2. **Format your text** with **Format**, **Paragraph**, and **Insert**: headings, emphasis, lists, tables, links, images, math, and diagrams are available through menus.
-3. **Save with `Ctrl+S`**. Choose a location for a new draft; documents with a file path autosave by default. Check the status bar for save results and conflict prompts.
+3. **Save with `Ctrl+S`**. Choose a location for a new draft; autosave applies to documents you have explicitly opened for editing. Reading mode retains drafts without writing to the source. Check the status bar for save results and conflict prompts.
 4. **Import or export** from **File**. Import TXT, HTML, or DOCX into a new Markdown draft; export the current document to HTML, PDF, or DOCX without first overwriting the source file.
 5. **Open Settings with `Ctrl+,`**. Choose **General** to change the interface language and **Appearance** to adjust the theme and floating controls. Preferences stay on your computer.
 
@@ -50,6 +50,36 @@ The sidebar displays the bilingual brand; the application, installer, and deskto
 The native single-file limit is 32 MiB, and live Markdown rendering is reduced for very large documents. There is no real-time collaboration, mobile app, or cloud synchronization. The browser preview has fewer filesystem capabilities than the desktop application.
 
 Git integration requires a local Git installation. AI assistance, image upload, and HTML publishing are optional connections to services you configure; no cloud account, hosting, or API credits are included.
+
+## 0.5：原生文件与轻量阅读 / Native files and focused reading
+
+- **直接读原文件。** 双击磁盘任意位置的 `.md`，或用「打开文档」选择文件。无需导入库、注册或复制到工作区；父目录文件树按需逐层读取。编辑器、图谱、标签与反向链接不会参与普通阅读的启动。指定文件先显示，旧会话随后恢复，未保存草稿单独保留。
+- **真正的阅读模式。** 阅读时不挂载编辑器，不改任务复选框，不自动保存恢复出的未保存内容。返回阅读会暂停该文档自动保存，文字与撤销记录保留；需要修改时一键进入编辑或源码。保存前仍检查磁盘版本，独立进程之间也会检测冲突。
+- **阅读查找与导航。** `Ctrl+F` 在阅读页高亮、计数；`F3` / `Shift+F3` 前后查找。记录每个本地文件的阅读位置，可收藏段落。`Alt+←/→` 后退、前进，`Alt+↑/↓` 打开同目录上一篇、下一篇。入口也在「视图」。
+- **统一 Markdown 渲染。** CommonMark 0.31.2 基础模式用官方全部 **652 个示例逐字验证**。默认叠加明确的 GFM 表格、任务列表、删除线、脚注、KaTeX 与 Mermaid；阅读和输出共享解析器。Wiki 链接和自定义行内标记默认关闭，可在「设置 → 编辑器」单独启用兼容，不改源文件。
+- **独立进程窗口。** `Ctrl+Shift+N` 新建独立窗口；「文件 → 当前文件在独立窗口打开」用于并排查看。每个窗口有独立的进程、恢复目录和 WebView 数据；一个窗口被终止不需要退出其他窗口。「恢复独立窗口」可找回已保存的窗口草稿。打开当前文件的磁盘版本不会搬走当前未保存的缓冲区。
+- **中文路径、编码与附件。** 图片按原相对路径读取，支持中文、空格及授权范围内的 `../`。保存不会迁移既有图片。读不到附件时可以选择其所在文件夹授权。「文件 → 选择编码重新打开」可只读预览 UTF-8、UTF-16 LE/BE、GBK、GB18030；采用后按所选编码保存，无法编码的字符会阻止保存。
+- **长文按需渲染。** 文档在 Worker 中解析，可见区域以外的块卸载，图片和 Mermaid 在接近视口时加载。引用定义、脚注、代码围栏与 HTML 容器保持完整；表格和列表沿完整行/条目分批。搜索与定位覆盖整篇，不能把未挂载段落当作不存在。
+- **便携与复制。** 「文档与附件打包 ZIP」只打包当前文章和所引用本地文件，预览缺失、远程或未授权资源；只改包内引用，原文件与附件不变。「复制到公众号 / 飞书」生成内联样式的 HTML 和纯文本，公式与流程图在本机转为 PNG，无上传。
+
+**English**
+
+- Open original files anywhere on disk, with no vault, import, relocation or account. The parent tree loads one level at a time. Reading does not load the editor or build a workspace index. Explicitly requested files display before session restoration; recovered drafts remain available separately.
+- Reading does not edit task items or autosave recovered changes. Switching back to reading pauses that document's autosave while preserving the draft and undo history. Deliberate editing and explicit close/save choices control writes, with disk-version checks across processes.
+- Find, count and navigate matches in reading mode with `Ctrl+F`, `F3` and `Shift+F3`. Keep paragraph bookmarks and per-file reading positions; use `Alt+Left/Right` for history and `Alt+Up/Down` for adjacent files in the same folder.
+- All **652 official CommonMark 0.31.2 examples** verify the base parser byte for byte. Explicit GFM tables, tasks, strikethrough, footnotes, KaTeX and Mermaid are enabled for documents. Wiki links and custom inline markers require the optional legacy-compatibility setting. Original Markdown remains unchanged.
+- `Ctrl+Shift+N` creates an independent process window. Open the current disk file in another window or restore a previous independent window from **File**. Recovery and WebView data are isolated; source-file writes still use cross-process locks and version checks.
+- Existing images load in place, including Chinese names, spaces and authorized parent-relative paths. Saving does not migrate attachments. Preview UTF-8, UTF-16 LE/BE, GBK or GB18030 without writing; adopted encodings are retained on save, with fatal conversion errors instead of replacement characters.
+- Worker parsing and a windowed block view keep long documents out of the DOM until needed. Images and diagrams are lazy; references, footnotes, fenced code and HTML containers remain intact.
+- Export one document and referenced local attachments as ZIP. Review missing, remote and denied assets before exporting; only the copy inside the archive is rewritten. WeChat/Feishu clipboard presets include HTML and plain text with local image conversion and no uploads.
+
+**输出边界 / Output limits:** 公众号、飞书等目标编辑器可能过滤内嵌图片或部分样式；这里验证的是离线生成与剪贴板格式，并未代替目标平台粘贴测试。PDF 使用随包字体，脚注回链显示为 `[back]`，行内公式与相邻可选择文字保持同行；复杂大公式可能需要独立段落。ZIP 默认不包含未引用文件、整库、应用配置或历史；最多 2,000 处引用、500 个去重附件、单附件 32MiB、总附件 128MiB。网络资源不自动下载，跳过项列入包内清单。
+
+Destination editors may strip data images or some inline styles; offline clipboard verification does not guarantee identical rendering after a platform paste. PDF uses bundled fonts and `[back]` for footnote return links; inline math stays with selectable neighboring text, while very large formulas may need a display block. ZIP limits are 2,000 references, 500 unique assets, 32MiB per asset and 128MiB total attachments; unrelated files, workspace settings and history are excluded. Remote resources are never downloaded automatically, and skipped entries are recorded in the manifest.
+
+工作区批量索引与引用改写目前要求 UTF-8；其他编码可单篇阅读、编辑与保存，批量操作会拒绝无法安全解码的文件。ZIP 收集当前文章直接引用的文件；引用另一个 Markdown 时，不继续递归收集那篇文章的附件。
+
+Workspace indexing and batch reference rewriting currently require UTF-8; other encodings support individual reading, editing and saving, while unsafe batch decoding is rejected. ZIP collects direct references from the current article; linked Markdown files do not trigger recursive attachment collection.
 
 ## 0.4 新增功能 / What's new in 0.4
 
@@ -85,7 +115,7 @@ The floating controls sit **at the bottom right, just above the status bar**. Ho
 
 - **固定目录：**手动使用「打开文件夹」后自动固定该目录，切换文档时文件树保持原目录。
 - **恢复跟随：**点击文件树标题旁的图钉，或在「设置 → 文件 → 跟随当前文件」切换。图钉也可将当前跟随的目录固定下来。
-- **展开目录：**子文件夹默认折叠，当前文档所在的祖先目录默认展开；筛选文件名时展开匹配路径。也可点击文件夹手动展开或收起。
+- **展开目录：**子文件夹默认折叠，当前文档所在的祖先目录默认展开；筛选作用于已读取层级，不会因此遍历整个项目。跨目录内容搜索使用「文件夹全文搜索」。也可点击文件夹手动展开或收起。
 - **草稿与最近文件：**尚未保存到磁盘的文档集中在文件树下方的「草稿」区域；「最近打开」默认折叠，点击后展开。
 
 ### 分类设置、语言与默认阅读
@@ -130,7 +160,7 @@ The floating controls sit **at the bottom right, just above the status bar**. Ho
 
 HTML 的本地相对图片在授权来源目录内尝试内嵌；无法读取的图片会提示，网络图片保留引用，仍需主动点击加载。复杂 Word 版式、文本框、浮动对象、页眉页脚、分页、合并表格和 Office 公式等可能转换有损，请查看转换提示并检查草稿。导入不是原版式复刻，也不支持旧 `.doc`、PDF 或加密 DOCX。
 
-单文件及转换后的 Markdown 上限为 32MiB；桌面文件选择器每批最多 16 个文件、合计 64MiB。DOCX 还检查压缩包结构与展开大小，损坏或不支持的文件会被拒绝。普通 Markdown 的直接打开仍以 UTF-8 为标准；UTF-16 支持属于导入转换流程。
+单文件及转换后的 Markdown 上限为 32MiB；桌面文件选择器每批最多 16 个文件、合计 64MiB。DOCX 还检查压缩包结构与展开大小，损坏或不支持的文件会被拒绝。普通 Markdown 直接打开默认使用 UTF-8；其他编码通过「选择编码重新打开」预览并采用，编码转换不会在浏览时自动发生。
 
 ### 设置默认打开方式
 
@@ -182,7 +212,7 @@ Reference updates attempt rollback on ordinary errors and retain recovery copies
 
 ### 保存和冲突
 
-已有路径的文档默认在停止输入后自动保存，也可关闭自动保存并使用 `Ctrl+S`。保存使用临时文件与原子替换；写入前检查磁盘版本，外部修改或删除会触发冲突保护。
+明确进入编辑的已有路径文档默认在停止输入后自动保存，也可关闭自动保存并使用 `Ctrl+S`。阅读模式及尚未主动进入编辑的恢复草稿不会自动保存。保存使用临时文件与原子替换；写入前检查磁盘版本，外部修改或删除会触发冲突保护。
 
 冲突时可以比较差异、采用磁盘内容、另存副本，或明确选择保存当前版本。写入失败不会显示为已保存。UTF-8 BOM 和已有 CRLF 换行保留；非 UTF-8 Markdown 不会被静默解码后覆盖。
 
@@ -194,7 +224,7 @@ Reference updates attempt rollback on ordinary errors and retain recovery copies
 
 ### 图片与附件
 
-新增图片默认存到文档旁的 `assets/`，以相对路径引用；可改为内嵌 Markdown。新草稿中的图片先内嵌，首次保存时按设置迁移，失败保留原图，冲突暂停覆盖。设置变化不自动搬动既有附件。
+新增图片默认存到文档旁的 `assets/`，以相对路径引用；可改为内嵌 Markdown。新草稿中的图片先内嵌，首次保存也保留内嵌形式。保存与设置变化不会自动搬动既有附件；只有主动插入的新图片使用当前保存策略。
 
 附件面板显示引用和未引用候选。清理前预览并确认，重新检查磁盘及当前缓冲区的引用后移到系统回收站；不会直接永久删除。网络图片默认不请求，点击加载后才访问远端。缺失图片展示路径或提示。
 
@@ -311,7 +341,7 @@ Download an installer or portable package from **[GitHub Releases](https://githu
 
 ## 从源码开发、构建和测试
 
-使用 Node.js 24、Rust stable，依赖版本由 `package-lock.json` 和 `src-tauri/Cargo.lock` 锁定。
+使用 Node.js 24、Rust stable（最低 1.88），依赖版本由 `package-lock.json` 和 `src-tauri/Cargo.lock` 锁定。
 
 ### Linux 开发环境
 
@@ -358,13 +388,21 @@ npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
 
 [Desktop builds 工作流](.github/workflows/desktop.yml) 在 Linux 和 Windows runner 运行前端测试、Rust 测试并打包。Windows 还包含 NSIS 安装、带空格安装路径的文件关联、中文文件参数、窗口出现、系统关闭消息和卸载检查。
 
-0.4.0 在本机通过 **228 项前端测试**（默认跳过 2 项可选诊断）、**61 项 Linux 原生测试**（跳过 1 项可选诊断），TypeScript、生产构建与 Rust 格式检查通过。1MiB/10MiB 编辑诊断另行运行，两项均通过。另已在隐藏的独立显示环境中，验证预先持久化的中英草稿在强制终止程序后完整恢复，保存基线和未保存状态均保留；这不代表真实键入、断电或写入中断测试。此版的 [Linux / Windows 构建与安装验收](https://github.com/asoming/markwrite/actions/runs/34603110391) 全部通过，其中 Windows 通过 **54 项原生测试**（跳过 1 项可选诊断），并通过安装、带空格路径的文件关联命令、中文参数解析、启动、正常关闭和卸载检查。
+0.5.0 本机通过 **928 项前端测试**（另有 2 项可选性能诊断默认跳过）、**77 项 Linux 原生测试**（1 个子进程辅助入口和 1 项可选性能诊断忽略独立运行），TypeScript 与 Rust 格式检查通过。覆盖 CommonMark 官方全部 652 个示例、只读恢复权限、渐进目录、编码往返、跨进程冲突与 ZIP 原文件保持。真实浏览器另验证 10,000 段全文查找、末段复制、脚注往返、书签与阅读位置、Mermaid、HTML/纯文本剪贴板与两页 PDF 输出。Linux 原生双进程实际键入草稿后，终止一个进程，另一个继续滚动并正常退出；双方重开恢复草稿，原文件 hash 与修改时间未变。最终安装包与 Windows 结果见对应版本的构建记录及发布说明。
+
+**1 秒首屏仍是优化目标，尚未作为达标承诺。** 1 MiB 文档在私有 Xephyr 软件渲染环境中，从启动进程到辅助功能接口读到正文，单次样本为 **1.320 秒**（250ms 轮询）；小文档源码编辑样本为 2.499 / 1.673 秒。该测量不是普通桌面硬件上的重复冷启动基准；单文件上限与巨型单块、复杂图表的成本仍然存在。
+
+0.5.0 passes **928 frontend tests** (two optional performance diagnostics skipped), **77 native Linux tests** (one child-process helper and one optional benchmark excluded from standalone execution), TypeScript and Rust formatting. Real-browser checks cover 10,000 paragraphs, full-document copying, search, footnotes, bookmarks, restored positions, Mermaid, HTML/plain clipboard formats and a two-page PDF. A native Linux test typed drafts into separate processes, terminated one, scrolled and closed the survivor normally, then recovered both drafts without changing source hashes or modification times. Final installer and Windows results are recorded in the version's build and release notes.
+
+**The one-second target remains unproven.** One 1MiB sample took **1.320 seconds** from process launch to accessible reader content under private Xephyr software rendering with 250ms polling; small source-editor samples took 2.499 / 1.673 seconds. These are individual instrumented samples, not repeated cold-start benchmarks on normal desktop hardware. Single-file limits and unusually large individual blocks or diagrams still apply.
+
+上一版本 0.4.0 在本机通过 **228 项前端测试**（默认跳过 2 项可选诊断）、**61 项 Linux 原生测试**（跳过 1 项可选诊断），TypeScript、生产构建与 Rust 格式检查通过。1MiB/10MiB 编辑诊断另行运行，两项均通过。另已在隐藏的独立显示环境中，验证预先持久化的中英草稿在强制终止程序后完整恢复，保存基线和未保存状态均保留；这不代表真实键入、断电或写入中断测试。此版的 [Linux / Windows 构建与安装验收](https://github.com/asoming/markwrite/actions/runs/34603110391) 全部通过，其中 Windows 通过 **54 项原生测试**（跳过 1 项可选诊断），并通过安装、带空格路径的文件关联命令、中文参数解析、启动、正常关闭和卸载检查。
 
 Linux 原生发布版另已验证：只打开一篇文档时，WebKit 后台 Worker 能读取同目录另外两篇磁盘文档，正确显示它们的反向链接和中英文标签；测试文档保持不变。测试使用正式构建的协议和 CSP，在隐藏的独立显示环境中操作。
 
 真实 Chrome 验证了表格输入/撤销/重做、浏览器组合输入事件、图片尺寸/拖动/阅读预览、8 页 A5 PDF 和 DOCX 输出。使用真实工具面板和 Worker 的 1,000/10,000 篇合成文档测试中，切换标签/反链/当前文档没有重新解析全文，各只读取一次工作区快照；改一篇只增加一次解析，列表首批 100 项。该夹具以内存代替磁盘扫描，不代表原生启动、实际磁盘或所有设备的耗时。
 
-**English:** Local validation passed **228 frontend tests** (two optional diagnostics skipped), **61 native Linux tests** (one optional diagnostic skipped), TypeScript, the production build, and Rust formatting. Both opt-in 1MiB/10MiB editing diagnostics also passed. An isolated native process-kill check also recovered a preseeded persisted bilingual draft with its saved baseline and dirty state intact; this was not a typing, power-loss, or interrupted-save test. [Linux / Windows build and installer checks](https://github.com/asoming/markwrite/actions/runs/34603110391) passed. Windows passed **54 native tests** (one optional diagnostic skipped), installer and uninstaller checks, file association commands with spaces, Chinese filename argument parsing, native startup, and normal close checks.
+**English — previous 0.4.0 release:** Local validation passed **228 frontend tests** (two optional diagnostics skipped), **61 native Linux tests** (one optional diagnostic skipped), TypeScript, the production build, and Rust formatting. Both opt-in 1MiB/10MiB editing diagnostics also passed. An isolated native process-kill check also recovered a preseeded persisted bilingual draft with its saved baseline and dirty state intact; this was not a typing, power-loss, or interrupted-save test. [Linux / Windows build and installer checks](https://github.com/asoming/markwrite/actions/runs/34603110391) passed. Windows passed **54 native tests** (one optional diagnostic skipped), installer and uninstaller checks, file association commands with spaces, Chinese filename argument parsing, native startup, and normal close checks.
 
 The native Linux release also passed a WebKit worker check under its production protocol and CSP: with one document open, it indexed two other documents on disk and displayed their backlinks and bilingual tags without changing the files. The check ran on a hidden, isolated display.
 

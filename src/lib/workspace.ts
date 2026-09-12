@@ -1,5 +1,5 @@
 import type { Token } from 'marked';
-import { md } from './markdown';
+import { compatibilityMd as md } from './markdownParser';
 
 export type IndexedDocument = {
   path: string;

@@ -312,6 +312,7 @@ export default function WorkspacePanel(p: Props) {
                     const version = await invoke<DiskFile>('history_read', {
                       path: p.current.path,
                       id: h.id,
+                      encoding: p.current.encoding,
                     });
                     if (isCurrent()) setSelectedHistory(version);
                   })

@@ -1,150 +1,44 @@
-import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
-import katex from 'katex';
 import type { Heading } from './types';
 import type { ExtensionPack } from './extensions';
-import { setInlineSyntax, inlineSyntaxRules, inlineMatch, syntaxInk } from './syntax';
+import { setInlineSyntax } from './syntax';
 import { t } from './i18n';
-
+import {
+  slug,
+  markdownHeadings,
+  renderMarkdownRaw,
+  setMarkdownConfiguration,
+  type MarkdownParseOptions,
+} from './markdownParser';
+export { md, compatibilityMd, escapeHtml, slug, markdownConfiguration } from './markdownParser';
+export type { MarkdownParseOptions } from './markdownParser';
+export function configureMarkdown(options: MarkdownParseOptions) {
+  setMarkdownConfiguration(options);
+  if (typeof window !== 'undefined') window.dispatchEvent(new Event('markwrite-syntax-configured'));
+}
 export function configureInlineSyntax(packs: readonly ExtensionPack[]) {
   const count = setInlineSyntax(packs);
+  setMarkdownConfiguration({});
   if (typeof window !== 'undefined') window.dispatchEvent(new Event('markwrite-syntax-configured'));
   return count;
 }
-
-export const escapeHtml = (value: string) =>
-  value.replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
-  );
-export const slug = (text: string) =>
-  text
-    .toLowerCase()
-    .replace(/<[^>]*>/g, '')
-    .replace(/[^\p{L}\p{N}\s_-]/gu, '')
-    .trim()
-    .replace(/\s+/g, '-') || 'section';
-export const md = new Marked({ gfm: true, breaks: false });
-md.use({
-  extensions: [
-    {
-      name: 'customInline',
-      level: 'inline',
-      start(source) {
-        const positions = inlineSyntaxRules()
-          .map((rule) => source.indexOf(rule.open))
-          .filter((position) => position >= 0);
-        return positions.length ? Math.min(...positions) : -1;
-      },
-      tokenizer(source) {
-        for (const rule of inlineSyntaxRules()) {
-          const match = inlineMatch(source, rule);
-          if (match)
-            return {
-              type: 'customInline',
-              raw: match.raw,
-              text: match.text,
-              syntaxName: rule.name,
-              color: rule.color,
-            };
-        }
-      },
-      renderer(token) {
-        return `<mark class="syntax-highlight" data-syntax="${escapeHtml(token.syntaxName)}" style="background-color:${token.color};color:${syntaxInk(token.color)}">${escapeHtml(token.text)}</mark>`;
-      },
-    },
-    {
-      name: 'wikiLink',
-      level: 'inline',
-      start: (s) => s.indexOf('[['),
-      tokenizer(s) {
-        const match = /^\[\[([^\]\n]+)\]\]/.exec(s);
-        if (match) {
-          const [target, label] = match[1].split('|');
-          return { type: 'wikiLink', raw: match[0], target: target.trim(), text: label || target };
-        }
-      },
-      renderer(token) {
-        return `<a href="#wiki:${encodeURIComponent(token.target)}" class="wiki-link">${escapeHtml(token.text)}</a>`;
-      },
-    },
-    {
-      name: 'blockMath',
-      level: 'block',
-      start: (s) => s.indexOf('$$'),
-      tokenizer(s) {
-        const m = /^\$\$[ \t]*\n?([\s\S]+?)\n?\$\$[ \t]*(?:\n|$)/.exec(s);
-        if (m) return { type: 'blockMath', raw: m[0], text: m[1] };
-      },
-      renderer(t) {
-        return math(t.text, true);
-      },
-    },
-    {
-      name: 'inlineMath',
-      level: 'inline',
-      start: (s) => s.indexOf('$'),
-      tokenizer(s) {
-        const m = /^\$(?!\s|\$)((?:\\.|[^$\n])+?)(?<!\s)\$(?!\d)/.exec(s);
-        if (m) return { type: 'inlineMath', raw: m[0], text: m[1] };
-      },
-      renderer(t) {
-        return math(t.text, false);
-      },
-    },
-  ],
-});
-function math(text: string, displayMode: boolean) {
-  try {
-    const html = katex.renderToString(text, {
-      displayMode,
-      throwOnError: true,
-      trust: false,
-      strict: 'ignore',
-      output: 'html',
-    });
-    return `<span class="math-rendered" data-tex="${encodeURIComponent(text)}" data-display="${displayMode}">${html}</span>`;
-  } catch {
-    return `<code class="math-error" title="${t('公式语法有误', 'Invalid formula syntax')}">${escapeHtml(text)}</code>`;
-  }
+export function renderMarkdown(source: string, options?: MarkdownParseOptions): string {
+  return sanitizeRenderedMarkdown(renderMarkdownRaw(source, options), { preserveHeadingIds: true });
 }
-md.use({
-  renderer: {
-    link(token) {
-      if (!/^file:\/\//i.test(token.href)) return false;
-      const title = token.title ? ` title="${escapeHtml(token.title)}"` : '';
-      // DOMPurify intentionally blocks file: in generic URL attributes. Carry only
-      // explicit local-document links through an inert attribute, then restore on anchors.
-      return `<a data-local-href="${escapeHtml(token.href)}"${title}>${this.parser.parseInline(token.tokens)}</a>`;
-    },
-    html(token) {
-      return DOMPurify.sanitize(token.text, {
-        USE_PROFILES: { html: true },
-        FORBID_TAGS: ['style', 'form', 'input', 'iframe', 'object', 'embed'],
-        FORBID_ATTR: ['style', 'srcset'],
-      });
-    },
-    checkbox(token) {
-      return `<span class="task-check ${token.checked ? 'checked' : ''}" aria-label="${token.checked ? t('已完成', 'Complete') : t('未完成', 'Incomplete')}">${token.checked ? '✓' : ''}</span>`;
-    },
-    code(token) {
-      if (token.lang === 'mermaid')
-        return `<div class="diagram" data-diagram="${encodeURIComponent(token.text)}"><pre>${escapeHtml(token.text)}</pre></div>`;
-      return `<pre><code class="language-${escapeHtml(token.lang || 'text')}">${escapeHtml(token.text)}</code></pre>`;
-    },
-  },
-});
-export function renderMarkdown(source: string): string {
-  const html = md.parse(source.replace(/^\uFEFF/, '')) as string;
+export function sanitizeRenderedMarkdown(
+  html: string,
+  options: { headingCounts?: Map<string, number>; preserveHeadingIds?: boolean } = {},
+): string {
   const safe = DOMPurify.sanitize(html, {
     ADD_ATTR: ['data-diagram', 'data-tex', 'data-display'],
     FORBID_TAGS: ['style', 'form', 'input', 'iframe', 'object', 'embed', 'video', 'audio'],
-    FORBID_ATTR: ['srcset'],
+    FORBID_ATTR: ['srcset', 'background'],
   });
   const template = document.createElement('template');
   template.innerHTML = safe;
-  const counts = new Map<string, number>();
+  const counts = options.headingCounts || new Map<string, number>();
   template.content.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach((h) => {
+    if (options.preserveHeadingIds && h.id) return;
     const base = slug(h.textContent || '');
     const n = counts.get(base) || 0;
     counts.set(base, n + 1);
@@ -171,7 +65,9 @@ export function renderMarkdown(source: string): string {
 }
 let diagramCounter = 0;
 export async function hydrateDiagrams(root: HTMLElement) {
-  const nodes = [...root.querySelectorAll<HTMLElement>('[data-diagram]')];
+  const nodes = root.matches('[data-diagram]')
+    ? [root]
+    : [...root.querySelectorAll<HTMLElement>('[data-diagram]')];
   if (!nodes.length) return;
   const { default: mermaid } = await import('mermaid');
   mermaid.initialize({
@@ -206,28 +102,7 @@ export async function hydrateDiagrams(root: HTMLElement) {
   }
 }
 export function getHeadings(content: string): Heading[] {
-  const headings: Heading[] = [];
-  let line = 1;
-  const counts = new Map<string, number>();
-  for (const token of md.lexer(content)) {
-    if (token.type === 'heading') {
-      const text = token.text
-        .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
-        .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
-        .replace(/[*_`~]/g, '');
-      const base = slug(text);
-      const n = counts.get(base) || 0;
-      counts.set(base, n + 1);
-      headings.push({
-        level: token.depth,
-        text,
-        line,
-        id: n ? `${base}-${n}` : base,
-      });
-    }
-    line += (token.raw.match(/\n/g) || []).length;
-  }
-  return headings;
+  return markdownHeadings(content);
 }
 export function wordCount(content: string) {
   const text = content.replace(/data:image\/[a-z\d.+-]+;base64,[a-z\d+/=]+/gi, '');

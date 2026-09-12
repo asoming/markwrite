@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { listFolderShallow } from '../lib/platform';
 import {
   ChevronDown,
   ChevronRight,
@@ -15,6 +16,57 @@ import { useI18n } from '../lib/i18n';
 import { fileName, pathKey } from '../lib/workspace';
 import type { Document, FileEntry } from '../lib/types';
 
+function FolderChildren({
+  entry,
+  active,
+  filter,
+  open,
+  depth,
+}: {
+  entry: FileEntry;
+  active?: string;
+  filter: string;
+  open: (path: string) => void;
+  depth: number;
+}) {
+  const { t } = useI18n();
+  const [children, setChildren] = useState(entry.children);
+  const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let canceled = false;
+    setError('');
+    if (entry.children) {
+      setChildren(entry.children);
+      return;
+    }
+    void listFolderShallow(entry.path).then(
+      (items) => {
+        if (!canceled) setChildren(items);
+      },
+      (error) => {
+        if (!canceled) setError(String(error));
+      },
+    );
+    return () => {
+      canceled = true;
+    };
+  }, [entry, attempt]);
+  if (error)
+    return (
+      <p className="navigator-note">
+        {error} <button onClick={() => setAttempt((n) => n + 1)}>{t('重试', 'Retry')}</button>
+      </p>
+    );
+  if (!children)
+    return (
+      <p className="navigator-note" role="status">
+        {t('正在读取文件夹…', 'Loading folder…')}
+      </p>
+    );
+  return <Tree entries={children} active={active} filter={filter} open={open} depth={depth} />;
+}
+
 function Tree({
   entries,
   active,
@@ -30,10 +82,10 @@ function Tree({
 }) {
   const [expansion, setExpansion] = useState<Map<string, boolean>>(new Map());
   const isExpanded = (entry: FileEntry): boolean =>
-    !!filter ||
-    (expansion.get(entry.path) ??
-      (!!active && pathKey(active).startsWith(`${pathKey(entry.path).replace(/\/$/, '')}/`)));
+    expansion.get(entry.path) ??
+    (!!active && pathKey(active).startsWith(`${pathKey(entry.path).replace(/\/$/, '')}/`));
   const matches = (entry: FileEntry): boolean =>
+    entry.directory ||
     entry.name.toLocaleLowerCase().includes(filter.toLocaleLowerCase()) ||
     !!entry.children?.some(matches);
   return (
@@ -59,8 +111,8 @@ function Tree({
               <span>{entry.name}</span>
             </button>
             {isExpanded(entry) && (
-              <Tree
-                entries={entry.children || []}
+              <FolderChildren
+                entry={entry}
                 active={active}
                 filter={filter}
                 open={open}

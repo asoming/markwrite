@@ -3,9 +3,57 @@ use sha2::{Digest, Sha256};
 use std::{
     fs::{self, OpenOptions},
     io::Write,
-    path::Path,
+    path::{Path, PathBuf},
+    sync::OnceLock,
     time::{SystemTime, UNIX_EPOCH},
 };
+static LOCK_DIRECTORY: OnceLock<PathBuf> = OnceLock::new();
+pub fn configure_lock_directory(path: PathBuf) {
+    let _ = LOCK_DIRECTORY.set(path);
+}
+fn document_lock(path: &Path) -> Result<fs::File, String> {
+    let directory = match LOCK_DIRECTORY.get() {
+        Some(path) => path.clone(),
+        None => {
+            #[cfg(test)]
+            {
+                std::env::temp_dir()
+                    .join(format!("markwrite-unit-file-locks-{}", std::process::id()))
+            }
+            #[cfg(not(test))]
+            {
+                return Err("保存锁尚未初始化 / Document save lock is not initialized.".into());
+            }
+        }
+    };
+    fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+    let absolute = path
+        .canonicalize()
+        .or_else(|_| {
+            path.parent()
+                .ok_or_else(|| std::io::Error::other("Missing parent"))?
+                .canonicalize()
+                .map(|parent| parent.join(path.file_name().unwrap_or_default()))
+        })
+        .map_err(|e| e.to_string())?;
+    let key = absolute.to_string_lossy().into_owned();
+    #[cfg(windows)]
+    let key = key.to_lowercase();
+    let mut options = OpenOptions::new();
+    options.create(true).read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let lock = options
+        .open(directory.join(version(key.as_bytes())))
+        .map_err(|e| e.to_string())?;
+    // The lock lives in shared application data, never alongside user documents.
+    // It is released by the OS even when one document process is terminated.
+    fs2::FileExt::lock_exclusive(&lock).map_err(|e| e.to_string())?;
+    Ok(lock)
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DiskFile {
@@ -56,6 +104,7 @@ pub fn atomic_write(
     expected: Option<&str>,
     backup_dir: &Path,
 ) -> Result<(), String> {
+    let _process_guard = document_lock(path)?;
     let parent = path.parent().ok_or("没有有效的父目录")?;
     let existing = match fs::read(path) {
         Ok(b) => Some(b),
@@ -193,6 +242,81 @@ pub fn replace_file(source: &Path, target: &Path) -> std::io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "helper invoked by cross_process_saves_recheck_the_original_version"]
+    fn cross_process_save_child() {
+        let root = PathBuf::from(std::env::var("MARKWRITE_SAVE_TEST_ROOT").unwrap());
+        let name = std::env::var("MARKWRITE_SAVE_TEST_CHILD").unwrap();
+        configure_lock_directory(root.join("locks"));
+        let expected = version(b"original");
+        fs::write(root.join(format!("{name}.ready")), b"ready").unwrap();
+        let began = std::time::Instant::now();
+        while !root.join("start").exists() {
+            assert!(
+                began.elapsed().as_secs() < 10,
+                "parent did not release children"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let result = atomic_write(
+            &root.join("document.md"),
+            name.as_bytes(),
+            Some(&expected),
+            &root.join(format!("{name}-history")),
+        );
+        let outcome = match result {
+            Ok(()) => "saved",
+            Err(error) if error.starts_with("CONFLICT:") => "conflict",
+            Err(error) => panic!("{error}"),
+        };
+        fs::write(root.join(format!("{name}.result")), outcome).unwrap();
+    }
+    #[test]
+    fn cross_process_saves_recheck_the_original_version() {
+        let root = sandbox("cross-process");
+        fs::write(root.join("document.md"), b"original").unwrap();
+        let mut children = Vec::new();
+        for name in ["first", "second"] {
+            children.push(
+                std::process::Command::new(std::env::current_exe().unwrap())
+                    .args([
+                        "--exact",
+                        "storage::tests::cross_process_save_child",
+                        "--ignored",
+                        "--nocapture",
+                    ])
+                    .env("MARKWRITE_SAVE_TEST_ROOT", &root)
+                    .env("MARKWRITE_SAVE_TEST_CHILD", name)
+                    .stdout(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap(),
+            );
+        }
+        let began = std::time::Instant::now();
+        while !root.join("first.ready").exists() || !root.join("second.ready").exists() {
+            if began.elapsed().as_secs() >= 15 {
+                for child in &mut children {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+                panic!("save processes did not start");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        fs::write(root.join("start"), b"start").unwrap();
+        for child in &mut children {
+            assert!(child.wait().unwrap().success());
+        }
+        let mut outcomes = [
+            fs::read_to_string(root.join("first.result")).unwrap(),
+            fs::read_to_string(root.join("second.result")).unwrap(),
+        ];
+        outcomes.sort();
+        assert_eq!(outcomes, ["conflict", "saved"]);
+        assert!([b"first".as_slice(), b"second".as_slice()]
+            .contains(&fs::read(root.join("document.md")).unwrap().as_slice()));
+        fs::remove_dir_all(root).unwrap();
+    }
     fn sandbox(label: &str) -> std::path::PathBuf {
         let p = std::env::temp_dir().join(format!(
             "markwrite-test-{label}-{}",

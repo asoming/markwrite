@@ -63,7 +63,7 @@ export default function ExportOptionsPanel({
     setError('');
     setNotice('');
     if (activePdf.current) {
-      void activePdf.current.destroy();
+      void activePdf.current.loadingTask.destroy();
       activePdf.current = undefined;
     }
     return () => {
@@ -73,7 +73,7 @@ export default function ExportOptionsPanel({
 
   useEffect(
     () => () => {
-      if (activePdf.current) void activePdf.current.destroy();
+      if (activePdf.current) void activePdf.current.loadingTask.destroy();
     },
     [],
   );
@@ -123,19 +123,19 @@ export default function ExportOptionsPanel({
       const data = await buildPdf(collected, title, { ...value, language });
       if (request !== generation.current) return;
       const [pdfjs, worker] = await Promise.all([
-        import('pdfjs-dist'),
-        import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+        import('pdfjs-dist/legacy/build/pdf.mjs'),
+        import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
       ]);
       pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
       // PDF.js transfers its input buffer to the worker. Keep the export bytes intact.
       const result = await pdfjs.getDocument({ data: data.slice() }).promise;
       if (request !== generation.current) {
-        await result.destroy();
+        await result.loadingTask.destroy();
         return;
       }
-      if (activePdf.current) await activePdf.current.destroy();
+      if (activePdf.current) await activePdf.current.loadingTask.destroy();
       if (request !== generation.current) {
-        await result.destroy();
+        await result.loadingTask.destroy();
         return;
       }
       activePdf.current = result;

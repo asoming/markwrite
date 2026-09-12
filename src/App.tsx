@@ -1,14 +1,21 @@
 import BackupPanel, { BackupScheduler } from './components/BackupPanel';
-import RenameReferencesDialog from './components/RenameReferencesDialog';
 import { prepareMove, selectedMoveChanges, type PreparedMove } from './lib/referenceMove';
 import { movedReferencePath } from './lib/referenceMaintenance';
 import { captureBackupSettings, restoreBackupSettings } from './lib/settingsBackup';
 import { DocumentThemeStyles } from './components/ThemeManager';
-import ExportOptionsPanel from './components/ExportOptionsPanel';
 import type { ExportOptions } from './lib/export';
 import { invalidateWorkspaceIndex } from './lib/workspaceCache';
 import { t, useI18n, setLanguage } from './lib/i18n';
-import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties } from 'react';
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type CSSProperties,
+} from 'react';
 import {
   FileText,
   FolderOpen,
@@ -41,19 +48,41 @@ import {
   Undo2,
   Redo2,
 } from 'lucide-react';
-import { EditorView } from '@codemirror/view';
-import { undo, redo, selectAll } from '@codemirror/commands';
-import { openSearchPanel } from '@codemirror/search';
+import type { EditorView } from '@codemirror/view';
+import { EditPermission } from './lib/editPermission';
 import { invoke } from '@tauri-apps/api/core';
-import Editor, { releaseEditor, updateStoredEditor } from './editor/Editor';
+import Editor, {
+  releaseEditor,
+  updateStoredEditor,
+  undo,
+  redo,
+  selectAll,
+  openSearchPanel,
+  scrollIntoView,
+  applyFormatting,
+  insertMarkdownTransaction,
+  readTableAtSelection,
+} from './editor/lazyEditor';
 import Reader from './Reader';
-import { configureInlineSyntax } from './lib/markdown';
+import type { ReaderHandle } from './lib/readingTypes';
+import type { ReadingLocation } from './lib/readingState';
+import { configureInlineSyntax, configureMarkdown } from './lib/markdown';
 import { useDocumentStats } from './lib/useDocumentStats';
 import { loadExtensions, type ExtensionPack } from './lib/extensions';
 import { findTable, changeTable, type TableAction } from './editor/table';
 import * as platform from './lib/platform';
 import { getHeadings, renderMarkdown, hydrateDiagrams, escapeHtml } from './lib/markdown';
-import { defaultSettings, readSession, writeSession, flushSession } from './lib/recovery';
+import {
+  defaultSettings,
+  readSession,
+  writeSession,
+  flushSession,
+  recoveryPending,
+  loadDeferredSession,
+  finishRecovery,
+  mergeRecoveredDocuments,
+  initialOpenError,
+} from './lib/recovery';
 import {
   createWindowCloseHandler,
   flushStableCloseSnapshot,
@@ -63,22 +92,11 @@ import { welcome, syntaxSample } from './lib/sample';
 import type { Document, DiskFile, FileEntry, Mode, SearchHit, Settings } from './lib/types';
 import katexCss from 'katex/dist/katex.min.css?inline';
 import EditingMenu, { type EditingAction } from './components/EditingMenu';
-import InsertDialog, { type InsertKind } from './components/InsertDialog';
-import {
-  applyFormatting,
-  insertMarkdownTransaction,
-  readTableAtSelection,
-  type TableModel,
-} from './editor/formatting';
-import WorkspacePanel, { type WorkspaceTab } from './components/WorkspacePanel';
-import DiffView from './components/DiffView';
-import ExtensionsPanel from './components/ExtensionsPanel';
-import AiPanel from './components/AiPanel';
-import TransferPanel from './components/TransferPanel';
-import SettingsPanel from './components/SettingsPanel';
+import type { InsertKind } from './components/InsertDialog';
+import type { TableModel } from './editor/formatting';
+import type { WorkspaceTab } from './components/WorkspacePanel';
 import FileNavigator from './components/FileNavigator';
 import FloatingViewControls from './components/FloatingViewControls';
-import ImportPanel from './components/ImportPanel';
 import { resolveTheme, themeIsDark, themeTypography, themeDefaults } from './lib/themes';
 import { defaultMarkdownStatus, requestMarkdownDefault } from './lib/nativeSettings';
 import {
@@ -90,6 +108,20 @@ import {
   relativeDocument,
   resolveDocumentLink,
 } from './lib/workspace';
+
+const RenameReferencesDialog = lazy(() => import('./components/RenameReferencesDialog'));
+const ExportOptionsPanel = lazy(() => import('./components/ExportOptionsPanel'));
+const DocumentToolsPanel = lazy(() => import('./components/DocumentToolsPanel'));
+const PortablePanel = lazy(() => import('./components/PortablePanel'));
+const RichClipboardPanel = lazy(() => import('./components/RichClipboardPanel'));
+const InsertDialog = lazy(() => import('./components/InsertDialog'));
+const WorkspacePanel = lazy(() => import('./components/WorkspacePanel'));
+const DiffView = lazy(() => import('./components/DiffView'));
+const ExtensionsPanel = lazy(() => import('./components/ExtensionsPanel'));
+const AiPanel = lazy(() => import('./components/AiPanel'));
+const TransferPanel = lazy(() => import('./components/TransferPanel'));
+const SettingsPanel = lazy(() => import('./components/SettingsPanel'));
+const ImportPanel = lazy(() => import('./components/ImportPanel'));
 
 const uid = () => crypto.randomUUID();
 const basename = fileName;
@@ -110,6 +142,7 @@ const canceled = (e: unknown) => e instanceof DOMException && e.name === 'AbortE
 configureInlineSyntax(loadExtensions());
 const recovered = readSession();
 setLanguage(recovered?.settings.language || 'zh-CN');
+configureMarkdown({ compatibility: recovered?.settings.markdownCompatibility === true });
 const initialDocs = recovered?.docs.length ? recovered.docs : [draft('开始写作.md', welcome)];
 function IconButton({
   title,
@@ -211,6 +244,10 @@ function Modal({
 }
 export default function App() {
   useI18n();
+  const [sessionReady, setSessionReady] = useState(!recoveryPending());
+  const [recoveryError, setRecoveryError] = useState('');
+  const [openingError, setOpeningError] = useState(initialOpenError);
+  const [recoveryAttempt, setRecoveryAttempt] = useState(0);
   const [docs, setDocs] = useState<Document[]>(initialDocs);
   const docsRef = useRef(docs);
   docsRef.current = docs;
@@ -224,7 +261,54 @@ export default function App() {
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
   const [syntaxRevision, setSyntaxRevision] = useState(0);
-  const [mode, setMode] = useState<Mode>(settings.defaultMode);
+  const [mode, setModeState] = useState<Mode>('read');
+  const editPermission = useRef(new EditPermission());
+  const pendingEditorAction = useRef<{ id: string; run: (view: EditorView) => void } | undefined>(
+    undefined,
+  );
+  function setMode(next: Mode) {
+    const id = currentRef.current.id;
+    editPermission.current.select(id, next);
+    if (next === 'read') {
+      pendingEditorAction.current = undefined;
+      const view = editor.current;
+      if (view) {
+        const top = view.lineBlockAtHeight(view.scrollDOM.scrollTop);
+        readerLine.current = { id, line: view.state.doc.lineAt(top.from).number };
+      }
+    } else if (mode === 'read') {
+      const point = reader.current?.getLocation();
+      if (point) {
+        readingPoints.current.set(id, point);
+        pendingEditorAction.current = {
+          id,
+          run: (view) => {
+            const target = view.state.doc.line(Math.min(point.line, view.state.doc.lines));
+            view.dispatch({
+              selection: { anchor: target.from },
+              effects: scrollIntoView(target.from, { y: 'start' }),
+            });
+            view.focus();
+          },
+        };
+      }
+    }
+    setModeState(next);
+  }
+  function withEditor(next: 'live' | 'source', run: (view: EditorView) => void) {
+    setMode(next);
+    if (editor.current) run(editor.current);
+    else {
+      const restore = pendingEditorAction.current;
+      pendingEditorAction.current = {
+        id: currentRef.current.id,
+        run: (view) => {
+          if (restore?.id === currentRef.current.id) restore.run(view);
+          run(view);
+        },
+      };
+    }
+  }
   const [sidebar, setSidebar] = useState(true);
   const [sideTab, setSideTab] = useState<'files' | 'outline' | 'search'>('files');
   const [root, setRoot] = useState<string | undefined>(
@@ -236,8 +320,10 @@ export default function App() {
   const folderRequest = useRef(0);
   const navigationRequest = useRef(0);
   function selectDocument(id: string) {
+    if (currentRef.current && currentRef.current.id !== id) rememberNavigation();
     navigationRequest.current++;
     setActiveId(id);
+    setModeState(editPermission.current.mode(id));
   }
   const [workspaces, setWorkspaces] = useState<string[]>(() => {
     try {
@@ -254,6 +340,10 @@ export default function App() {
   const [position, setPosition] = useState({ line: 1, column: 1 });
   const [selection, setSelection] = useState(false);
   const [dialog, setDialog] = useState<
+    | 'encoding'
+    | 'windows'
+    | 'portable'
+    | 'clipboard'
     | 'settings'
     | 'commands'
     | 'quickopen'
@@ -325,6 +415,109 @@ export default function App() {
   } | null>(null);
   const [sideWidth, setSideWidth] = useState(248);
   const editor = useRef<EditorView | null>(null);
+  const reader = useRef<ReaderHandle | null>(null);
+  const pendingReaderAction = useRef<
+    { id: string; run: (handle: ReaderHandle) => void } | undefined
+  >(undefined);
+  function withReader(run: (handle: ReaderHandle) => void) {
+    if (mode === 'read' && reader.current) run(reader.current);
+    else {
+      pendingReaderAction.current = { id: currentRef.current.id, run };
+      setMode('read');
+    }
+  }
+  const readerLine = useRef<{ id: string; line: number } | null>(null);
+  const readingPoints = useRef(new Map<string, ReadingLocation>());
+  const navigation = useRef<{ id: string; location?: ReadingLocation }[]>([]);
+  const forwardNavigation = useRef<{ id: string; location?: ReadingLocation }[]>([]);
+  const skipNavigation = useRef(false);
+  function rememberNavigation() {
+    if (skipNavigation.current) return;
+    navigation.current.push({
+      id: currentRef.current.id,
+      location: reader.current?.getLocation() || readingPoints.current.get(currentRef.current.id),
+    });
+    if (navigation.current.length > 100) navigation.current.shift();
+    forwardNavigation.current = [];
+  }
+  function navigateHistory(direction: -1 | 1) {
+    const source = direction < 0 ? navigation.current : forwardNavigation.current;
+    const target = source.pop();
+    if (!target) return;
+    if (!docsRef.current.some((item) => item.id === target.id)) {
+      navigateHistory(direction);
+      return;
+    }
+    const destination = direction < 0 ? forwardNavigation.current : navigation.current;
+    destination.push({
+      id: currentRef.current.id,
+      location: reader.current?.getLocation() || undefined,
+    });
+    if (target.location) readingPoints.current.set(target.id, target.location);
+    skipNavigation.current = true;
+    selectDocument(target.id);
+    skipNavigation.current = false;
+    editPermission.current.select(target.id, 'read');
+    setModeState('read');
+    if (target.id === currentRef.current.id && target.location)
+      reader.current?.restoreLocation(target.location);
+  }
+  async function adjacentFile(direction: -1 | 1) {
+    if (!currentRef.current.path) return;
+    try {
+      const folder = await platform.parentFolder(currentRef.current.path);
+      const files = folder?.entries.filter((entry) => !entry.directory) || [];
+      const index = files.findIndex(
+        (entry) => pathKey(entry.path) === pathKey(currentRef.current.path!),
+      );
+      const target = files[index + direction];
+      if (index >= 0 && target) await openPath(target.path);
+    } catch (error) {
+      notify(errorText(error));
+    }
+  }
+  async function newWindow(path?: string) {
+    if (!platform.desktop) {
+      notify(
+        t(
+          '独立进程窗口请在桌面版使用。',
+          'Independent process windows are available in the desktop app.',
+        ),
+      );
+      return;
+    }
+    try {
+      await invoke('new_document_window', { path, settings: settingsRef.current });
+      if (path && currentRef.current.content !== currentRef.current.saved)
+        notify(
+          t(
+            '新窗口读取磁盘版本，当前草稿继续保留。',
+            'The new window reads the disk version. Your current draft is retained.',
+          ),
+        );
+    } catch (error) {
+      notify(errorText(error));
+    }
+  }
+  function openEncoded(file: DiskFile) {
+    const existing = docsRef.current.find((item) => item.path === file.path);
+    if (existing && existing.content !== existing.saved) {
+      const item: Document = { ...draft(basename(file.path), file.content), ...file };
+      updateDocs((items) => [...items, item]);
+      selectDocument(item.id);
+      notify(
+        t(
+          '原未保存草稿已保留在另一个标签中。',
+          'Your unsaved draft is retained in its original tab.',
+        ),
+      );
+    } else addDisk(file);
+    const opened = docsRef.current.find(
+      (item) => item.path === file.path && item.content === file.content,
+    );
+    if (opened) editPermission.current.select(opened.id, 'read');
+    setModeState('read');
+  }
   const saving = useRef(new Set<string>());
   const searchRequest = useRef<string>('');
   const composing = useRef(false);
@@ -341,8 +534,10 @@ export default function App() {
   const { headings, words } = useDocumentStats(current?.content || '', current.id);
   const activeTable = useMemo(
     () =>
-      current?.content.length > 300_000 ? null : findTable(current?.content || '', position.line),
-    [current?.content, position.line],
+      mode === 'read' || current?.content.length > 300_000
+        ? null
+        : findTable(current?.content || '', position.line),
+    [current?.content, position.line, mode],
   );
   function updateDocs(fn: (items: Document[]) => Document[]) {
     const next = fn(docsRef.current);
@@ -356,6 +551,7 @@ export default function App() {
     setToast(message);
   }
   function contentChanged(id: string, content: string) {
+    if (!editPermission.current.canEdit(id)) return;
     updateDocs((items) =>
       items.map((d) =>
         d.id !== id
@@ -373,7 +569,6 @@ export default function App() {
     setSelection(!!editor.current && !editor.current.state.selection.main.empty);
   }
   function addDisk(file: DiskFile) {
-    setMode(settingsRef.current.defaultMode);
     if (file.path)
       try {
         setRecents(updateRecents(file.path));
@@ -395,6 +590,7 @@ export default function App() {
       path: file.path || undefined,
       saved: file.content,
     };
+    editPermission.current.select(d.id, settingsRef.current.defaultMode);
     updateDocs((items) => [...items, d]);
     selectDocument(d.id);
   }
@@ -469,7 +665,7 @@ export default function App() {
     setFolderLoading(true);
     setFolderError('');
     try {
-      const nextEntries = await platform.listFolder(root);
+      const nextEntries = await platform.listFolderShallow(root);
       if (request === folderRequest.current) setEntries(nextEntries);
     } catch (error) {
       if (request === folderRequest.current) setFolderError(errorText(error));
@@ -495,7 +691,6 @@ export default function App() {
     try {
       if (existing) {
         selectDocument(existing.id);
-        setMode(settingsRef.current.defaultMode);
       } else {
         const file = await platform.readFile(path);
         if (request !== navigationRequest.current) return;
@@ -513,13 +708,29 @@ export default function App() {
   function newDocument() {
     const d = draft(`未命名 ${docsRef.current.filter((d) => !d.path).length + 1}.md`);
     updateDocs((items) => [...items, d]);
+    editPermission.current.select(d.id, 'live');
     selectDocument(d.id);
-    setMode('live');
-    setTimeout(() => editor.current?.focus(), 0);
+    pendingEditorAction.current = { id: d.id, run: (view) => view.focus() };
   }
-  async function save(id = currentRef.current?.id, asNew = false) {
+  async function save(
+    id = currentRef.current?.id,
+    asNew = false,
+    intent: 'manual' | 'auto' | 'close' = 'manual',
+  ) {
     const d = docsRef.current.find((d) => d.id === id);
     if (!d || saving.current.has(d.id)) return false;
+    if (!asNew && intent !== 'close' && !editPermission.current.canEdit(d.id)) {
+      if (d.content === d.saved) return true;
+      if (intent !== 'auto')
+        notify(
+          t(
+            '阅读模式保留草稿；切换编辑后可保存。',
+            'The draft is retained in reading mode. Switch to edit to save.',
+          ),
+        );
+      return false;
+    }
+    if (!asNew && d.path && d.content === d.saved && d.status === 'clean') return true;
     if (d.status === 'conflict' && !asNew) {
       await showConflict(d);
       return false;
@@ -527,36 +738,20 @@ export default function App() {
     saving.current.add(d.id);
     patch(d.id, { status: 'saving' });
     try {
-      let result =
+      const result =
         !d.path || asNew
-          ? await platform.saveAs(d.content, d.name)
+          ? await platform.saveAs(d.content, d.name, d)
           : await platform.writeFile({
               path: d.path,
               content: d.content,
               version: d.version || '',
               bom: d.bom,
               crlf: d.crlf,
+              encoding: d.encoding,
             });
       if (!result) {
         patch(d.id, { status: d.content === d.saved ? 'clean' : 'dirty' });
         return false;
-      }
-      let migrationConflict: string | undefined;
-      if (settingsRef.current.attachmentMode === 'relative' && d.content.includes('data:image/')) {
-        try {
-          const migrated = await platform.migrateEmbeddedImages(result.path, d.content);
-          if (migrated !== d.content)
-            result = await platform.writeFile({ ...result, content: migrated });
-        } catch (error) {
-          if (errorText(error).includes('CONFLICT:')) migrationConflict = errorText(error);
-          notify(
-            migrationConflict
-              ? t('附件迁移时磁盘文件被外部修改，当前内容已保留，请比较版本。')
-              : t('文档已保存，附件迁移未完成：{0}。内嵌图片仍保留，保存时会重试。', undefined, [
-                  errorText(error),
-                ]),
-          );
-        }
       }
       const persisted = result;
       try {
@@ -574,20 +769,17 @@ export default function App() {
                 version: persisted.version,
                 bom: persisted.bom,
                 crlf: persisted.crlf,
+                encoding: persisted.encoding || d.encoding,
                 content: item.content === d.content ? persisted.content : item.content,
                 saved: persisted.content,
-                status: migrationConflict
-                  ? 'conflict'
-                  : item.content === d.content
-                    ? 'clean'
-                    : 'dirty',
-                error: migrationConflict,
+                status: item.content === d.content ? 'clean' : 'dirty',
+                error: undefined,
               }
             : item,
         ),
       );
       if (root) void refresh();
-      return !migrationConflict;
+      return true;
     } catch (e) {
       if (canceled(e)) {
         patch(d.id, { status: d.content === d.saved ? 'clean' : 'dirty' });
@@ -604,7 +796,7 @@ export default function App() {
   async function showConflict(d = currentRef.current) {
     if (!d?.path) return;
     try {
-      const disk = await platform.readFile(d.path);
+      const disk = await platform.readFile(d.path, d.encoding);
       selectDocument(d.id);
       setDiskConflict({ ...disk, documentId: d.id });
       setDialog('conflict');
@@ -615,6 +807,7 @@ export default function App() {
   function removeDoc(id: string) {
     const next = docsRef.current.filter((d) => d.id !== id);
     releaseEditor(id);
+    editPermission.current.forget(id);
     if (!next.length) next.push(draft('未命名.md'));
     updateDocs(() => next);
     if (activeId === id) selectDocument(next[Math.max(0, next.length - 1)].id);
@@ -628,9 +821,9 @@ export default function App() {
     } else removeDoc(d.id);
   }
   function jump(line: number) {
-    if (mode === 'read') {
-      const h = headings.find((h) => h.line === line);
-      if (h) document.getElementById(h.id)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    if (editPermission.current.mode(currentRef.current.id) === 'read') {
+      if (reader.current) reader.current.jumpToLine(line);
+      else readerLine.current = { id: currentRef.current.id, line };
       return;
     }
     const view = editor.current;
@@ -638,7 +831,7 @@ export default function App() {
     const target = view.state.doc.line(Math.min(line, view.state.doc.lines));
     view.dispatch({
       selection: { anchor: target.from },
-      effects: EditorView.scrollIntoView(target.from, { y: 'start', yMargin: 44 }),
+      effects: scrollIntoView(target.from, { y: 'start', yMargin: 44 }),
     });
     view.focus();
   }
@@ -657,7 +850,7 @@ export default function App() {
   async function image(file: File) {
     const d = currentRef.current,
       view = editor.current;
-    if (!d || !view) return;
+    if (!d || !view || !editPermission.current.canEdit(d.id)) return;
     const range = { from: view.state.selection.main.from, to: view.state.selection.main.to };
     const original = view.state.doc.toString();
     if (file.size > 20 * 1024 * 1024) {
@@ -881,9 +1074,13 @@ export default function App() {
       setNamePrompt(null);
       await refresh();
     } catch (e) {
-      if(!canceled(e)) notify(errorText(e));
+      if (!canceled(e)) notify(errorText(e));
     }
   }
+  useEffect(() => {
+    configureMarkdown({ compatibility: settings.markdownCompatibility === true });
+    setSyntaxRevision((value) => value + 1);
+  }, [settings.markdownCompatibility]);
   useEffect(() => {
     const update = (event: Event) => {
       configureInlineSyntax((event as CustomEvent<ExtensionPack[]>).detail || loadExtensions());
@@ -908,6 +1105,7 @@ export default function App() {
     return () => media.removeEventListener('change', apply);
   }, [settings.theme, settings.customColors]);
   useEffect(() => {
+    if (!sessionReady) return;
     const timer = setTimeout(async () => {
       try {
         await flushSession(docsRef.current, activeId, settings, root);
@@ -916,27 +1114,51 @@ export default function App() {
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [docs, activeId, settings, root]);
+  }, [docs, activeId, settings, root, sessionReady]);
   useEffect(() => {
+    if (!sessionReady) return;
     const timer = setInterval(() => {
       void flushSession(docsRef.current, activeId, settings, root).catch(() =>
         notify(t('草稿恢复副本写入失败，请立即保存文档并检查磁盘空间。')),
       );
     }, 3000);
     return () => clearInterval(timer);
-  }, [activeId, settings, root]);
+  }, [activeId, settings, root, sessionReady]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(''), 6000);
     return () => clearTimeout(timer);
   }, [toast]);
   useEffect(() => {
-    if (!platform.desktop) return;
-    if (root) void refresh();
-    void invoke<DiskFile[]>('initial_documents')
-      .then((files) => files.forEach(addDisk))
-      .catch((e) => notify(errorText(e)));
-  }, []);
+    if (!recoveryPending()) return;
+    let canceled = false;
+    let started = false;
+    const restore = async () => {
+      if (started) return;
+      started = true;
+      try {
+        const previous = await loadDeferredSession();
+        if (canceled) return;
+        if (previous) {
+          updateDocs((items) => mergeRecoveredDocuments(items, previous.docs));
+          // An upgrade may not yet have a compact preference snapshot.
+          if (!localStorage.getItem('markwrite.preferences.v1')) setSettings(previous.settings);
+        }
+        finishRecovery();
+        setSessionReady(true);
+        setRecoveryError('');
+      } catch (error) {
+        if (!canceled) setRecoveryError(errorText(error));
+      }
+    };
+    window.addEventListener('markwrite-reader-ready', restore, { once: true });
+    const timer = setTimeout(restore, 1500);
+    return () => {
+      canceled = true;
+      clearTimeout(timer);
+      window.removeEventListener('markwrite-reader-ready', restore);
+    };
+  }, [recoveryAttempt]);
   useEffect(() => {
     if (!platform.desktop) return;
     let disposed = false;
@@ -970,20 +1192,27 @@ export default function App() {
     const timer = setInterval(() => {
       if (!settings.autosave || composing.current) return;
       for (const d of docsRef.current)
-        if (d.path && d.status === 'dirty' && Date.now() - d.updated > 800) void save(d.id);
+        if (editPermission.current.canAutosave(d) && Date.now() - d.updated > 800)
+          void save(d.id, false, 'auto');
     }, 400);
     return () => clearInterval(timer);
   }, [settings.autosave]);
   useEffect(() => {
     let checking = false,
       stopped = false;
-    const check = async () => {
+    const stamps = new Map<string, string>();
+    const check = async (full = false) => {
       if (checking || composing.current) return;
       checking = true;
-      for (const d of [...docsRef.current]) {
+      for (const d of full ? [...docsRef.current] : [currentRef.current]) {
         if (!d.path || saving.current.has(d.id) || d.status === 'conflict') continue;
         try {
-          const file = await platform.readFile(d.path);
+          if (platform.desktop && !full) {
+            const stamp = await invoke<string>('document_stamp', { path: d.path });
+            if (stamps.get(d.path) === stamp) continue;
+            stamps.set(d.path, stamp);
+          }
+          const file = await platform.readFile(d.path, d.encoding);
           if (stopped) break;
           const latest = docsRef.current.find((x) => x.id === d.id);
           if (
@@ -1010,11 +1239,12 @@ export default function App() {
     const timer = setInterval(() => {
       void check();
     }, 2200);
-    window.addEventListener('focus', check);
+    const focused = () => void check(true);
+    window.addEventListener('focus', focused);
     return () => {
       stopped = true;
       clearInterval(timer);
-      window.removeEventListener('focus', check);
+      window.removeEventListener('focus', focused);
     };
   }, []);
   useEffect(() => {
@@ -1075,9 +1305,13 @@ export default function App() {
         const fn = await getCurrentWindow().onCloseRequested(
           createWindowCloseHandler({
             documents: () => docsRef.current,
-            saving: () => saving.current.size > 0,
+            saving: () =>
+              saving.current.size > 0 || (recoveryPending() && hasUnsavedWork(docsRef.current)),
             authorization: exitAfterSave,
-            flush: (snapshot) => flushSession(snapshot, activeId, settings, root),
+            flush: (snapshot) =>
+              recoveryPending() && !hasUnsavedWork(snapshot)
+                ? Promise.resolve()
+                : flushSession(snapshot, activeId, settings, root),
             onBusy: () => notify(t('正在完成文件操作，请稍后再关闭。')),
             onUnsaved: () => {
               setCloseTarget('app');
@@ -1109,6 +1343,22 @@ export default function App() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.isComposing || dialog || insertDialog || namePrompt || referenceMove) return;
+      if (e.key === 'F3' && mode === 'read') {
+        e.preventDefault();
+        reader.current?.findNext(e.shiftKey ? -1 : 1);
+        return;
+      }
+      if (
+        mode === 'read' &&
+        e.altKey &&
+        ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)
+      ) {
+        e.preventDefault();
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+          navigateHistory(e.key === 'ArrowLeft' ? -1 : 1);
+        else void adjacentFile(e.key === 'ArrowUp' ? -1 : 1);
+        return;
+      }
       if (e.key === 'Escape') {
         if (!dialog) setFocus(false);
       }
@@ -1127,14 +1377,19 @@ export default function App() {
         void save(currentRef.current.id, true);
       } else if (key === 'h') {
         e.preventDefault();
-        setMode('source');
-        if (editor.current) openSearchPanel(editor.current);
+        withEditor('source', (view) => openSearchPanel(view));
       } else if (key === 's') {
         e.preventDefault();
         actions.current.save();
       } else if (key === 'o') {
         e.preventDefault();
         actions.current.open();
+      } else if (key === 'n' && e.shiftKey) {
+        e.preventDefault();
+        void newWindow();
+      } else if (key === 'd' && mode === 'read') {
+        e.preventDefault();
+        reader.current?.toggleBookmark();
       } else if (key === 'n') {
         e.preventDefault();
         actions.current.new();
@@ -1150,10 +1405,7 @@ export default function App() {
         setSidebar(true);
       } else if (key === 'f' && mode === 'read') {
         e.preventDefault();
-        setMode('source');
-        setTimeout(() => {
-          if (editor.current) openSearchPanel(editor.current);
-        }, 0);
+        reader.current?.openSearch();
       } else if (key === '\\') {
         e.preventDefault();
         setSidebar((v) => !v);
@@ -1194,8 +1446,7 @@ export default function App() {
       hint: 'Ctrl F',
       icon: <Search size={18} />,
       run: () => {
-        setMode('source');
-        if (editor.current) openSearchPanel(editor.current);
+        withEditor('source', (view) => openSearchPanel(view));
       },
     },
     {
@@ -1233,7 +1484,7 @@ export default function App() {
       .map((e) => ({ ...e, id: '' })),
   ].filter((e) => e.name.toLowerCase().includes(palette.toLowerCase()));
   async function finishClose(keepDraft: boolean) {
-    if (saving.current.size) {
+    if (saving.current.size || recoveryPending()) {
       notify(t('正在完成文件操作，请稍后再关闭。'));
       return;
     }
@@ -1242,7 +1493,7 @@ export default function App() {
         for (const d of [...docsRef.current]) {
           if (
             (d.content !== d.saved || d.status === 'conflict' || d.status === 'error') &&
-            !(await save(d.id))
+            !(await save(d.id, false, 'close'))
           )
             return;
           const latest = docsRef.current.find((item) => item.id === d.id);
@@ -1266,7 +1517,7 @@ export default function App() {
       try {
         snapshot = await flushStableCloseSnapshot({
           documents: () => docsRef.current,
-          saving: () => saving.current.size > 0,
+          saving: () => saving.current.size > 0 || recoveryPending(),
           flush: (documents) => flushSession(documents, activeId, settings, root),
         });
       } catch {
@@ -1290,7 +1541,7 @@ export default function App() {
       // Do not clear a fresh unsaved-work dialog opened by that native event.
       return;
     } else if (closeTarget) {
-      if (!keepDraft && !(await save(closeTarget))) return;
+      if (!keepDraft && !(await save(closeTarget, false, 'close'))) return;
       const latest = docsRef.current.find((d) => d.id === closeTarget);
       if (
         !keepDraft &&
@@ -1309,29 +1560,27 @@ export default function App() {
     setDialog('export');
   }
   function replaceCurrent(text: string) {
-    const view = editor.current;
-    if (!view) return;
-    setMode('live');
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: text },
-      userEvent: 'input.restore',
+    withEditor('live', (view) => {
+      view.dispatch({
+        changes: { from: 0, to: view.state.doc.length, insert: text },
+        userEvent: 'input.restore',
+      });
+      view.focus();
     });
-    view.focus();
   }
   function launchInsert(kind: InsertKind) {
-    const view = editor.current;
-    if (!view) return;
-    setMode('live');
-    const range = view.state.selection.main;
-    const table = kind === 'table' ? readTableAtSelection(view) : null;
-    setInsertDialog({
-      kind,
-      documentId: current.id,
-      from: table?.from ?? range.from,
-      to: table?.to ?? range.to,
-      source: view.state.doc.toString(),
-      text: view.state.sliceDoc(range.from, range.to),
-      table: table?.table,
+    withEditor('live', (view) => {
+      const range = view.state.selection.main;
+      const table = kind === 'table' ? readTableAtSelection(view) : null;
+      setInsertDialog({
+        kind,
+        documentId: current.id,
+        from: table?.from ?? range.from,
+        to: table?.to ?? range.to,
+        source: view.state.doc.toString(),
+        text: view.state.sliceDoc(range.from, range.to),
+        table: table?.table,
+      });
     });
   }
   function applyInsert(markdown: string) {
@@ -1477,8 +1726,12 @@ export default function App() {
         setRoot(nextRoot);
         void platform
           .listFolder(nextRoot)
-          .then(entries=>{if(request===folderRequest.current)setEntries(entries);})
-          .catch((error) => {if(request===folderRequest.current)setFolderError(errorText(error));});
+          .then((entries) => {
+            if (request === folderRequest.current) setEntries(entries);
+          })
+          .catch((error) => {
+            if (request === folderRequest.current) setFolderError(errorText(error));
+          });
       } else void refresh();
       const completion = moveCompletion.current;
       moveCompletion.current = undefined;
@@ -1519,7 +1772,7 @@ export default function App() {
     updateDocs((items) =>
       items.map((d) => {
         if (!d.path) return d;
-        const next = movedReferencePath(d.path,from,to);
+        const next = movedReferencePath(d.path, from, to);
         if (next !== d.path) {
           return { ...d, path: next, name: basename(next) };
         }
@@ -1554,8 +1807,9 @@ export default function App() {
   function handleMenuAction(action: EditingAction) {
     const view = editor.current;
     if (action.startsWith('format:')) {
-      setMode('live');
-      if (view) applyFormatting(view, action.slice(7) as Parameters<typeof applyFormatting>[1]);
+      withEditor('live', (view) =>
+        applyFormatting(view, action.slice(7) as Parameters<typeof applyFormatting>[1]),
+      );
       return;
     }
     if (action.startsWith('insert:')) {
@@ -1573,6 +1827,49 @@ export default function App() {
       return;
     }
     switch (action) {
+      case 'app:newWindow':
+        void newWindow();
+        break;
+      case 'app:openWindow':
+        if (current.path) void newWindow(current.path);
+        else
+          notify(
+            t(
+              '请先保存草稿，再在独立窗口打开。',
+              'Save this draft before opening it in an independent window.',
+            ),
+          );
+        break;
+      case 'app:windows':
+        setDialog('windows');
+        break;
+      case 'app:encoding':
+        setDialog('encoding');
+        break;
+      case 'app:portable':
+        setDialog('portable');
+        break;
+      case 'app:clipboard':
+        setDialog('clipboard');
+        break;
+      case 'view:back':
+        navigateHistory(-1);
+        break;
+      case 'view:forward':
+        navigateHistory(1);
+        break;
+      case 'view:previousFile':
+        void adjacentFile(-1);
+        break;
+      case 'view:nextFile':
+        void adjacentFile(1);
+        break;
+      case 'view:bookmark':
+        withReader((handle) => handle.toggleBookmark());
+        break;
+      case 'view:bookmarks':
+        withReader((handle) => handle.openBookmarks());
+        break;
       case 'app:new':
         newDocument();
         break;
@@ -1630,31 +1927,27 @@ export default function App() {
             .catch((e) => notify(errorText(e)));
         break;
       case 'app:find':
+        if (mode === 'read') reader.current?.openSearch();
+        else if (view) openSearchPanel(view);
+        break;
       case 'app:replace':
-        setMode('source');
-        if (view) {
+        withEditor('source', (view) => {
           openSearchPanel(view);
           view.focus();
-        }
+        });
         break;
       case 'app:selectAll':
-        if (view) {
-          setMode('live');
+        if (mode === 'read') reader.current?.selectAll();
+        else if (view) {
           selectAll(view);
           view.focus();
         }
         break;
       case 'app:undo':
-        if (view) {
-          setMode('live');
-          undo(view);
-        }
+        withEditor('live', (view) => undo(view));
         break;
       case 'app:redo':
-        if (view) {
-          setMode('live');
-          redo(view);
-        }
+        withEditor('live', (view) => redo(view));
         break;
       case 'app:settings':
         setDialog('settings');
@@ -1666,7 +1959,7 @@ export default function App() {
         setDialog('about');
         break;
       case 'app:upload':
-        if (view) {
+        withEditor('live', (view) => {
           const r = view.state.selection.main;
           setTransfer({
             kind: 'image',
@@ -1677,7 +1970,7 @@ export default function App() {
             to: r.to,
           });
           setDialog('transfer');
-        }
+        });
         break;
       case 'app:publish':
         void doExport('publish');
@@ -1686,7 +1979,7 @@ export default function App() {
         setDialog('extensions');
         break;
       case 'app:ai':
-        if (view) {
+        withEditor('live', (view) => {
           const r = view.state.selection.main;
           aiSelection.current = {
             id: current.id,
@@ -1696,7 +1989,7 @@ export default function App() {
             selection: view.state.sliceDoc(r.from, r.to),
           };
           setDialog('ai');
-        }
+        });
         break;
       case 'app:quickOpen':
         setPalette('');
@@ -1993,6 +2286,35 @@ export default function App() {
             </IconButton>
           </div>
         )}
+        {openingError && (
+          <div className="document-alert" role="alert">
+            <span>
+              {t('指定文件未能打开：', 'The requested file could not be opened: ')}
+              {openingError}
+            </span>
+            <button
+              onClick={() => {
+                setOpeningError('');
+                setDialog('encoding');
+              }}
+            >
+              {t('选择编码打开…', 'Open with encoding…')}
+            </button>
+            <button onClick={() => setOpeningError('')}>{t('关闭', 'Close')}</button>
+          </div>
+        )}
+        {recoveryError && (
+          <div className="document-alert" role="alert">
+            <span>
+              {t(
+                '旧会话读取失败，原恢复副本已保留：',
+                'Previous session could not be read; its recovery copy is preserved: ',
+              )}
+              {recoveryError}
+            </span>
+            <button onClick={() => setRecoveryAttempt((n) => n + 1)}>{t('重试', 'Retry')}</button>
+          </div>
+        )}
         {(current.status === 'conflict' || current.status === 'error') && (
           <div className="document-alert">
             <AlertCircle size={16} />
@@ -2016,35 +2338,77 @@ export default function App() {
         )}
         <div className="document-workspace">
           <div className="document-surface" data-custom-document-theme="">
-            <Editor
-              id={current.id}
-              content={current.content}
-              path={current.path}
-              mode={mode}
-              onChange={(text) => contentChanged(current.id, text)}
-              onReady={(v) => {
-                editor.current = v;
-              }}
-              onSelection={(line, column) => {
-                setPosition({ line, column });
-                setSelection(!!editor.current && !editor.current.state.selection.main.empty);
-              }}
-              onLink={(href) => void followLink(href)}
-              onImage={(file) => void image(file)}
-              onMarkdownFiles={(files) => void importDroppedFiles(files)}
-              onEditTable={({ from }) => {
-                const view = editor.current;
-                if (view) {
-                  view.dispatch({ selection: { anchor: from } });
-                  launchInsert('table');
+            {mode !== 'read' && (
+              <Suspense
+                fallback={
+                  <p className="navigator-note">{t('正在打开编辑器…', 'Opening editor…')}</p>
                 }
-              }}
-              onComposition={(v) => {
-                composing.current = v;
-              }}
-            />
+              >
+                <Editor
+                  id={current.id}
+                  content={current.content}
+                  path={current.path}
+                  mode={mode}
+                  onChange={(text) => contentChanged(current.id, text)}
+                  onReady={(v) => {
+                    editor.current = v;
+                    const pending = pendingEditorAction.current;
+                    if (v && pending?.id === current.id) {
+                      pendingEditorAction.current = undefined;
+                      pending.run(v);
+                    }
+                  }}
+                  onSelection={(line, column) => {
+                    setPosition({ line, column });
+                    setSelection(!!editor.current && !editor.current.state.selection.main.empty);
+                  }}
+                  onLink={(href) => void followLink(href)}
+                  onImage={(file) => void image(file)}
+                  onMarkdownFiles={(files) => void importDroppedFiles(files)}
+                  onEditTable={({ from }) => {
+                    const view = editor.current;
+                    if (view) {
+                      view.dispatch({ selection: { anchor: from } });
+                      launchInsert('table');
+                    }
+                  }}
+                  onComposition={(v) => {
+                    composing.current = v;
+                  }}
+                />
+              </Suspense>
+            )}
             {mode === 'read' && (
               <Reader
+                ref={reader}
+                documentKey={current.id}
+                onReady={(handle) => {
+                  reader.current = handle;
+                  if (!handle) return;
+                  const pending = pendingReaderAction.current;
+                  if (pending?.id === current.id) {
+                    pendingReaderAction.current = undefined;
+                    pending.run(handle);
+                  }
+                  const target = readerLine.current;
+                  if (target?.id === current.id) {
+                    readerLine.current = null;
+                    handle.jumpToLine(target.line);
+                  } else {
+                    const point = readingPoints.current.get(current.id);
+                    if (point) handle.restoreLocation(point);
+                  }
+                }}
+                onNavigate={rememberNavigation}
+                onLocationChange={(point) => {
+                  readingPoints.current.set(current.id, point);
+                  setPosition((old) =>
+                    old.line === point.line && old.column === 1
+                      ? old
+                      : { line: point.line, column: 1 },
+                  );
+                }}
+                parseOptions={{ compatibility: settings.markdownCompatibility === true }}
                 content={current.content}
                 path={current.path}
                 theme={settings.theme}
@@ -2104,6 +2468,8 @@ export default function App() {
                 </button>
               </div>
               <Reader
+                documentKey={`compare:${compareId}`}
+                parseOptions={{ compatibility: settings.markdownCompatibility === true }}
                 content={(docs.find((d) => d.id === compareId) || current).content}
                 path={(docs.find((d) => d.id === compareId) || current).path}
                 theme={settings.theme}
@@ -2115,21 +2481,23 @@ export default function App() {
             </div>
           )}
           {workspaceTab && !focus && (
-            <WorkspacePanel
-              tab={workspaceTab}
-              onTab={setWorkspaceTab}
-              root={root}
-              current={current}
-              docs={docs}
-              entries={entries}
-              onClose={() => setWorkspaceTab(null)}
-              onOpen={(path) => void openPath(path)}
-              onRestore={(text) => replaceCurrent(text)}
-              onRefresh={() => void refresh()}
-              onTrashed={handleTrashed}
-              onRename={renameGuarded}
-              onNotify={notify}
-            />
+            <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+              <WorkspacePanel
+                tab={workspaceTab}
+                onTab={setWorkspaceTab}
+                root={root}
+                current={current}
+                docs={docs}
+                entries={entries}
+                onClose={() => setWorkspaceTab(null)}
+                onOpen={(path) => void openPath(path)}
+                onRestore={(text) => replaceCurrent(text)}
+                onRefresh={() => void refresh()}
+                onTrashed={handleTrashed}
+                onRename={renameGuarded}
+                onNotify={notify}
+              />
+            </Suspense>
           )}
         </div>
         <FloatingViewControls
@@ -2177,7 +2545,10 @@ export default function App() {
                 {position.column}
               </span>
               <i />
-              <span>UTF-8{current.bom ? ' BOM' : ''}</span>
+              <span>
+                {(current.encoding || 'utf-8').toUpperCase()}
+                {current.bom ? ' BOM' : ''}
+              </span>
               <span>{current.crlf ? 'CRLF' : 'LF'}</span>
               <button title={t('排版设置')} onClick={() => setDialog('settings')}>
                 {settings.fontSize}px
@@ -2196,26 +2567,28 @@ export default function App() {
         )}
       </main>
       {insertDialog && (
-        <InsertDialog
-          kind={insertDialog.kind}
-          initialText={insertDialog.text}
-          table={insertDialog.table}
-          onClose={() => setInsertDialog(null)}
-          onInsert={applyInsert}
-          onChooseImage={() => {
-            setInsertDialog(null);
-            chooseImage();
-          }}
-          documents={docs
-            .filter((d) => d.id !== current.id)
-            .map((d) => ({
-              name: d.name,
-              path:
-                d.path && current.path
-                  ? relativeDocument(current.path, d.path)
-                  : '#wiki:' + encodeURIComponent(d.name.replace(/\.(md|markdown)$/i, '')),
-            }))}
-        />
+        <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+          <InsertDialog
+            kind={insertDialog.kind}
+            initialText={insertDialog.text}
+            table={insertDialog.table}
+            onClose={() => setInsertDialog(null)}
+            onInsert={applyInsert}
+            onChooseImage={() => {
+              setInsertDialog(null);
+              chooseImage();
+            }}
+            documents={docs
+              .filter((d) => d.id !== current.id)
+              .map((d) => ({
+                name: d.name,
+                path:
+                  d.path && current.path
+                    ? relativeDocument(current.path, d.path)
+                    : '#wiki:' + encodeURIComponent(d.name.replace(/\.(md|markdown)$/i, '')),
+              }))}
+          />
+        </Suspense>
       )}
       {!!linkChoices.length && (
         <Modal
@@ -2244,27 +2617,29 @@ export default function App() {
           subtitle={t('连接你自己的服务，明确发送后才会联网')}
           onClose={() => setDialog(null)}
         >
-          <TransferPanel
-            kind={transfer.kind}
-            html={transfer.html}
-            name={transfer.name}
-            onInsert={(url) => {
-              const view = editor.current;
-              if (!view) return;
-              if (current.id !== transfer.id || current.content !== transfer.source) {
-                notify(t('原文已变化，请复制链接后在目标位置插入。'));
-                return;
-              }
-              setMode('live');
-              view.dispatch(
-                insertMarkdownTransaction(view.state, `![图片](<${url}>)`, {
-                  from: transfer.from,
-                  to: transfer.to,
-                }),
-              );
-              setDialog(null);
-            }}
-          />
+          <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+            <TransferPanel
+              kind={transfer.kind}
+              html={transfer.html}
+              name={transfer.name}
+              onInsert={(url) => {
+                const view = editor.current;
+                if (!view) return;
+                if (current.id !== transfer.id || current.content !== transfer.source) {
+                  notify(t('原文已变化，请复制链接后在目标位置插入。'));
+                  return;
+                }
+                setMode('live');
+                view.dispatch(
+                  insertMarkdownTransaction(view.state, `![图片](<${url}>)`, {
+                    from: transfer.from,
+                    to: transfer.to,
+                  }),
+                );
+                setDialog(null);
+              }}
+            />
+          </Suspense>
         </Modal>
       )}
       {dialog === 'about' && (
@@ -2306,26 +2681,27 @@ export default function App() {
           wide
           onClose={() => setDialog(null)}
         >
-          <ExtensionsPanel
-            onError={notify}
-            onInsert={(markdown) => {
-              const view = editor.current;
-              if (!view) return;
-              const selected = view.state.sliceDoc(
-                view.state.selection.main.from,
-                view.state.selection.main.to,
-              );
-              setMode('live');
-              view.dispatch(
-                insertMarkdownTransaction(
-                  view.state,
-                  markdown.replaceAll('{{selection}}', selected),
-                ),
-              );
-              setDialog(null);
-              view.focus();
-            }}
-          />
+          <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+            <ExtensionsPanel
+              onError={notify}
+              onInsert={(markdown) => {
+                withEditor('live', (view) => {
+                  const selected = view.state.sliceDoc(
+                    view.state.selection.main.from,
+                    view.state.selection.main.to,
+                  );
+                  view.dispatch(
+                    insertMarkdownTransaction(
+                      view.state,
+                      markdown.replaceAll('{{selection}}', selected),
+                    ),
+                  );
+                  setDialog(null);
+                  view.focus();
+                });
+              }}
+            />
+          </Suspense>
         </Modal>
       )}
       {dialog === 'ai' && (
@@ -2335,27 +2711,29 @@ export default function App() {
           wide
           onClose={() => setDialog(null)}
         >
-          <AiPanel
-            selection={aiSelection.current?.selection || ''}
-            onApply={(text) => {
-              const snapshot = aiSelection.current,
-                view = editor.current;
-              if (!snapshot || !view) return;
-              if (current.id !== snapshot.id || current.content !== snapshot.source) {
-                notify(t('原文已变化，请重新选择内容生成建议。'));
-                return;
-              }
-              setMode('live');
-              view.dispatch(
-                insertMarkdownTransaction(view.state, text, {
-                  from: snapshot.from,
-                  to: snapshot.to,
-                }),
-              );
-              setDialog(null);
-              view.focus();
-            }}
-          />
+          <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+            <AiPanel
+              selection={aiSelection.current?.selection || ''}
+              onApply={(text) => {
+                const snapshot = aiSelection.current,
+                  view = editor.current;
+                if (!snapshot || !view) return;
+                if (current.id !== snapshot.id || current.content !== snapshot.source) {
+                  notify(t('原文已变化，请重新选择内容生成建议。'));
+                  return;
+                }
+                setMode('live');
+                view.dispatch(
+                  insertMarkdownTransaction(view.state, text, {
+                    from: snapshot.from,
+                    to: snapshot.to,
+                  }),
+                );
+                setDialog(null);
+                view.focus();
+              }}
+            />
+          </Suspense>
         </Modal>
       )}
       {dialog === 'export' && (
@@ -2367,16 +2745,18 @@ export default function App() {
           subtitle={t('使用当前编辑内容，无需先覆盖原文档')}
           onClose={() => setDialog(null)}
         >
-          <ExportOptionsPanel
-            format={exportFormat}
-            value={exportOptions}
-            onChange={(next) => setExportOptions({ ...next, theme: next.theme || 'light' })}
-            title={current.name}
-            language={settings.language}
-            prepareArticle={prepareExportArticle}
+          <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+            <ExportOptionsPanel
+              format={exportFormat}
+              value={exportOptions}
+              onChange={(next) => setExportOptions({ ...next, theme: next.theme || 'light' })}
+              title={current.name}
+              language={settings.language}
+              prepareArticle={prepareExportArticle}
               sourceKey={current.content}
-            busy={exporting}
-          />
+              busy={exporting}
+            />
+          </Suspense>
           <div className="modal-actions">
             <button onClick={() => setDialog(null)}>{t('取消')}</button>
             <button
@@ -2481,72 +2861,114 @@ export default function App() {
         </Modal>
       )}
       {dialog === 'settings' && (
-        <SettingsPanel
-          settings={settings}
-          onChange={setSettings}
+        <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+          <SettingsPanel
+            settings={settings}
+            onChange={setSettings}
+            onClose={() => setDialog(null)}
+            filesExtra={
+              <BackupPanel
+                language={settings.language}
+                root={root}
+                getBundle={() => captureBackupSettings(settingsRef.current)}
+                onRestored={async (result) => {
+                  const restoredEntries = await platform.listFolder(result.path);
+                  const preferences = result.settingsBundle
+                    ? restoreBackupSettings(result.settingsBundle)
+                    : settingsRef.current;
+                  folderRequest.current++;
+                  setSettings({ ...preferences, followFileParent: false });
+                  setRoot(result.path);
+                  setEntries(restoredEntries);
+                  setFolderError('');
+                  setFolderLoading(false);
+                  setWorkspaces((old) => {
+                    const next = [result.path, ...old.filter((path) => path !== result.path)].slice(
+                      0,
+                      10,
+                    );
+                    try {
+                      localStorage.setItem('markwrite.workspaces.v1', JSON.stringify(next));
+                    } catch {
+                      /* restored folder remains open */
+                    }
+                    return next;
+                  });
+                  invalidateWorkspaceIndex();
+                }}
+              />
+            }
+            defaultAppAvailable={platform.desktop}
+            onCheckDefaultApp={async () => (await defaultMarkdownStatus()).isDefault}
+            onDefaultApp={async () => {
+              const result = await requestMarkdownDefault();
+              if (result.platform === 'windows') return { status: 'settings-opened' };
+              if (result.isDefault) return { status: 'set' };
+              throw new Error(result.message);
+            }}
+          />
+        </Suspense>
+      )}
+      {dialog === 'portable' && (
+        <Modal
+          title={t('文档与附件打包', 'Package document and attachments')}
+          wide
           onClose={() => setDialog(null)}
-          filesExtra={
-            <BackupPanel
+        >
+          <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+            <PortablePanel current={current} onClose={() => setDialog(null)} onNotify={notify} />
+          </Suspense>
+        </Modal>
+      )}
+      {(dialog === 'encoding' || dialog === 'windows') && (
+        <Suspense fallback={null}>
+          <DocumentToolsPanel
+            kind={dialog}
+            current={current}
+            onOpen={openEncoded}
+            onClose={() => setDialog(null)}
+          />
+        </Suspense>
+      )}
+      {dialog === 'clipboard' && (
+        <Modal
+          title={t('复制到公众号 / 飞书', 'Copy for WeChat / Feishu')}
+          wide
+          onClose={() => setDialog(null)}
+        >
+          <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+            <RichClipboardPanel
+              title={current.name}
               language={settings.language}
-              root={root}
-              getBundle={() => captureBackupSettings(settingsRef.current)}
-              onRestored={async (result) => {
-                const restoredEntries = await platform.listFolder(result.path);
-                const preferences = result.settingsBundle
-                  ? restoreBackupSettings(result.settingsBundle)
-                  : settingsRef.current;
-                folderRequest.current++;
-                setSettings({ ...preferences, followFileParent: false });
-                setRoot(result.path);
-                setEntries(restoredEntries);
-                setFolderError('');
-                setFolderLoading(false);
-                setWorkspaces((old) => {
-                  const next = [result.path, ...old.filter((path) => path !== result.path)].slice(
-                    0,
-                    10,
-                  );
-                  try {
-                    localStorage.setItem('markwrite.workspaces.v1', JSON.stringify(next));
-                  } catch {
-                    /* restored folder remains open */
-                  }
-                  return next;
-                });
-                invalidateWorkspaceIndex();
-              }}
+              sourceKey={`${current.id}:${current.updated}`}
+              prepareArticle={prepareExportArticle}
+              onClose={() => setDialog(null)}
             />
-          }
-          defaultAppAvailable={platform.desktop}
-          onCheckDefaultApp={async () => (await defaultMarkdownStatus()).isDefault}
-          onDefaultApp={async () => {
-            const result = await requestMarkdownDefault();
-            if (result.platform === 'windows') return { status: 'settings-opened' };
-            if (result.isDefault) return { status: 'set' };
-            throw new Error(result.message);
-          }}
-        />
+          </Suspense>
+        </Modal>
       )}
       {dialog === 'import' && (
-        <ImportPanel
-          onClose={() => setDialog(null)}
-          onImport={(imported) => {
-            const added = imported.map((item) => ({
-              ...draft(item.name, item.content),
-              saved: '',
-              status: 'dirty' as const,
-            }));
-            if (added.length) {
-              updateDocs((items) => [...items, ...added]);
-              selectDocument(added[0].id);
-              setMode(settingsRef.current.defaultMode);
-              notify(
-                t('已导入 {0} 个 Markdown 草稿', 'Imported {0} Markdown drafts', [added.length]),
-              );
-            }
-            setDialog(null);
-          }}
-        />
+        <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+          <ImportPanel
+            onClose={() => setDialog(null)}
+            onImport={(imported) => {
+              const added = imported.map((item) => ({
+                ...draft(item.name, item.content),
+                saved: '',
+                status: 'dirty' as const,
+              }));
+              if (added.length) {
+                updateDocs((items) => [...items, ...added]);
+                selectDocument(added[0].id);
+                setMode(settingsRef.current.defaultMode);
+                notify(
+                  t('已导入 {0} 个 Markdown 草稿', 'Imported {0} Markdown drafts', [added.length]),
+                );
+              }
+              setDialog(null);
+            }}
+          />
+        </Suspense>
       )}
       {dialog === 'shortcuts' && (
         <Modal
@@ -2594,10 +3016,12 @@ export default function App() {
               <pre>{diskConflict.content}</pre>
             </section>
           </div>
-          <DiffView
-            before={docs.find((d) => d.id === diskConflict.documentId)?.content || ''}
-            after={diskConflict.content}
-          />
+          <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+            <DiffView
+              before={docs.find((d) => d.id === diskConflict.documentId)?.content || ''}
+              after={diskConflict.content}
+            />
+          </Suspense>
           <div className="modal-footer conflict-footer">
             <button
               onClick={() => {
@@ -2668,13 +3092,15 @@ export default function App() {
         </Modal>
       )}
       {referenceMove && (
-        <RenameReferencesDialog
-          {...referenceMove}
-          busy={referenceMoveBusy}
-          error={referenceMoveError}
-          onConfirm={(paths) => void confirmMove(paths)}
-          onCancel={cancelMove}
-        />
+        <Suspense fallback={<p role="status">{t('正在加载…', 'Loading…')}</p>}>
+          <RenameReferencesDialog
+            {...referenceMove}
+            busy={referenceMoveBusy}
+            error={referenceMoveError}
+            onConfirm={(paths) => void confirmMove(paths)}
+            onCancel={cancelMove}
+          />
+        </Suspense>
       )}
       {namePrompt && (
         <Modal
@@ -2687,7 +3113,10 @@ export default function App() {
           }
           subtitle={
             namePrompt.type === 'rename'
-              ? t('下一步可预览并选择需要更新的引用。','Next, review and select the references to update.')
+              ? t(
+                  '下一步可预览并选择需要更新的引用。',
+                  'Next, review and select the references to update.',
+                )
               : t('创建于 {0}', undefined, [root || t('当前工作区')])
           }
           onClose={() => setNamePrompt(null)}

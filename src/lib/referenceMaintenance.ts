@@ -1,5 +1,5 @@
 import type { Token, TokensList } from 'marked';
-import { md } from './markdown';
+import { compatibilityMd as md } from './markdownParser';
 import {
   documentFileUri,
   fileName,
@@ -158,6 +158,7 @@ export function analyzeReferenceChanges(
   documents: readonly ReferenceDocument[],
   from: string,
   to: string,
+  collect?: (destination: { from: number; to: number; source: string }) => void,
 ): ReferenceAnalysis {
   const changes: ReferenceChange[] = [];
   const warnings: ReferenceWarning[] = [];
@@ -197,6 +198,7 @@ export function analyzeReferenceChanges(
       warnings.push({ path: document.path, reference, reason });
     }
     function rewriteHref(href: string, original: string, angle: boolean): string | null {
+      if (collect) return null;
       const decoded = decodeEntities(href);
       if (!decoded || decoded.startsWith('#')) return null;
       if (
@@ -288,6 +290,7 @@ export function analyzeReferenceChanges(
     }
     function processReference(token: Token, start: number) {
       if (token.type === 'wikiLink') {
+        if (collect) return;
         const replacement = rewriteWiki(token.raw);
         if (replacement)
           edits.push({ from: start, to: start + token.raw.length, insert: replacement });
@@ -298,6 +301,12 @@ export function analyzeReferenceChanges(
             warn(token.raw, 'unlocated-reference');
           return;
         }
+        if (!protectedAt(start + destination.from, start + destination.to))
+          collect?.({
+            from: start + destination.from,
+            to: start + destination.to,
+            source: destination.value,
+          });
         const replacement = rewriteHref(token.href, destination.value, destination.angle);
         if (replacement)
           edits.push({
@@ -320,6 +329,12 @@ export function analyzeReferenceChanges(
         const destination = htmlDestination(tag[0], attribute);
         if (!destination) continue;
         const { value } = destination;
+        if (!protectedAt(start + tagStart + destination.from, start + tagStart + destination.to))
+          collect?.({
+            from: start + tagStart + destination.from,
+            to: start + tagStart + destination.to,
+            source: value,
+          });
         const replacement = rewriteHref(
           decodeEntities(value),
           decodeEntities(value),
@@ -386,6 +401,7 @@ export function analyzeReferenceChanges(
       const destination = markdownDestination(content, start + match[0].length);
       if (!destination || unescapeMarkdown(destination.value) !== decodeEntities(definition.href))
         continue;
+      collect?.({ from: destination.from, to: destination.to, source: destination.value });
       const replacement = rewriteHref(definition.href, destination.value, destination.angle);
       if (replacement)
         edits.push({ from: destination.from, to: destination.to, insert: replacement });
@@ -420,4 +436,15 @@ export function planReferenceChanges(
   to: string,
 ): ReferenceChange[] {
   return analyzeReferenceChanges(documents, from, to).changes;
+}
+
+/** Reuse the source-preserving reference walker; never scan code examples as attachments. */
+export function portableReferences(document: ReferenceDocument) {
+  const unique = new Map<string, { from: number; to: number; source: string }>();
+  analyzeReferenceChanges([document], document.path, document.path, (item) => {
+    if (!item.source || item.source.startsWith('#') || /^(?:data:|mailto:|tel:)/i.test(item.source))
+      return;
+    unique.set(`${item.from}:${item.to}`, item);
+  });
+  return [...unique.values()].sort((a, b) => a.from - b.from);
 }

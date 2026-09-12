@@ -123,33 +123,19 @@ jobs:
           if ($arguments.Length -ne 2 -or $arguments[0] -cne $env:MARKWRITE_SMOKE_EXE -or $arguments[1] -cne $document) {
             throw 'The registered open command does not preserve a complete document filename'
           }
-      - name: Windows launch and close smoke test
+      - name: Windows independent process and recovery smoke test
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Add-Type @'
-          using System;
-          using System.Runtime.InteropServices;
-          public static class WindowMessages {
-            [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-          }
-          '@
-          $app = Start-Process -FilePath $env:MARKWRITE_SMOKE_EXE -PassThru
-          try {
-            for ($attempt = 0; $attempt -lt 30; $attempt++) {
-              Start-Sleep -Seconds 1
-              $app.Refresh()
-              if ($app.HasExited) { throw "Application exited before displaying a window" }
-              if ($app.MainWindowHandle -ne [IntPtr]::Zero) { break }
-            }
-            if ($app.MainWindowHandle -eq [IntPtr]::Zero) { throw "No native window appeared" }
-            Start-Sleep -Seconds 5
-            if (-not [WindowMessages]::PostMessage($app.MainWindowHandle, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) { throw "Could not post native close request" }
-            if (-not $app.WaitForExit(15000)) { throw "Native close request did not exit the application" }
-            if ($app.ExitCode -ne 0) { throw "Application exited with code $($app.ExitCode)" }
-          } finally {
-            if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force }
-          }
+          ./scripts/windows-isolation-smoke.ps1 -Executable $env:MARKWRITE_SMOKE_EXE -OutputDirectory (Join-Path $env:RUNNER_TEMP 'markwrite-isolation-results')
+      - name: Keep Windows isolation evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-isolation-evidence
+          path: ${{ runner.temp }}/markwrite-isolation-results/
+          if-no-files-found: warn
+          retention-days: 14
       - name: Uninstall Windows test package
         if: always() && runner.os == 'Windows' && env.MARKWRITE_SMOKE_DIR != ''
         shell: pwsh

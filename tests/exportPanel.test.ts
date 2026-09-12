@@ -15,11 +15,13 @@ vi.mock('../src/lib/export', async (original) => ({
   buildPdf: mocks.build,
   saveExportBytes: mocks.save,
 }));
-vi.mock('pdfjs-dist', () => ({
+vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
   GlobalWorkerOptions: { workerSrc: '' },
   getDocument: mocks.getDocument,
 }));
-vi.mock('pdfjs-dist/build/pdf.worker.min.mjs?url', () => ({ default: '/local-pdf-worker.mjs' }));
+vi.mock('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url', () => ({
+  default: '/local-pdf-worker.mjs',
+}));
 
 let host: HTMLDivElement;
 let root: Root;
@@ -27,7 +29,7 @@ let pdf: ReturnType<typeof fakePdf>;
 function fakePdf() {
   return {
     numPages: 3,
-    destroy: vi.fn(async () => {}),
+    loadingTask: { destroy: vi.fn(async () => {}) },
     getPage: vi.fn(async () => ({
       getViewport: ({ scale }: { scale: number }) => ({
         width: 419.53 * scale,
@@ -176,7 +178,7 @@ describe('export layout and real-PDF preview controls', () => {
       expect(host.querySelector('canvas')).not.toBeNull();
     });
     select('Paper size', 'A5');
-    expect(pdf.destroy).toHaveBeenCalledOnce();
+    expect(pdf.loadingTask.destroy).toHaveBeenCalledOnce();
     expect(host.querySelector('canvas')).toBeNull();
     expect(host.textContent).not.toContain('Save PDF for printing');
   });

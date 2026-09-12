@@ -7,7 +7,7 @@ use std::{
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
-use tauri::{Manager, State};
+use tauri::Manager;
 const MAX_SESSION_BYTES: u64 = 256 * 1024 * 1024;
 fn validate(json: &str) -> Result<(), String> {
     if json.len() as u64 > MAX_SESSION_BYTES {
@@ -109,24 +109,27 @@ pub fn save(directory: &Path, json: &str) -> Result<(), String> {
         .map_err(|e| format!("草稿恢复保存失败：{e}。请保存文档后重试。"))
 }
 #[tauri::command]
-pub async fn save_session(
-    json: String,
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let _guard = state.session_writes.lock().map_err(|e| e.to_string())?;
-    save(
-        &app.path().app_local_data_dir().map_err(|e| e.to_string())?,
-        &json,
-    )
+pub async fn save_session(json: String, app: tauri::AppHandle) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let _guard = state.session_writes.lock().map_err(|e| e.to_string())?;
+        save(
+            &app.path().app_local_data_dir().map_err(|e| e.to_string())?,
+            &json,
+        )
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[tauri::command]
-pub async fn load_session(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<Option<String>, String> {
-    let _guard = state.session_writes.lock().map_err(|e| e.to_string())?;
-    load(&app.path().app_local_data_dir().map_err(|e| e.to_string())?)
+pub async fn load_session(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let _guard = state.session_writes.lock().map_err(|e| e.to_string())?;
+        load(&app.path().app_local_data_dir().map_err(|e| e.to_string())?)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 #[cfg(test)]
 mod tests {

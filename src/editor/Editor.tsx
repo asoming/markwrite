@@ -124,6 +124,7 @@ export default function Editor({
   const { language } = useI18n();
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  const synchronizedContent = useRef<{ id: string; content: string } | undefined>(undefined);
   const callbacks = useRef({
     onChange,
     onReady,
@@ -284,7 +285,6 @@ export default function Editor({
       ],
     });
     if (initial) editor.scrollDOM.scrollTop = initial.scroll;
-    callbacks.current.onReady(editor);
     return () => {
       sessions.set(id, { state: editor.state, scroll: editor.scrollDOM.scrollTop });
       callbacks.current.onReady(null);
@@ -319,6 +319,11 @@ export default function Editor({
   useEffect(() => {
     const editor = view.current;
     if (!editor) return;
+    // StrictMode may recreate this view after onReady dispatched a user command.
+    // The same prop snapshot must not replace that newer editor transaction.
+    const previous = synchronizedContent.current;
+    if (previous?.id === id && previous.content === content) return;
+    synchronizedContent.current = { id, content };
     if (editor.state.doc.toString() !== content)
       editor.dispatch({
         changes: { from: 0, to: editor.state.doc.length, insert: content },
@@ -331,6 +336,11 @@ export default function Editor({
   useEffect(() => {
     view.current?.dispatch({ effects: pathCompartment.reconfigure(documentPath.of(path || '')) });
   }, [path]);
+  useEffect(() => {
+    // Pending formatting/undo commands may change the document synchronously here.
+    // Announce readiness only after the latest buffer and configuration are applied.
+    if (view.current) callbacks.current.onReady(view.current);
+  }, [id]);
   return (
     <div
       className={`editor-host ${mode === 'read' ? 'editor-hidden' : ''} ${mode === 'source' ? 'source-mode' : ''}`}

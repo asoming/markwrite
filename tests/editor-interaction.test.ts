@@ -1,4 +1,4 @@
-import { createElement, act } from 'react';
+import { createElement, act, StrictMode, useRef, useState } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { EditorView } from '@codemirror/view';
@@ -7,6 +7,7 @@ import { configureInlineSyntax } from '../src/lib/markdown';
 import { starterExtension } from '../src/lib/extensions';
 import { setLanguage } from '../src/lib/i18n';
 import { undo } from '@codemirror/commands';
+import { applyFormatting } from '../src/editor/formatting';
 import { getSearchQuery, openSearchPanel, SearchQuery, setSearchQuery } from '@codemirror/search';
 
 let host: HTMLDivElement;
@@ -156,4 +157,95 @@ it('refreshes an open search panel without losing its query or replacement optio
   expect(view!.state.doc.toString()).toBe('文件\n\n保存');
   act(() => setLanguage('zh-CN'));
   expect(host.querySelector('input[name="search"]')?.getAttribute('placeholder')).toBe('查找');
+});
+
+function mountReadingDocument(strict: boolean) {
+  let command!: (run: (editor: EditorView) => void) => void;
+  let read!: () => void;
+  let replace!: (content: string) => void;
+  let content = '';
+  function Document() {
+    const [source, setSource] = useState('正文');
+    const [editing, setEditing] = useState(false);
+    const pending = useRef<((editor: EditorView) => void) | undefined>(undefined);
+    content = source;
+    replace = setSource;
+    read = () => setEditing(false);
+    command = (run) => {
+      pending.current = run;
+      setEditing(true);
+    };
+    return editing
+      ? createElement(Editor, {
+          id,
+          content: source,
+          mode: 'live',
+          onChange: setSource,
+          onReady: (editor) => {
+            view = editor;
+            if (editor && pending.current) {
+              const run = pending.current;
+              pending.current = undefined;
+              run(editor);
+            }
+          },
+          onSelection: () => {},
+          onImage: () => {},
+          onComposition: () => {},
+        })
+      : createElement('article', null, source);
+  }
+  act(() =>
+    root.render(
+      strict ? createElement(StrictMode, null, createElement(Document)) : createElement(Document),
+    ),
+  );
+  return {
+    command: (run: (editor: EditorView) => void) => act(() => command(run)),
+    read: () => act(() => read()),
+    replace: (text: string) => act(() => replace(text)),
+    content: () => content,
+  };
+}
+
+it.each([false, true])(
+  'keeps the first reading-mode heading command (StrictMode: %s)',
+  (strict) => {
+    const document = mountReadingDocument(strict);
+    document.command((editor) => applyFormatting(editor, 'heading1'));
+    expect(document.content()).toBe('# 正文');
+    expect(view!.state.doc.toString()).toBe('# 正文');
+  },
+);
+
+it.each([false, true])('keeps the first reading-mode bold command (StrictMode: %s)', (strict) => {
+  const document = mountReadingDocument(strict);
+  document.command((editor) => applyFormatting(editor, 'bold'));
+  expect(document.content()).toBe('**文字**正文');
+  expect(view!.state.doc.toString()).toBe('**文字**正文');
+});
+
+it.each([false, true])(
+  'undoes immediately after returning from reading (StrictMode: %s)',
+  (strict) => {
+    const document = mountReadingDocument(strict);
+    document.command(() => {});
+    act(() => view!.dispatch({ changes: { from: 0, insert: '编辑' }, userEvent: 'input' }));
+    expect(document.content()).toBe('编辑正文');
+    document.read();
+    expect(view).toBeNull();
+    document.command((editor) => undo(editor));
+    expect(document.content()).toBe('正文');
+    expect(view!.state.doc.toString()).toBe('正文');
+  },
+);
+
+it('synchronizes a changed reading buffer before announcing the restored editor', () => {
+  const document = mountReadingDocument(true);
+  document.command(() => {});
+  document.read();
+  document.replace('磁盘更新');
+  document.command((editor) => applyFormatting(editor, 'heading1'));
+  expect(document.content()).toBe('# 磁盘更新');
+  expect(view!.state.doc.toString()).toBe('# 磁盘更新');
 });

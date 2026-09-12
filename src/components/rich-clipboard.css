@@ -1,0 +1,61 @@
+.rich-clipboard-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+.rich-clipboard-targets {
+  display: flex;
+  gap: 8px;
+}
+.rich-clipboard-targets button,
+.rich-clipboard-actions button {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 13px;
+  border: 1px solid var(--line, #dde1e8);
+  border-radius: 9px;
+  background: var(--panel, #fff);
+  color: inherit;
+  cursor: pointer;
+}
+.rich-clipboard-targets button[aria-pressed='true'] {
+  color: var(--accent, #4564db);
+  background: var(--accent-soft, #eef1ff);
+  border-color: var(--accent, #4564db);
+}
+.rich-clipboard-hint {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--muted, #717988);
+  margin: 0;
+}
+.rich-clipboard-preview {
+  max-height: 45vh;
+  overflow: auto;
+  border: 1px solid var(--line, #dde1e8);
+  border-radius: 10px;
+  padding: 22px;
+  background: #fff;
+}
+.rich-clipboard-preview > section {
+  min-width: 0;
+}
+.rich-clipboard-preview img {
+  max-width: 100%;
+}
+.rich-clipboard-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rich-clipboard-actions .primary {
+  color: #fff;
+  background: var(--accent, #4564db);
+  border-color: var(--accent, #4564db);
+}
+.rich-clipboard-error {
+  color: var(--danger, #c84339);
+  font-size: 13px;
+}

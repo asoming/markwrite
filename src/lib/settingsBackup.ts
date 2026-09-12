@@ -15,7 +15,7 @@ export function validateBackupSettings(value: unknown): Settings {
   settings.language = v.language === 'en' ? 'en' : 'zh-CN';
   if (v.defaultMode === 'read' || v.defaultMode === 'live' || v.defaultMode === 'source')
     settings.defaultMode = v.defaultMode;
-  for (const field of ['autosave', 'serif', 'followFileParent'] as const)
+  for (const field of ['autosave', 'serif', 'followFileParent', 'markdownCompatibility'] as const)
     if (typeof v[field] === 'boolean') settings[field] = v[field];
   for (const [field, min, max] of [
     ['fontSize', 12, 32],

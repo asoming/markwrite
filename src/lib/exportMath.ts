@@ -37,5 +37,6 @@ export function formulaSvg(tex: string, display: boolean): string {
   adaptor.setAttribute(svg, 'width', String((viewBox[2] / 1000) * 16));
   adaptor.setAttribute(svg, 'height', String((viewBox[3] / 1000) * 16));
   adaptor.setAttribute(svg, 'color', '#24272e');
+  adaptor.setAttribute(svg, 'data-baseline', String((-viewBox[1] / 1000) * 16));
   return adaptor.outerHTML(svg);
 }

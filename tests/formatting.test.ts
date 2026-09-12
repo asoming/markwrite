@@ -182,7 +182,15 @@ describe('visual table grid and rich clipboard', () => {
     expect(markdown).toContain('a\\|b');
     const rendered = renderMarkdown(markdown);
     expect(rendered).toContain('a|b');
-    expect(rendered).toContain('align="right"');
+    const host = document.createElement('div');
+    host.innerHTML = rendered;
+    expect(
+      [...host.querySelectorAll('td,th')].some(
+        (cell) =>
+          (cell as HTMLElement).style.textAlign === 'right' ||
+          cell.getAttribute('align') === 'right',
+      ),
+    ).toBe(true);
   });
   it('converts pasted formatted HTML to editable Markdown instead of dropping styles', () => {
     const converted = clipboardMarkdown(

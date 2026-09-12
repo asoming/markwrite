@@ -569,6 +569,36 @@ export default function SettingsPanel({
                 </section>
               </>
             )}
+            {category === 'editor' && (
+              <section className="preferences-section">
+                <h4>{t('Markdown 兼容', 'Markdown compatibility')}</h4>
+                <p className="preference-help">
+                  {t(
+                    '默认使用 CommonMark，保留表格、任务列表、删除线、脚注、公式和 Mermaid。文件中的原始语法始终保留。',
+                    'CommonMark with tables, tasks, strikethrough, footnotes, math and Mermaid. Original source syntax is always preserved.',
+                  )}
+                </p>
+                <label className="preference-field">
+                  <span>
+                    {t(
+                      '兼容 Wiki 链接与自定义行内语法',
+                      'Legacy Wiki links and custom inline syntax',
+                    )}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={settings.markdownCompatibility === true}
+                    onChange={(event) => update({ markdownCompatibility: event.target.checked })}
+                  />
+                </label>
+                <p className="preference-help">
+                  {t(
+                    '仅为已有文档启用；关闭时 [[链接]] 等按原文字面显示。',
+                    'Enable for existing legacy documents. When off, [[links]] and similar syntax remain literal text.',
+                  )}
+                </p>
+              </section>
+            )}
             {category === 'images' && (
               <section className="preferences-section">
                 <h4>{t('保存图片', 'Saving images')}</h4>
@@ -589,8 +619,8 @@ export default function SettingsPanel({
                 </label>
                 <p className="preference-help">
                   {t(
-                    'assets 方式使用相对路径，移动文档时请一起移动该文件夹。新草稿的图片会在首次保存时迁移；内嵌方式将图片保存在文档内，文件会更大。',
-                    'The assets option uses relative paths: move the folder with your document. Draft images are moved on the first save. Embedding keeps images inside Markdown and makes the file larger.',
+                    'assets 方式使用相对路径，移动文档时请一起移动该文件夹。新草稿插入的图片暂时内嵌，保存时不自动迁移；内嵌方式将图片保存在文档内，文件会更大。',
+                    'The assets option uses relative paths: move the folder with your document. Images inserted into drafts stay embedded; saving never migrates them automatically. Embedding keeps images inside Markdown and makes the file larger.',
                   )}
                 </p>
                 <p className="preference-help">
