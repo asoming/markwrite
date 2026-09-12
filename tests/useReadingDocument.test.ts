@@ -143,6 +143,60 @@ describe('reader worker request lifetimes', () => {
     expect(homeKey.defaultPrevented).toBe(true);
     expect(host.querySelector('[data-reading-block="0"]')).not.toBeNull();
   });
+  it('keeps End pinned while chunks settle and releases it on user scrolling', async () => {
+    localStorage.clear();
+    await act(async () =>
+      root.render(
+        createElement(Reader, {
+          content: 'long document',
+          path: '/keyboard-pin.md',
+          onLink: vi.fn(),
+        }),
+      ),
+    );
+    const worker = WorkerMock.instances[0];
+    const response = loaded(worker, 'first');
+    if (response.kind !== 'loaded') throw new Error('Expected fixture load');
+    response.blocks = Array.from({ length: 30 }, (_, index) => ({
+      index,
+      fromLine: index * 10 + 1,
+      toLine: index * 10 + 9,
+      excerpt: `block ${index}`,
+      characters: 8,
+      estimatedHeight: 400,
+      anchors: [],
+    }));
+    await act(async () => worker.reply(response));
+    const area = host.querySelector<HTMLElement>('.reader-scroll')!;
+    let extent = 12000;
+    Object.defineProperty(area, 'scrollHeight', { get: () => extent, configurable: true });
+    await act(async () =>
+      area.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true })),
+    );
+    await act(async () =>
+      worker.reply({
+        kind: 'chunks',
+        generation: response.generation,
+        chunks: [{ index: 29, html: '<p>last image block</p>', source: 'last image block' }],
+      }),
+    );
+    expect(area.scrollTop).toBe(extent);
+    await act(async () => {
+      area.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true }));
+      area.scrollTop = 4000;
+    });
+    extent = 14000;
+    await act(async () =>
+      worker.reply({
+        kind: 'chunks',
+        generation: response.generation,
+        chunks: [
+          { index: 28, html: '<p>late neighboring image</p>', source: 'late neighboring image' },
+        ],
+      }),
+    );
+    expect(area.scrollTop).toBe(4000);
+  });
   it('terminates an old parse and ignores its late chunks after a file switch', async () => {
     await render('old');
     const first = WorkerMock.instances[0];

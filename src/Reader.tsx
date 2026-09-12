@@ -123,6 +123,7 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const scrollFrame = useRef(0),
     previousIdentity = useRef(identity);
+  const boundaryIntent = useRef<'start' | 'end' | null>(null);
   const heights = useRef(new ReadingHeights([])),
     lastBlocks = useRef<ReadingBlock[]>([]);
   const currentGeneration = useRef(model.generation);
@@ -205,6 +206,7 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
     setTarget(null);
     assets.current = { allowedRemote: new Set(), cache: new Map() };
     announced.current = false;
+    boundaryIntent.current = null;
     restored.current = false;
     pendingBookmark.current = false;
     copyAll.current = false;
@@ -284,6 +286,7 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
 
   useLayoutEffect(() => {
     if (!jump || !model.blocks.length) return;
+    if (!jump.boundary) boundaryIntent.current = null;
     let index = -1;
     if (jump.boundary) {
       if (jump.boundary === 'end' && !model.complete) return;
@@ -332,6 +335,22 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
     setTarget({ ...jump, index });
     setJump(null);
   }, [jump, model.blocks, model.complete, updateView, model.requestChunks]);
+
+  // Lazy images and newly measured blocks can change the document height after
+  // a boundary jump. Keep the requested edge visible until the user navigates.
+  useLayoutEffect(() => {
+    const node = viewport.current;
+    if (!node || !model.complete || !boundaryIntent.current) return;
+    node.scrollTop = boundaryIntent.current === 'end' ? node.scrollHeight : 0;
+    updateView();
+  }, [measureRevision, model.chunks, model.complete, updateView]);
+
+  const cancelBoundary = () => {
+    if (!boundaryIntent.current) return;
+    boundaryIntent.current = null;
+    setJump((current) => (current?.boundary ? null : current));
+    setTarget((current) => (current?.boundary ? null : current));
+  };
 
   useLayoutEffect(() => {
     if (!target || !model.chunks.has(target.index)) return;
@@ -863,8 +882,11 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
         tabIndex={0}
         aria-label={t('文档阅读区域', 'Document reading area')}
         onMouseDown={(event) => {
+          cancelBoundary();
           if (event.button === 0) clearFullSelection();
         }}
+        onWheel={cancelBoundary}
+        onTouchStart={cancelBoundary}
         onCopy={copyDocument}
         onKeyDown={(event) => {
           if (
@@ -876,11 +898,13 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
             event.preventDefault();
             event.stopPropagation();
             clearFullSelection();
+            boundaryIntent.current = event.key === 'Home' ? 'start' : 'end';
             setJump({
               boundary: event.key === 'Home' ? 'start' : 'end',
               token: ++jumpSerial.current,
             });
           } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+            cancelBoundary();
             event.preventDefault();
             event.stopPropagation();
             actions.current.selectAll();
@@ -895,8 +919,10 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
           } else if (
             !['Control', 'Meta', 'Shift', 'Alt'].includes(event.key) &&
             !((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c')
-          )
+          ) {
+            cancelBoundary();
             clearFullSelection();
+          }
         }}
       >
         <article
