@@ -630,6 +630,7 @@ input::placeholder {
 }
 /* WebKit may composite an underlying document scrollbar above modal content. */
 .app:has(.modal-backdrop) .document-workspace :is(.reader-scroll, .cm-scroller) {
+  overflow: hidden;
   scrollbar-width: none;
 }
 .app:has(.modal-backdrop) .document-workspace :is(.reader-scroll, .cm-scroller)::-webkit-scrollbar {
