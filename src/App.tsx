@@ -2758,7 +2758,7 @@ export default function App() {
               busy={exporting}
             />
           </Suspense>
-          <div className="modal-actions">
+          <div className="modal-footer">
             <button onClick={() => setDialog(null)}>{t('取消')}</button>
             <button
               className="primary-button"
