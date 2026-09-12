@@ -25,14 +25,41 @@ export function editableFormula(tex: string, display: boolean): OfficeMath {
     children.forEach((child) => node.push(child));
     return node;
   };
-  const text = (value: string) => xml('r', [xml('t', [value], { 'xml:space': 'preserve' })]);
+  const text = (value: string, variant?: string, plain = false) => {
+    const properties: ImportedXmlComponent[] = [];
+    if (plain) properties.push(xml('nor'));
+    const style =
+      variant === 'bold'
+        ? 'b'
+        : variant === 'bold-italic'
+          ? 'bi'
+          : variant === 'normal'
+            ? 'p'
+            : undefined;
+    if (style) properties.push(xml('sty', [], { 'm:val': style }));
+    const script = (
+      {
+        'double-struck': 'double-struck',
+        script: 'script',
+        fraktur: 'fraktur',
+        'sans-serif': 'sans-serif',
+        monospace: 'monospace',
+      } as Record<string, string>
+    )[variant || ''];
+    if (script) properties.push(xml('scr', [], { 'm:val': script }));
+    return xml('r', [
+      ...(properties.length ? [xml('rPr', properties)] : []),
+      xml('t', [value], { 'xml:space': 'preserve' }),
+    ]);
+  };
   const group = (name: string, content: ImportedXmlComponent[]) => xml(name, content);
-  function convert(node: Element): ImportedXmlComponent[] {
+  function convert(node: Element, inheritedVariant?: string): ImportedXmlComponent[] {
+    const variant = node.getAttribute('mathvariant') || inheritedVariant;
     if (++visited > 10_000)
       throw new Error('公式节点过多，请选择图片公式。 / Choose image equations for this formula.');
     const children = [...node.children];
-    const child = (index: number) => (children[index] ? convert(children[index]) : []);
-    const all = () => children.flatMap(convert);
+    const child = (index: number) => (children[index] ? convert(children[index], variant) : []);
+    const all = () => children.flatMap((child) => convert(child, variant));
     switch (node.localName) {
       case 'annotation':
       case 'annotation-xml':
@@ -40,6 +67,24 @@ export function editableFormula(tex: string, display: boolean): OfficeMath {
       case 'math':
       case 'semantics':
       case 'mrow':
+        if (
+          children.length >= 2 &&
+          children[0].getAttribute('fence') === 'true' &&
+          children.at(-1)!.getAttribute('fence') === 'true'
+        )
+          return [
+            xml('d', [
+              xml('dPr', [
+                xml('begChr', [], { 'm:val': children[0].textContent || '' }),
+                xml('endChr', [], { 'm:val': children.at(-1)!.textContent || '' }),
+              ]),
+              group(
+                'e',
+                children.slice(1, -1).flatMap((child) => convert(child, variant)),
+              ),
+            ]),
+          ];
+        return all();
       case 'mstyle':
       case 'mpadded':
         return all();
@@ -48,7 +93,7 @@ export function editableFormula(tex: string, display: boolean): OfficeMath {
       case 'mo':
       case 'mtext':
       case 'ms':
-        return [text(node.textContent || '')];
+        return [text(node.textContent || '', variant, ['mtext', 'ms'].includes(node.localName))];
       case 'mspace':
         return [text(' ')];
       case 'mfrac':
@@ -97,7 +142,12 @@ export function editableFormula(tex: string, display: boolean): OfficeMath {
             children.map((row) =>
               xml(
                 'mr',
-                [...row.children].map((cell) => group('e', [...cell.children].flatMap(convert))),
+                [...row.children].map((cell) =>
+                  group(
+                    'e',
+                    [...cell.children].flatMap((child) => convert(child, variant)),
+                  ),
+                ),
               ),
             ),
           ),
@@ -109,7 +159,7 @@ export function editableFormula(tex: string, display: boolean): OfficeMath {
               xml('begChr', [], { 'm:val': node.getAttribute('open') || '(' }),
               xml('endChr', [], { 'm:val': node.getAttribute('close') || ')' }),
             ]),
-            ...children.map((child) => group('e', convert(child))),
+            ...children.map((child) => group('e', convert(child, variant))),
           ]),
         ];
       case 'mphantom':

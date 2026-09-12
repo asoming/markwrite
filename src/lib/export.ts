@@ -331,7 +331,7 @@ export async function collectExportBlocks(article: HTMLElement): Promise<ExportB
       }
       if (
         node.matches(
-          'h1,h2,h3,h4,h5,h6,p,pre,blockquote,ul,ol,table,hr,div,section,article,figure,figcaption',
+          'h1,h2,h3,h4,h5,h6,p,pre,blockquote,ul,ol,table,hr,div,section,article,figure,figcaption,[data-display="true"]',
         )
       ) {
         await flush();
@@ -406,7 +406,13 @@ export async function collectExportBlocks(article: HTMLElement): Promise<ExportB
           if (width)
             blocks.push({ kind: 'table', rows, header: Boolean(node.querySelector('thead,th')) });
         } else if (node.matches('[data-tex],.diagram')) {
-          blocks.push({ kind: 'paragraph', runs: await inline([node]), quote, indent });
+          blocks.push({
+            kind: 'paragraph',
+            runs: await inline([node]),
+            quote,
+            indent,
+            alignment: node.getAttribute('data-display') === 'true' ? 'center' : alignment,
+          });
         } else await walk(node, quote, indent);
       } else pending.push(node);
     }

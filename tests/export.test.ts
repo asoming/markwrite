@@ -288,3 +288,24 @@ it('keeps figure captions separate and preserves image/caption alignment in PDF 
   expect(xml).toContain('<w:jc w:val="right"');
   expect(xml).toContain('图一 Figure one');
 });
+
+it('exports consecutive display equations as separate centered paragraphs', async () => {
+  const blocks = await collectExportBlocks(
+    article(
+      renderMarkdown(
+        '$$\nx^2\n$$\n\n$$\n\\mathbf{x} + \\begin{pmatrix}a&b\\\\c&d\\end{pmatrix}\n$$\n',
+      ),
+    ),
+  );
+  expect(blocks).toHaveLength(2);
+  expect(
+    blocks.every(
+      (block) =>
+        block.kind === 'paragraph' && block.alignment === 'center' && block.runs.length === 1,
+    ),
+  ).toBe(true);
+  const xml = unzip(await buildDocx(blocks, 'Equations')).get('word/document.xml')!;
+  expect(xml.match(/<m:oMath>/g)).toHaveLength(2);
+  expect(xml).toContain('<m:sty m:val="b"');
+  expect(xml).toContain('<m:begChr m:val="("');
+});
