@@ -93,6 +93,56 @@ describe('reader worker request lifetimes', () => {
       JSON.parse(localStorage.getItem('markwrite.reading.v1:/pending.md')!).bookmarks,
     ).toHaveLength(1);
   });
+  it('queues End until the complete document arrives and preserves Shift selection keys', async () => {
+    localStorage.clear();
+    await act(async () =>
+      root.render(
+        createElement(Reader, {
+          content: 'long document',
+          path: '/keyboard-end.md',
+          onLink: vi.fn(),
+        }),
+      ),
+    );
+    const worker = WorkerMock.instances[0];
+    await act(async () => worker.reply(loaded(worker, 'first', false)));
+    const area = host.querySelector<HTMLElement>('.reader-scroll')!;
+    const selectionKey = new KeyboardEvent('keydown', {
+      key: 'End',
+      shiftKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => area.dispatchEvent(selectionKey));
+    expect(selectionKey.defaultPrevented).toBe(false);
+    const endKey = new KeyboardEvent('keydown', {
+      key: 'End',
+      ctrlKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    await act(async () => area.dispatchEvent(endKey));
+    expect(endKey.defaultPrevented).toBe(true);
+    const response = loaded(worker, 'first');
+    if (response.kind !== 'loaded') throw new Error('Expected fixture load');
+    response.blocks = Array.from({ length: 30 }, (_, index) => ({
+      index,
+      fromLine: index * 10 + 1,
+      toLine: index * 10 + 9,
+      excerpt: `block ${index}`,
+      characters: 8,
+      estimatedHeight: 400,
+      anchors: [],
+    }));
+    await act(async () => worker.reply(response));
+    expect(
+      worker.messages.some((message) => message.kind === 'chunks' && message.indices.includes(29)),
+    ).toBe(true);
+    const homeKey = new KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true });
+    await act(async () => area.dispatchEvent(homeKey));
+    expect(homeKey.defaultPrevented).toBe(true);
+    expect(host.querySelector('[data-reading-block="0"]')).not.toBeNull();
+  });
   it('terminates an old parse and ignores its late chunks after a file switch', async () => {
     await render('old');
     const first = WorkerMock.instances[0];

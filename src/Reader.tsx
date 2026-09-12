@@ -51,6 +51,7 @@ export type ReaderProps = {
   onNavigate?: () => void;
 };
 type Jump = {
+  boundary?: 'start' | 'end';
   line?: number;
   point?: ReadingLocation;
   anchor?: string;
@@ -284,7 +285,10 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
   useLayoutEffect(() => {
     if (!jump || !model.blocks.length) return;
     let index = -1;
-    if (jump.hit) index = jump.hit.block;
+    if (jump.boundary) {
+      if (jump.boundary === 'end' && !model.complete) return;
+      index = jump.boundary === 'end' ? model.blocks.length - 1 : 0;
+    } else if (jump.hit) index = jump.hit.block;
     else if (jump.anchor)
       index = model.blocks.findIndex((block) => block.anchors.includes(jump.anchor!));
     else {
@@ -368,7 +372,12 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
             ),
           ) * block.getBoundingClientRect().height;
     }
-    if (target.point && target.index === 0 && target.point.offset === 0) scroll.scrollTop = 0;
+    if (target.boundary === 'end') scroll.scrollTop = scroll.scrollHeight;
+    else if (
+      target.boundary === 'start' ||
+      (target.point && target.index === 0 && target.point.offset === 0)
+    )
+      scroll.scrollTop = 0;
     else scroll.scrollTop += top - scroll.getBoundingClientRect().top - (target.point ? 32 : 24);
     setFlash(target.point ? null : target.index);
     setTarget(null);
@@ -858,7 +867,20 @@ const Reader = forwardRef<ReaderHandle, ReaderProps>(function Reader(
         }}
         onCopy={copyDocument}
         onKeyDown={(event) => {
-          if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+          if (
+            (event.key === 'Home' || event.key === 'End') &&
+            !event.shiftKey &&
+            !event.altKey &&
+            !event.nativeEvent.isComposing
+          ) {
+            event.preventDefault();
+            event.stopPropagation();
+            clearFullSelection();
+            setJump({
+              boundary: event.key === 'Home' ? 'start' : 'end',
+              token: ++jumpSerial.current,
+            });
+          } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
             event.preventDefault();
             event.stopPropagation();
             actions.current.selectAll();
