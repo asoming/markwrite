@@ -1,29 +1,18 @@
-# [下载 / Download Markwrite — Linux & Windows](https://github.com/asoming/markwrite/releases/tag/v0.5.1)
+# [下载 / Download Markwrite — Linux & Windows](https://github.com/asoming/markwrite/releases/latest)
 
-**当前版本 / Current release: 0.5.1（预览版 / Preview）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
+**当前版本 / Current release: 1.0.0（正式版 / Stable）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
 
 Choose the Linux `.deb`, Linux portable archive, or Windows x64 installer from the release page above. Features, installation, and conversion limits are described below.
 
-## 1.0 正式版验收中 / Stable release acceptance
-
-当前源码版本 **1.0.0**，安装包正在验收；上方可下载版本仍为 0.5.1，验收完成后更新正式版下载。
-The source version is **1.0.0** and installers are undergoing acceptance. The download above remains 0.5.1 until release validation finishes.
-
-| 工作项 / Work item | 状态 / Status |
+| 安装包 / Package | 下载 / Download |
 | --- | --- |
-| 表格多格粘贴、行列移动与拖放、排序 / Table range paste, reorder, drag and sort | 已实现；自动测试和浏览器排序/粘贴通过 / Implemented; automated and browser sort/paste checks passed |
-| 图片对齐、图注、路径重链 / Image alignment, captions and relinking | 已实现；自动测试通过，整合验收中 / Implemented; automated checks passed, integration checks ongoing |
-| 双编辑器、同步滚动、可调分栏 / Dual editors, linked scroll and pane resizing | 已实现；浏览器编辑/撤销/重做/同步滚动通过 / Implemented; browser editing, undo/redo and scroll checks passed |
-| 快捷键自定义与冲突检测 / Custom shortcuts and conflict detection | 已实现；实际按键验证通过 / Implemented; real-key interaction checks passed |
-| Git 逐块与三方解决 / Git hunk and three-way resolution | 已实现；原生版本检查与合并测试通过 / Implemented; native version checks and merge tests passed |
-| 中断操作恢复 / Interrupted-operation recovery | 已实现；原生测试覆盖中断、外部改动、副本损坏 / Implemented; native interruption, external-change and corrupt-copy checks passed |
-| GitHub 提示块和渲染预设 / GitHub alerts and rendering presets | 已实现；CommonMark 标准样例与预设测试通过 / Implemented; CommonMark corpus and preset checks passed |
-| 可编辑 Word 公式 / Editable Word equations | 已实现；OOXML 结构测试通过，办公软件检查中 / Implemented; OOXML checks passed, office rendering under validation |
-| CSS / ZIP / 文件夹主题资源 / CSS, ZIP and folder theme assets | 已实现；真实字体导入、预览、应用、重命名、导出通过 / Implemented; real-font import, preview, apply, rename and export passed |
-| 最终安装包、性能、持续运行 / Final installers, performance and endurance | 进行中，未作为已通过承诺 / In progress; not yet claimed as passed |
+| Linux Debian/Ubuntu x86_64 | [.deb](https://github.com/asoming/markwrite/releases/download/v1.0.0/Markwrite_1.0.0_amd64.deb) |
+| Linux portable x86_64 | [.tar.gz](https://github.com/asoming/markwrite/releases/download/v1.0.0/Markwrite_1.0.0_linux_x86_64.tar.gz) |
+| Windows 10/11 x64 | [Installer](https://github.com/asoming/markwrite/releases/download/v1.0.0/Markwrite_1.0.0_x64-setup.exe) |
+| SHA-256 | [Checksums](https://github.com/asoming/markwrite/releases/download/v1.0.0/SHA256SUMS-1.0.0.txt) |
 
-源文件保护优先：浏览不自动保存；恢复和 Git 解决都检查版本；外部修改会阻止覆盖。GitHub 只保留本 README，本地 PRD、进度表、功能矩阵与验收证据随实现同步更新。
-Source protection comes first: browsing does not autosave; recovery and Git resolution check versions and refuse to overwrite external edits. GitHub contains this README; local PRD, progress, feature matrix and validation evidence are updated alongside implementation.
+**1.0新增：**高级表格和图片排版、双编辑器与同步滚动、自定义快捷键、Git三方解决、中断操作恢复、Markdown渲染预设、可编辑Office公式，以及离线主题资源包。下方说明使用方法、实际验收与兼容边界。
+**New in 1.0:** advanced table/image editing, independent dual editors, linked scrolling, custom shortcuts, three-way Git resolution, interrupted-operation recovery, Markdown profiles, editable Office equations and offline theme packages. Usage, validation and compatibility limits are detailed below.
 
 # Markwrite
 
@@ -66,17 +55,17 @@ The sidebar displays the bilingual brand; the application, installer, and deskto
 | 文档工具 / Document tools         | 大纲、全文搜索、内部链接、反向链接、标签与附件管理。 / Outline, full-text search, internal links, backlinks, tags, and attachment management.  |
 | 格式转换 / Conversion             | 导入 TXT/HTML/DOCX；导出 HTML/PDF/DOCX。 / Import TXT, HTML, and DOCX; export HTML, PDF, and DOCX.                                             |
 
-**English: conversion and service limits.** Complex HTML and Word layouts may lose formatting during import. Exported math and diagrams in DOCX are graphics, not editable Office objects. PDF supports A4, A5, and Letter pagination with font/character limits. Review conversion messages and the exported result.
+**English: conversion and service limits.** Complex HTML and Word layouts may lose formatting during import. DOCX uses editable Office equations for supported math, with an explicit image fallback for unsupported expressions; diagrams remain graphics. PDF supports A4, A5, and Letter pagination with font/character limits. Review conversion messages and the exported result.
 
 The native single-file limit is 32 MiB, and live Markdown rendering is reduced for very large documents. There is no real-time collaboration, mobile app, or cloud synchronization. The browser preview has fewer filesystem capabilities than the desktop application.
 
 Git integration requires a local Git installation. AI assistance, image upload, and HTML publishing are optional connections to services you configure; no cloud account, hosting, or API credits are included.
 
-## 0.5：原生文件与轻量阅读 / Native files and focused reading
+## 原生文件与轻量阅读 / Native files and focused reading
 
 - **直接读原文件。** 双击磁盘任意位置的 `.md`，或用「打开文档」选择文件。无需导入库、注册或复制到工作区；父目录文件树按需逐层读取。编辑器、图谱、标签与反向链接不会参与普通阅读的启动。指定文件先显示，旧会话随后恢复，未保存草稿单独保留。
 - **真正的阅读模式。** 阅读时不挂载编辑器，不改任务复选框，不自动保存恢复出的未保存内容。返回阅读会暂停该文档自动保存，文字与撤销记录保留；需要修改时一键进入编辑或源码。保存前仍检查磁盘版本，独立进程之间也会检测冲突。
-- **阅读查找与导航。** `Ctrl+F` 在阅读页高亮、计数；`F3` / `Shift+F3` 前后查找。记录每个本地文件的阅读位置，可收藏段落。`Alt+←/→` 后退、前进，`Alt+↑/↓` 打开同目录上一篇、下一篇。入口也在「视图」。
+- **阅读查找与导航。** `Ctrl+F` 在阅读页高亮、计数；`F3` / `Shift+F3` 前后查找。记录每个本地文件的阅读位置，可收藏段落。`Home`/`End`（也支持`Ctrl`）跳到全文首尾，末尾图片加载后保持位置，滚轮操作即解除。`Alt+←/→` 后退、前进，`Alt+↑/↓` 打开同目录上一篇、下一篇。入口也在「视图」。
 - **统一 Markdown 渲染。** CommonMark 0.31.2 基础模式用官方全部 **652 个示例逐字验证**。默认叠加明确的 GFM 表格、任务列表、删除线、脚注、KaTeX 与 Mermaid；阅读和输出共享解析器。Wiki 链接和自定义行内标记默认关闭，可在「设置 → 编辑器」单独启用兼容，不改源文件。
 - **独立进程窗口。** `Ctrl+Shift+N` 新建独立窗口；「文件 → 当前文件在独立窗口打开」用于并排查看。每个窗口有独立的进程、恢复目录和 WebView 数据；一个窗口被终止不需要退出其他窗口。「恢复独立窗口」可找回已保存的窗口草稿。打开当前文件的磁盘版本不会搬走当前未保存的缓冲区。
 - **中文路径、编码与附件。** 图片按原相对路径读取，支持中文、空格及授权范围内的 `../`。保存不会迁移既有图片。读不到附件时可以选择其所在文件夹授权。「文件 → 选择编码重新打开」可只读预览 UTF-8、UTF-16 LE/BE、GBK、GB18030；采用后按所选编码保存，无法编码的字符会阻止保存。
@@ -102,7 +91,7 @@ Destination editors may strip data images or some inline styles; offline clipboa
 
 Workspace indexing and batch reference rewriting currently require UTF-8; other encodings support individual reading, editing and saving, while unsafe batch decoding is rejected. ZIP collects direct references from the current article; linked Markdown files do not trigger recursive attachment collection.
 
-## 0.4 新增功能 / What's new in 0.4
+## 工作区与扩展能力 / Workspace capabilities
 
 - **面板响应：**反向链接、标签和关联视图共用后台 Worker 索引；切换面板复用文件快照，编辑只重新解析改变的文档。标签默认折叠，大量结果分批显示，减少阻塞。
 - **直接编辑：**即时渲染中点击表格单元格输入，支持 Tab 切换、Enter/Escape 结束和撤销。选择独立成段的图片可输入宽高、保持比例、拖动缩放或打开预览；设置尺寸后使用带宽高的 HTML `<img>` 保存在 Markdown 中。
@@ -116,7 +105,7 @@ Workspace indexing and batch reference rewriting currently require UTF-8; other 
 
 - **Responsive document tools:** backlinks, tags, and the related-document view share a worker index and cached workspace reads. Only changed documents are reparsed; tag contents are collapsed and long lists load in batches.
 - **Direct editing:** edit table cells in place, navigate with Tab, and undo changes. Resize standalone images with width/height controls or a drag handle, preserve aspect ratio, and preview images. Explicit dimensions are stored as HTML `<img>` attributes in the Markdown file.
-- **Imported CSS themes:** manage document themes in **Settings → Appearance**. Common Typora selectors are adapted and scoped to the document. Unsupported layout rules and external/relative resources are filtered with notices; arbitrary themes are not guaranteed to match Typora exactly.
+- **Imported CSS themes:** manage document themes in **Settings → Appearance**. Common Typora selectors are adapted and scoped to the document. ZIP/folder imports embed bundled CSS imports, local fonts and raster images for offline use. Unsupported layout rules and unbundled remote resources are filtered with notices; arbitrary themes are not guaranteed to match Typora exactly.
 - **Independent backups:** choose a destination in **Settings → Files**, then back up manually or on an hourly interval. Snapshots include saved workspace Markdown and supported images, preferences, imported themes, and declarative extensions. Unsaved drafts and secret fields are excluded. Scheduling runs while the app is open and catches up after restart. Restore verifies the snapshot into a new folder and optionally restores preferences. Files are not uploaded.
 - **Application updates:** **Settings → General** checks GitHub, downloads the platform installer, and verifies SHA-256. Save your work, quit, and install manually. A private repository needs a repository Contents read token or a signed-in browser. Tokens remain in the current panel's memory only.
 - **Reference-aware rename/move:** review affected links and select the documents to save, including unsaved edits. Disk version checks prevent applying a stale preview. Relative document/image links, common Wiki links, and moved directories are supported within the current workspace and open documents. Ambiguous references are left for manual review. Cross-filesystem moves are rejected without deleting the original.
@@ -141,10 +130,11 @@ The floating controls sit **at the bottom right, just above the status bar**. Ho
 
 ### 分类设置、语言与默认阅读
 
-设置采用左右布局，窄窗口会调整导航，常用选项集中在五个分类：
+设置采用左右布局，窄窗口会调整导航，常用选项集中在六个分类：
 
 | 分类   | 可设置内容                                                                          |
 | ------ | ----------------------------------------------------------------------------------- |
+| 快捷键 | 搜索操作、自定义按键、检测冲突和恢复默认键位 |
 | 文件   | 文件树跟随当前文件、自动保存、默认打开方式、独立备份和恢复；查看搜索排除规则        |
 | 编辑器 | 默认打开模式、字号、行高、正文宽度、衬线/无衬线、自定义正文和代码字体、阅读排版预设 |
 | 图像   | 保存到文档旁的 `assets` 文件夹，或内嵌到 Markdown                                   |
@@ -155,7 +145,7 @@ The floating controls sit **at the bottom right, just above the status bar**. Ho
 
 ### 主题
 
-保留浅色、深色、跟随系统，并提供以下五种文档主题。菜单「主题」和设置「外观」均可选择。0.3.1 为阅读和即时渲染编辑分别适配字体、标题比例、段落间距、表格、引用和代码块。
+保留浅色、深色、跟随系统，并提供以下五种文档主题。菜单「主题」和设置「外观」均可选择。阅读和即时渲染编辑分别适配字体、标题比例、段落间距、表格、引用和代码块。
 
 | 主题      | 字体与排版                                                |
 | --------- | --------------------------------------------------------- |
@@ -209,6 +199,16 @@ HTML 的本地相对图片在授权来源目录内尝试内嵌；无法读取的
 
 支持常见 Markdown、GFM 表格和任务列表、围栏代码高亮、数学公式及 Mermaid。代码不会执行。YAML Front Matter 和未知语法保留源码；不声称兼容任意 Markdown 方言或任意 HTML 页面。
 
+### 1.0 新增交互 / Advanced editing
+
+- **直接操作表格：**即时编辑中点击单元格，粘贴多行多列的 TSV，可自动扩展网格；工具条支持行列移动、拖放和按列排序，整次操作可撤销。单次粘贴最多10,000格，不提供电子表格公式或合并单元格。
+- **图片排版：**选择独立图片后修改替代文字、图注、宽高、对齐或重新链接路径；显式图注/对齐使用标准 HTML `figure` 等标记保存，既有附件不会因此迁移。
+- **双栏编辑：**对照区可独立阅读或编辑，两篇文档各自保留缓冲、撤销和保存状态；启用同步滚动后按相对进度联动，分隔条可用鼠标或方向键调整到25–75%。
+- **快捷键：**设置左侧选择「快捷键」，搜索操作并录入组合键；冲突时禁止应用。菜单显示当前配置，可恢复默认。
+- **渲染预设：**「设置 → 编辑器」选择技术文档、GitHub 或纯 CommonMark；技术文档启用数学扩展，GitHub 不把美元符号解析成公式，纯 CommonMark 关闭扩展。支持 GitHub 的 NOTE/TIP/IMPORTANT/WARNING/CAUTION 提示块。
+
+Click table cells to edit or paste rectangular TSV; move, drag or sort rows and columns with undo (up to 10,000 pasted cells). Standalone images support alt text, captions, alignment, dimensions and relinking; explicit layout uses standard HTML without relocating existing assets. Compare two independently editable documents, link proportional scrolling and resize the panes from 25–75%. Customize shortcuts with conflict detection. Choose technical, GitHub or pure CommonMark rendering, with explicit extension behavior and GitHub alerts.
+
 ## 文件、搜索与文档关联
 
 - 文件树默认跟随当前 Markdown 的父目录，也可手动打开文件夹并固定；支持多文档标签、独立草稿区域、折叠的最近文件列表、中文与空格路径、原生拖入、第二次启动时向已有窗口转交文件。
@@ -216,7 +216,7 @@ HTML 的本地相对图片在授权来源目录内尝试内嵌；无法读取的
 - 切换文件夹会更换当前文件树和搜索范围；不提供跨工作区同步或聚合搜索。
 - 文件名筛选与全文搜索分开。全文搜索返回文件、行号和片段，优先考虑打开文档的未保存内容，结果分批显示，可取消；过期任务不能覆盖新查询。
 - 原生目录监听用于发现外部变化；大纲和字数由 Web Worker 计算，丢弃过期响应，等待期间显示最近完成的结果。
-- 支持 `[[文档]]`、`[[文档#标题|显示文字]]`、反向链接和 `#标签` 检索。名称冲突时选择目标，断链给出提示，代码内容不参与链接/标签索引。
+- 支持标准 Markdown 链接、反向链接和 `#标签` 检索；启用可选兼容设置后也支持 `[[文档]]`、`[[文档#标题|显示文字]]`。名称冲突时选择目标，断链给出提示，代码内容不参与链接/标签索引。
 - 关联视图以当前文档为中心，区分入链、出链和互链。图中最多显示 20 个相邻文档，完整列表可点击或用键盘打开，并提示重复引用、断链与同名歧义。
 
 扫描仅针对手动选择的工作目录，或跟随已打开 Markdown 所获得的父目录，排除隐藏目录、`.git`、`node_modules`、`target` 和符号链接；全文搜索最多显示 500 条匹配。浏览器预览仍受文件选择器授权限制，无法自动取得父目录时需要手动打开文件夹。
@@ -227,9 +227,9 @@ HTML 的本地相对图片在授权来源目录内尝试内嵌；无法读取的
 
 Independent backups include workspace Markdown and supported images, up to 32MiB per file, 1GiB per snapshot, and 10,000 files. Hidden folders, `node_modules`, `target`, and symlinks are excluded. Unsaved drafts, external attachments, and version history are not included; old snapshots are not automatically deleted.
 
-引用批量更新在普通错误时会尝试回退，并保留恢复副本；多文件写入与移动不构成断电原子事务。崩溃或断电可能留下部分完成状态，原始副本记录在应用数据目录 `recovery/reference-transaction-*` 中，需要手动检查和恢复，尚无启动时自动重放。
+引用批量更新在普通错误时会尝试回退，并保留恢复副本；多文件写入与移动不构成断电原子事务。崩溃或断电可能留下部分完成状态，原始副本记录在应用数据目录 `recovery/reference-transaction-*` 中，可在「设置 → 文件 → 中断操作恢复」查看受影响文件并手动回滚。恢复前检查源文件、目标文件、恢复副本及目录身份；发现外部变化会阻止覆盖。恢复完成后保留归档副本。旧格式目录事务可能仍需手动检查，不自动重放。
 
-Reference updates attempt rollback on ordinary errors and retain recovery copies. Multiple file writes and a move are not power-loss atomic: interruption can leave a partially completed operation. Original copies in the app data directory under `recovery/reference-transaction-*` require manual review and recovery; startup does not automatically replay these transactions.
+Reference updates attempt rollback on ordinary errors and retain recovery copies. Multiple file writes and a move are not power-loss atomic: interruption can leave a partially completed operation. Original copies in the app data directory under `recovery/reference-transaction-*` can be reviewed and rolled back from **Settings → Files → Interrupted operations**. Recovery verifies original/destination versions, copies and directory identity, and refuses external changes. Successful recovery archives the copies. Legacy directory records may require manual inspection; startup does not replay transactions automatically.
 
 ### 保存和冲突
 
@@ -257,12 +257,12 @@ Reference updates attempt rollback on ordinary errors and retain recovery copies
 | ---- | ------------------------------------------------------------------------------------------- |
 | HTML | UTF-8 单文件页面，可选目录及浅色/深色；内嵌本地图片、公式资源与静态图表，支持离线查看       |
 | PDF  | 本地生成 A4/A5/Letter 分页文件和真实页面预览；可选择的文字、页码及封面目录；内置中文字体    |
-| DOCX | 真实 OOXML 文档，标题、段落、表格、链接和文字格式可继续编辑；公式与图表含 SVG 和 PNG 后备图 |
+| DOCX | 真实 OOXML 文档，标题、段落、表格、链接和文字格式可继续编辑；支持的公式转换为可编辑 Office 数学对象，复杂表达式可选择图形后备；图表为 SVG/PNG |
 
 ### 实际排版边界
 
-- PDF 行内公式与相邻文字保持同行；图片和过宽公式可独立成段。DOCX 支持将公式图形放在段落内。
-- DOCX 中的公式和流程图是图形，不是可继续编辑的 Office 数学公式或流程图对象。
+- PDF 行内公式与相邻文字保持同行；图片和过宽公式可独立成段。DOCX 支持行内与独立段落的可编辑公式。
+- DOCX 常用分式、根式、上下标、求和/积分、矩阵及字体样式导出为可编辑 Office 数学对象；暂不支持的表达式可选择图形后备。Mermaid 仍为图形，不是可编辑 Office 流程图。
 - PDF 中文字体提供常规和粗体，没有独立斜体字形；DOCX 保留斜体属性，由阅读器显示。
 - DOCX 正文不内嵌完整中文字体，目标系统的字体回退可能影响分页。Word、WPS、LibreOffice 的显示效果可能不同。
 - 任意网页 CSS 布局、合并单元格和活动内容不属于 PDF/DOCX 转换范围。代码保留文字、缩进与换行，不保证与编辑器配色相同。
@@ -274,7 +274,9 @@ Reference updates attempt rollback on ordinary errors and retain recovery copies
 
 ### Git
 
-「工具 → Git 版本管理」支持仓库初始化、当前状态、差异和选择文件本地提交。需要本机安装 Git 并配置提交身份。提交仅包含所选文件，保留其他已暂存改动，不执行仓库 hooks；不自动推送，不自动解决合并冲突。
+「工具 → Git 版本管理」支持仓库初始化、当前状态、差异和选择文件本地提交。需要本机安装 Git 并配置提交身份。提交仅包含所选文件，保留其他已暂存改动，不执行仓库 hooks；不自动推送。合并冲突提供基线/本地/传入内容、逐块选择、采用一侧或保留双方及手动编辑；保存结果后再明确标记解决。完成合并须检查并选择所有暂存项，然后创建双父提交；预览之后文件或索引发生变化会阻止过期操作。
+
+Git offers explicit three-way and per-hunk choices, manual editing, and version-checked resolution. Save first, then mark resolved; completing a merge requires reviewing all staged entries before creating a two-parent commit. No automatic push or remote synchronization is performed.
 
 ### AI 写作助手
 
@@ -293,7 +295,7 @@ Reference updates attempt rollback on ordinary errors and retain recovery copies
 
 远程地址必须 HTTPS，本机可用 localhost、127.0.0.1 或 `[::1]` HTTP。可选密钥通过 Bearer 头发送。默认读取响应 JSON 的 `url`，可配置 `data.url` 等点分路径；也支持 `Location` 头，最终链接必须为 HTTP(S)。请求不自动跟随重定向或重试。
 
-例如成功响应可以是 `{"url":"https://example.com/result"}`。界面展示发送目标和范围，每次明确点击后才发起请求；密钥不持久化，返回链接不会自动打开。尚未完成对特定商业服务的真实联调。超时不表示服务端没收到内容，重试前请检查服务端结果。
+例如成功响应可以是 `{"url":"https://example.com/result"}`。界面展示发送目标和范围，每次明确点击后才发起请求；密钥不持久化，返回链接不会自动打开。原生AI预览/接受、HTML发布和multipart图片上传已连接本机测试服务完成联调，发送前无请求、原文件不变；尚未完成对特定商业服务的真实联调。超时不表示服务端没收到内容，重试前请检查服务端结果。
 
 ### 声明式编辑扩展
 
@@ -409,25 +411,23 @@ npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
 
 [Desktop builds 工作流](.github/workflows/desktop.yml) 在 Linux 和 Windows runner 运行前端测试、Rust 测试并打包。Windows 还包含 NSIS 安装、带空格安装路径的文件关联、中文文件参数、窗口出现、系统关闭消息和卸载检查。
 
-0.5.0 本机通过 **928 项前端测试**（另有 2 项可选性能诊断默认跳过）、**77 项 Linux 原生测试**（1 个子进程辅助入口和 1 项可选性能诊断忽略独立运行），TypeScript 与 Rust 格式检查通过；另行执行的 1MiB / 10MiB 编辑诊断两项通过。覆盖 CommonMark 官方全部 652 个示例、只读恢复权限、渐进目录、编码往返、跨进程冲突与 ZIP 原文件保持。真实浏览器另验证 10,000 段全文查找、末段复制、脚注往返、书签与阅读位置、Mermaid、HTML/纯文本剪贴板与两页 PDF 输出。Linux 原生双进程实际键入草稿后，终止一个进程，另一个继续滚动并正常退出；双方重开恢复草稿，原文件 hash 与修改时间未变。[最终 Linux / Windows CI 与安装验收](https://github.com/asoming/markwrite/actions/runs/34674770523) 全部通过；Windows 原生测试 **69 项通过、2 项忽略**，安装、中文及空格路径关联、独立进程、会话恢复、原文件保持和卸载均通过。Linux 安装包还实际验证了 `Ctrl+Shift+N` 创建新进程，以及 PDF 目录、正文表格、行内公式和翻页。
+### 1.0 验收记录 / Validation
 
-**1 秒首屏仍是优化目标，尚未作为达标承诺。** 1 MiB 文档在私有 Xephyr 软件渲染环境中，从启动进程到辅助功能接口读到正文，单次样本为 **1.435 秒**（250ms 轮询）；小文档源码编辑样本为 1.470 / 1.713 秒。该测量不是普通桌面硬件上的重复冷启动基准；单文件上限与巨型单块、复杂图表的成本仍然存在。
+当前代码通过 **970项前端测试、85项Linux原生测试、77项Windows原生测试**；默认各有2项可选诊断或辅助入口未执行。1MiB/10MiB可选编辑诊断另行运行并通过。[最终Linux/Windows CI](https://github.com/asoming/markwrite/actions/runs/34683474417) 已通过构建、Windows安装、中文及空格路径关联、独立进程恢复和卸载。
 
-0.5.0 passes **928 frontend tests** (two optional performance diagnostics skipped), **77 native Linux tests** (one child-process helper and one optional benchmark excluded from standalone execution), TypeScript and Rust formatting. Both optional 1MiB / 10MiB editing diagnostics also passed. Real-browser checks cover 10,000 paragraphs, full-document copying, search, footnotes, bookmarks, restored positions, Mermaid, HTML/plain clipboard formats and a two-page PDF. A native Linux test typed drafts into separate processes, terminated one, scrolled and closed the survivor normally, then recovered both drafts without changing source hashes or modification times. [Final Linux / Windows CI and installer checks](https://github.com/asoming/markwrite/actions/runs/34674770523) passed. Windows passed **69 native tests with two ignored**, installation, quoted/Chinese filename association, independent processes, session recovery, unchanged sources and removal. The Linux package additionally verified `Ctrl+Shift+N` process creation and actual PDF contents, body tables, inline math and page navigation.
+最终Linux程序已完成真实双进程键入、终止一方、另一方继续操作并正常退出、双方草稿恢复，源文件内容与修改时间保持不变。IBus libpinyin、Fcitx5 pinyin在X11下的中文候选提交及撤销/重做通过。Wayland原生客户端在隔离Weston中通过阅读/编辑操作；125%/150% GTK字体缩放通过阅读和设置导航，尚不代表物理多屏与合成器分数缩放验收。
 
-**The one-second target remains unproven.** One 1MiB sample took **1.435 seconds** from process launch to accessible reader content under private Xephyr software rendering with 250ms polling; small source-editor samples took 1.470 / 1.713 seconds. These are individual instrumented samples, not repeated cold-start benchmarks on normal desktop hardware. Single-file limits and unusually large individual blocks or diagrams still apply.
+实际Ctrl+S测试在原子替换前后注入进程终止，分别保留完整旧版/新版文件并恢复草稿；这不是物理断电测试。中断批量移动的原生恢复界面、真实三方Git合并、表格鼠标拖放、双栏编辑与本地主题字体导入均通过。
 
-上一版本 0.4.0 在本机通过 **228 项前端测试**（默认跳过 2 项可选诊断）、**61 项 Linux 原生测试**（跳过 1 项可选诊断），TypeScript、生产构建与 Rust 格式检查通过。1MiB/10MiB 编辑诊断另行运行，两项均通过。另已在隐藏的独立显示环境中，验证预先持久化的中英草稿在强制终止程序后完整恢复，保存基线和未保存状态均保留；这不代表真实键入、断电或写入中断测试。此版的 [Linux / Windows 构建与安装验收](https://github.com/asoming/markwrite/actions/runs/34603110391) 全部通过，其中 Windows 通过 **54 项原生测试**（跳过 1 项可选诊断），并通过安装、带空格路径的文件关联命令、中文参数解析、启动、正常关闭和卸载检查。
+**性能按环境记录，不承诺1秒打开。** 私有Xvfb软件渲染、全新配置、未清OS缓存的1MiB文档10次启动为4.034、1.177、1.237、1.167、1.168、1.186、1.149、1.248、1.181、1.160秒，9/10低于3秒、0/10低于1秒。1MiB（19,421行）/10MiB（194,185行）从阅读进入源码约0.989/0.668秒，完整键入与撤销校验通过；这些数据不等于冷盘或物理显示器延迟。91,708字节样本文档首次反链/标签索引3.544秒，后续面板切换0.174–0.933秒。
 
-Linux 原生发布版另已验证：只打开一篇文档时，WebKit 后台 Worker 能读取同目录另外两篇磁盘文档，正确显示它们的反向链接和中英文标签；测试文档保持不变。测试使用正式构建的协议和 CSP，在隐藏的独立显示环境中操作。
+1万文件、100.25MB的热缓存磁盘搜索基准：首500条131ms、全扫描2.61秒、首条及取消均<1ms。原生软件画面31个Latin按键采样P95=44.55ms（含像素读回开销），该样本低于50ms，不能代替混合中文与物理显示验收。
 
-真实 Chrome 验证了表格输入/撤销/重做、浏览器组合输入事件、图片尺寸/拖动/阅读预览、8 页 A5 PDF 和 DOCX 输出。使用真实工具面板和 Worker 的 1,000/10,000 篇合成文档测试中，切换标签/反链/当前文档没有重新解析全文，各只读取一次工作区快照；改一篇只增加一次解析，列表首批 100 项。该夹具以内存代替磁盘扫描，不代表原生启动、实际磁盘或所有设备的耗时。
+最终冻结程序完成 **7200.13秒（至少两小时）、240轮**实际输入/撤销与模式切换，精确草稿校验全部通过，原文件hash和mtime不变。整个进程树RSS范围576.7–656.4MiB，结束636.3MiB；前10轮均值594.2MiB、后10轮626.9MiB。内存包含WebKit，受软件显示和同时运行任务影响；此结果不证明任意负载无泄漏。 外部/proc采样236次：进程树打开文件描述符96–98个，末次96个；PSS范围274.0–416.6MiB。
 
-**English — previous 0.4.0 release:** Local validation passed **228 frontend tests** (two optional diagnostics skipped), **61 native Linux tests** (one optional diagnostic skipped), TypeScript, the production build, and Rust formatting. Both opt-in 1MiB/10MiB editing diagnostics also passed. An isolated native process-kill check also recovered a preseeded persisted bilingual draft with its saved baseline and dirty state intact; this was not a typing, power-loss, or interrupted-save test. [Linux / Windows build and installer checks](https://github.com/asoming/markwrite/actions/runs/34603110391) passed. Windows passed **54 native tests** (one optional diagnostic skipped), installer and uninstaller checks, file association commands with spaces, Chinese filename argument parsing, native startup, and normal close checks.
+The frozen program completed **7200.13 seconds and 240 real input/undo cycles** with mode switches, exact persisted-draft checks and unchanged source hashes/mtimes. Process-tree RSS including WebKit ranged from 576.7 to 656.4MiB and ended at 636.3MiB; the first/last ten-cycle means were 594.2/626.9MiB. Software-display and concurrent-task overhead apply; this does not prove the absence of leaks under every workload. External /proc sampling (236 observations) recorded 96–98 open descriptors, ending at 96, and 274.0–416.6MiB proportional memory (PSS).
 
-The native Linux release also passed a WebKit worker check under its production protocol and CSP: with one document open, it indexed two other documents on disk and displayed their backlinks and bilingual tags without changing the files. The check ran on a hidden, isolated display.
-
-Real Chrome checks covered table edits and undo/redo, browser composition events, image dimensions/dragging/reading previews, an eight-page A5 PDF, and DOCX output. With the real tool panel and worker indexing 1,000/10,000 synthetic documents, tab/current-file changes did not reparse the documents or reread the workspace snapshot; a single edit reparsed only one document, with 100 rows initially rendered. Workspace disk reads were mocked, so this does not benchmark native startup or filesystem speed.
+**English:** 970 frontend, 85 Linux native and 77 Windows native tests pass; two optional/helper cases per default suite are excluded. Opt-in 1MiB/10MiB editor checks also pass. The linked CI verifies builds and the Windows installer, file association, process recovery and uninstaller. Native Linux checks cover real typed-draft recovery across independent processes, IBus/Fcitx5 candidates, nested Wayland, GTK text scaling, interrupted-save fault injection and manual transaction recovery. Browser checks cover real table drag, dual editing, image layout and bundled theme assets. Fresh-process 1MiB startup measured 1.149–4.034 seconds with a warm OS cache and software rendering; the one-second target is unmet. Two-hour endurance verification passed as detailed above. Physical power loss, physical mixed-DPI displays and third-party destination applications are separate compatibility boundaries.
 
 可选性能诊断：
 
@@ -441,7 +441,8 @@ cargo test --manifest-path src-tauri/Cargo.toml benchmark_workspace_search_100mb
 ## 已知边界
 
 - 正文超过 300,000 个 UTF-16 字符单位时暂停即时渲染，超过 1,000,000 个时暂停编辑器 Markdown 语法解析；完整正文仍可编辑。这是字符阈值，不是文件字节数。原生单文件打开上限 32MiB。
-- IBus libpinyin 在 X11 下的源码/即时编辑候选提交与撤销重做已验证；Fcitx5 / Windows 输入法、Wayland、多屏、125%/150% 缩放、完整冷启动基准、2 小时持续写作和内存趋势仍待验收。
+- Windows真实中文输入法、物理多屏/分数缩放、完整冷盘基准、混合中英文输入到物理画面P95仍未验收；两小时持续运行已按上述环境验收。
+- Word/WPS及公众号/飞书目标端粘贴未验证。LibreOffice 7.3公式排版已通过；隔离WPS测试停在首次许可协议页面，没有记为通过。
 - 不提供多人实时协作、移动端、云端账号同步、全库图谱、自动修复所有引用、高级表格计算或任意方言兼容。
 - 图床、发布和 AI 是可选的用户服务连接，不自带云服务或免费额度；本地核心功能不依赖这些接口。
 - 安装、构建通过与内容转换无损是不同结果。复杂 HTML/DOCX 导入和 PDF/DOCX 导出请按前述边界检查最终内容。
