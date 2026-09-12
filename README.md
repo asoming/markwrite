@@ -1,15 +1,15 @@
 # [下载 / Download Markwrite — Linux & Windows](https://github.com/asoming/markwrite/releases/latest)
 
-**当前版本 / Current release: 1.0.0（正式版 / Stable）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
+**当前版本 / Current release: 1.0.1（正式版 / Stable）。** 发布页提供 Linux `.deb`、Linux 便携包及 Windows x64 安装程序。
 
 Choose the Linux `.deb`, Linux portable archive, or Windows x64 installer from the release page above. Features, installation, and conversion limits are described below.
 
 | 安装包 / Package | 下载 / Download |
 | --- | --- |
-| Linux Debian/Ubuntu x86_64 | [.deb](https://github.com/asoming/markwrite/releases/download/v1.0.0/Markwrite_1.0.0_amd64.deb) |
-| Linux portable x86_64 | [.tar.gz](https://github.com/asoming/markwrite/releases/download/v1.0.0/Markwrite_1.0.0_linux_x86_64.tar.gz) |
-| Windows 10/11 x64 | [Installer](https://github.com/asoming/markwrite/releases/download/v1.0.0/Markwrite_1.0.0_x64-setup.exe) |
-| SHA-256 | [Checksums](https://github.com/asoming/markwrite/releases/download/v1.0.0/SHA256SUMS-1.0.0.txt) |
+| Linux Debian/Ubuntu x86_64 | [.deb](https://github.com/asoming/markwrite/releases/download/v1.0.1/Markwrite_1.0.1_amd64.deb) |
+| Linux portable x86_64 | [.tar.gz](https://github.com/asoming/markwrite/releases/download/v1.0.1/Markwrite_1.0.1_linux_x86_64.tar.gz) |
+| Windows 10/11 x64 | [Installer](https://github.com/asoming/markwrite/releases/download/v1.0.1/Markwrite_1.0.1_x64-setup.exe) |
+| SHA-256 | [Checksums](https://github.com/asoming/markwrite/releases/download/v1.0.1/SHA256SUMS-1.0.1.txt) |
 
 **1.0新增：**高级表格和图片排版、双编辑器与同步滚动、自定义快捷键、Git三方解决、中断操作恢复、Markdown渲染预设、可编辑Office公式，以及离线主题资源包。下方说明使用方法、实际验收与兼容边界。
 **New in 1.0:** advanced table/image editing, independent dual editors, linked scrolling, custom shortcuts, three-way Git resolution, interrupted-operation recovery, Markdown profiles, editable Office equations and offline theme packages. Usage, validation and compatibility limits are detailed below.
@@ -421,7 +421,13 @@ npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis
 
 [Desktop builds 工作流](.github/workflows/desktop.yml) 在 Linux 和 Windows runner 运行前端测试、Rust 测试并打包。Windows 还包含 NSIS 安装、带空格安装路径的文件关联、中文文件参数、窗口出现、系统关闭消息和卸载检查。
 
-### 1.0 验收记录 / Validation
+### 1.0.1 修复验收 / Patch validation
+
+983 项前端、88 项 Linux 原生、80 项 Windows 原生测试通过，各套默认另有 2 项可选测试未执行。[Linux/Windows CI](https://github.com/asoming/markwrite/actions/runs/34694706447) 完成构建、Windows 安装、文件关联、独立进程恢复及卸载。最终 Linux 程序实测截图/复制图片文件粘贴、相对附件、新草稿先保存、阅读模式保护、四种退出选择、丢弃两代恢复副本后重开，以及真实长 Base64 文档副本的图片显示。
+
+983 frontend, 88 Linux native and 80 Windows native tests pass; two optional/helper cases per suite are excluded. The linked CI verifies both builds and Windows installation, association, recovery and removal. Final Linux UI checks cover image paste, relative attachments, first save, read-only protection, all exit choices, recovery and existing long Base64 images. Windows cross-application clipboard formats still need real-user environment checks. The 1.0.0 two-hour soak below was not repeated for this patch.
+
+### 1.0.0 验收基线 / Previous validation
 
 1.0.0 发布基线通过 **970项前端测试、85项Linux原生测试、77项Windows原生测试**；默认各有2项可选诊断或辅助入口未执行。1MiB/10MiB可选编辑诊断另行运行并通过。[最终Linux/Windows CI](https://github.com/asoming/markwrite/actions/runs/34683474417) 已通过构建、Windows安装、中文及空格路径关联、独立进程恢复和卸载。
 
