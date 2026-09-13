@@ -1,0 +1,49 @@
+name: Validate existing Mac installers
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run:
+        description: Successful Desktop builds run containing the installers
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  installed:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            artifact: markwrite-macos-aarch64
+            arch: arm64
+          - os: macos-15-intel
+            artifact: markwrite-macos-x64
+            arch: x86_64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.build_run }}
+          name: ${{ matrix.artifact }}
+          path: ${{ runner.temp }}/installer
+      - name: Verify installed native application
+        shell: bash
+        run: |
+          dmg=( "$RUNNER_TEMP"/installer/*.dmg )
+          test "${#dmg[@]}" -eq 1
+          python3 scripts/macos-smoke.py --dmg "${dmg[0]}" --arch '${{ matrix.arch }}' --output "$RUNNER_TEMP/validation"
+      - name: Keep native validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-validation
+          path: ${{ runner.temp }}/validation/
+          if-no-files-found: error

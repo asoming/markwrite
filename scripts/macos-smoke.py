@@ -31,7 +31,8 @@ def main():
     profile = Path.home() / 'Library/Application Support' / f'app.markwrite.desktop.window.w{profile_id}'
     executable = str(app / 'Contents/MacOS/markwrite')
     owned_pids = []
-    report = {'platform': args.arch, 'status': 'running'}
+    report = {'platform': args.arch, 'status': 'running',
+              'dmgSha256': hashlib.sha256(Path(args.dmg).read_bytes()).hexdigest()}
     try:
         run('hdiutil','verify',args.dmg)
         run('hdiutil','attach','-readonly','-nobrowse','-mountpoint',str(mount),args.dmg)
@@ -98,6 +99,21 @@ def main():
             report['nativeMenuInspectionUnavailable'] = 'System Events did not respond within 12 seconds'
         shot = subprocess.run(['screencapture','-x',str(output/'macos-desktop.png')],capture_output=True,text=True)
         report['desktopScreenshot'] = shot.returncode == 0
+        if report.get('nativeFeatureMenusVerified'):
+            quit_script = f'''tell application "System Events"
+                tell first application process whose unix id is {owned_pids[0]}
+                    tell menu 1 of menu bar item "Markwrite" of menu bar 1
+                        if exists menu item "退出 Markwrite" then
+                            click menu item "退出 Markwrite"
+                        else
+                            click menu item "Quit Markwrite"
+                        end if
+                    end tell
+                end tell
+            end tell'''
+            subprocess.run(['osascript','-e',quit_script],check=True,capture_output=True,text=True,timeout=12)
+            wait_for(lambda: not process_ids(),'Native Quit did not end the clean application',seconds=25)
+            report['nativeCleanQuit'] = True
         report['status'] = 'passed'
         report['limits'] = 'CI launch and Finder integration only; interactive Chinese IME, gestures and physical displays need human Mac testing.'
     finally:
