@@ -203,11 +203,33 @@ pub fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<(
         Ok(())
     }
 }
-#[cfg(not(any(target_os = "linux", windows)))]
+#[cfg(target_os = "macos")]
+pub fn rename_without_replace(source: &Path, target: &Path) -> std::io::Result<()> {
+    use std::{ffi::CString, os::unix::ffi::OsStrExt};
+    unsafe extern "C" {
+        fn renamex_np(
+            source: *const std::ffi::c_char,
+            target: *const std::ffi::c_char,
+            flags: u32,
+        ) -> i32;
+    }
+    let source = CString::new(source.as_os_str().as_bytes())
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    let target = CString::new(target.as_os_str().as_bytes())
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+    // Darwin RENAME_EXCL: atomically refuse an existing file or directory.
+    // Unsupported volumes return an error; never fall back to replacing rename.
+    if unsafe { renamex_np(source.as_ptr(), target.as_ptr(), 0x00000004) } == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+#[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
 pub fn rename_without_replace(_source: &Path, _target: &Path) -> std::io::Result<()> {
     Err(std::io::Error::new(
         std::io::ErrorKind::Unsupported,
-        "Safe rename is currently supported on Linux and Windows.",
+        "Safe rename is supported on Linux, Windows and macOS.",
     ))
 }
 
@@ -327,6 +349,32 @@ mod tests {
         ));
         fs::create_dir_all(&p).unwrap();
         p
+    }
+    #[test]
+    fn exclusive_rename_preserves_existing_files_and_directories() {
+        let root = sandbox("exclusive-rename");
+        let source = root.join("源文件.md");
+        let target = root.join("target.md");
+        fs::write(&source, "source").unwrap();
+        fs::write(&target, "target").unwrap();
+        assert!(rename_without_replace(&source, &target).is_err());
+        assert_eq!(fs::read_to_string(&source).unwrap(), "source");
+        assert_eq!(fs::read_to_string(&target).unwrap(), "target");
+        fs::remove_file(&target).unwrap();
+        rename_without_replace(&source, &target).unwrap();
+        assert!(!source.exists());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "source");
+        let from = root.join("from");
+        let to = root.join("to");
+        fs::create_dir(&from).unwrap();
+        fs::create_dir(&to).unwrap();
+        fs::write(from.join("keep"), "data").unwrap();
+        assert!(rename_without_replace(&from, &to).is_err());
+        assert_eq!(fs::read_to_string(from.join("keep")).unwrap(), "data");
+        fs::remove_dir(&to).unwrap();
+        rename_without_replace(&from, &to).unwrap();
+        assert_eq!(fs::read_to_string(to.join("keep")).unwrap(), "data");
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn preserves_bom_crlf() {

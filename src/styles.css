@@ -2024,3 +2024,8 @@ input::placeholder {
 .ai-panel .ai-exact-url input {
   width: auto;
 }
+
+/* macOS uses the system menu bar; an empty header must not reserve a blank strip. */
+.compact-header:empty {
+  display: none;
+}

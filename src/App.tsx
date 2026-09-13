@@ -1,4 +1,4 @@
-import { platformText } from './lib/os';
+import { isMac, platformText } from './lib/os';
 import OperationRecoveryPanel from './components/OperationRecoveryPanel';
 import { synchronizeScroll } from './lib/linkedScroll';
 import type { CompareHandle } from './components/ComparePane';
@@ -2452,9 +2452,9 @@ export default function App() {
         </ResponsiveSidebar>
       )}
       <main className="main" inert={narrow && sidebar && !focus ? true : undefined}>
-        {!focus && (
+        {(!focus || (platform.desktop && isMac)) && (
           <header className="compact-header">
-            {!sidebar && (
+            {!sidebar && !focus && (
               <IconButton title={t('展开侧栏')} onClick={() => setSidebar(true)}>
                 <PanelLeftOpen size={16} />
               </IconButton>

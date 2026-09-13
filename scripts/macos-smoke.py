@@ -24,7 +24,7 @@ def main():
     parser.add_argument('--output', required=True)
     args = parser.parse_args()
     output = Path(args.output).resolve(); output.mkdir(parents=True, exist_ok=True)
-    root = Path(tempfile.mkdtemp(prefix='markwrite-macos-'))
+    root = Path(tempfile.mkdtemp(prefix='markwrite-macos-')).resolve()
     mount = root / 'Mounted'; mount.mkdir()
     app = root / '安装 with spaces' / 'Markwrite.app'; app.parent.mkdir()
     profile_id = hashlib.sha256(str(root).encode()).hexdigest()[:32]

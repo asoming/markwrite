@@ -25,7 +25,7 @@ export function macMenuOptions(
     id: command,
     text,
     action: action(command),
-    accelerator: key?.replace('Mod', 'CmdOrCtrl'),
+    accelerator: key ? key.replace('Mod', 'CmdOrCtrl') : undefined,
   });
   const separator = { item: 'Separator' as const };
   const groups: SubmenuOptions[] = sections.map((section) => ({

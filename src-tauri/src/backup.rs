@@ -214,6 +214,11 @@ fn open_regular(path: &Path) -> Result<File, String> {
         use std::os::unix::fs::OpenOptionsExt;
         options.custom_flags(0x20000); // O_NOFOLLOW
     }
+    #[cfg(target_os = "macos")]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(0x100); // Darwin O_NOFOLLOW
+    }
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;
@@ -261,55 +266,7 @@ fn private_directory(path: &Path) -> Result<(), String> {
 }
 /// Atomic publication must never replace an existing destination directory.
 fn rename_new(source: &Path, destination: &Path) -> Result<(), String> {
-    #[cfg(target_os = "linux")]
-    {
-        use std::{ffi::CString, os::unix::ffi::OsStrExt};
-        unsafe extern "C" {
-            fn renameat2(
-                olddirfd: i32,
-                oldpath: *const std::ffi::c_char,
-                newdirfd: i32,
-                newpath: *const std::ffi::c_char,
-                flags: u32,
-            ) -> i32;
-        }
-        let source = CString::new(source.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
-        let destination =
-            CString::new(destination.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
-        if unsafe { renameat2(-100, source.as_ptr(), -100, destination.as_ptr(), 1) } != 0 {
-            return Err(std::io::Error::last_os_error().to_string());
-        }
-        Ok(())
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::ffi::OsStrExt;
-        let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
-        let destination: Vec<u16> = destination
-            .as_os_str()
-            .encode_wide()
-            .chain(Some(0))
-            .collect();
-        if unsafe {
-            windows_sys::Win32::Storage::FileSystem::MoveFileExW(
-                source.as_ptr(),
-                destination.as_ptr(),
-                0,
-            )
-        } == 0
-        {
-            return Err(std::io::Error::last_os_error().to_string());
-        }
-        Ok(())
-    }
-    #[cfg(not(any(target_os = "linux", windows)))]
-    {
-        let _ = (source, destination);
-        Err(
-            "此平台暂不支持安全发布备份 / Backup publication is supported on Linux and Windows."
-                .into(),
-        )
-    }
+    crate::storage::rename_without_replace(source, destination).map_err(|e| e.to_string())
 }
 fn staged_directory<T>(
     parent: &Path,
