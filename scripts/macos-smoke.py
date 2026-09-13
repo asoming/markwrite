@@ -60,7 +60,8 @@ def main():
         def sessions_contain(path):
             try:
                 state = json.loads((profile/'session.json').read_text())
-                return any(d.get('path') == str(path) and d.get('content') == path.read_text() for d in state.get('docs',[]))
+                return any(d.get('path') and Path(d['path']).samefile(path)
+                           and d.get('content') == path.read_text() for d in state.get('docs',[]))
             except (OSError,ValueError):
                 return False
         def process_ids():
@@ -76,6 +77,25 @@ def main():
         report['finderWarmOpenSameProcess'] = True
         assert all(p.read_bytes()==data for p,data in originals.items()), 'Read-only open modified a source'
         report['sourceFilesUnchanged'] = True
+        # System Events may be unavailable on a headless runner. When available,
+        # require our feature menus, rather than mistaking Tauri's default menu
+        # or a blank webview for a fully initialized native application.
+        try:
+            menu_script = f'''tell application "System Events"
+                tell first application process whose unix id is {owned_pids[0]}
+                    return name of every menu bar item of menu bar 1
+                end tell
+            end tell'''
+            menu = subprocess.run(['osascript','-e',menu_script],capture_output=True,text=True,timeout=12)
+            if menu.returncode == 0:
+                report['nativeMenuTitles'] = menu.stdout.strip()
+                assert 'Markwrite' in menu.stdout and ('段落' in menu.stdout or 'Paragraph' in menu.stdout), menu.stdout
+                assert '主题' in menu.stdout or 'Theme' in menu.stdout, menu.stdout
+                report['nativeFeatureMenusVerified'] = True
+            else:
+                report['nativeMenuInspectionUnavailable'] = menu.stderr.strip()
+        except subprocess.TimeoutExpired:
+            report['nativeMenuInspectionUnavailable'] = 'System Events did not respond within 12 seconds'
         shot = subprocess.run(['screencapture','-x',str(output/'macos-desktop.png')],capture_output=True,text=True)
         report['desktopScreenshot'] = shot.returncode == 0
         report['status'] = 'passed'
