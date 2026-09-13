@@ -34,7 +34,10 @@ export function macMenuOptions(
       if (entry === 'separator') return [separator];
       if (['app:quit', 'app:about', 'app:settings'].includes(entry.action)) return [];
       const binding = shortcutBindings.find((b) => b.action === entry.action);
-      const key = shortcuts[entry.action] ?? binding?.key;
+      // Pane-specific keys stay with the web editor's context-aware dispatcher.
+      // A global Cocoa accelerator would steal Option+Arrow from the other pane
+      // or turn a read-only navigation command into an editing command.
+      const key = binding?.context ? undefined : (shortcuts[entry.action] ?? binding?.key);
       const option = item(entry.action, t(entry.label), key || undefined);
       const checked = entry.action.startsWith('theme:')
         ? entry.action === `theme:${theme}`

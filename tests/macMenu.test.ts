@@ -46,6 +46,34 @@ describe('macOS native conventions', () => {
     expect((file.items![0] as MenuItemOptions).accelerator).toBe('CmdOrCtrl+Shift+S');
     expect((file.items![1] as MenuItemOptions).accelerator).toBeUndefined();
   });
+  it('leaves pane-specific navigation and editing keys to the focused pane', () => {
+    const action = vi.fn();
+    const menu = macMenuOptions(
+      [
+        {
+          label: '编辑',
+          items: [
+            { label: '段落上移', action: 'format:moveUp' },
+            { label: '上一篇', action: 'view:previousFile' },
+          ],
+        },
+      ],
+      {},
+      'read',
+      'github',
+      false,
+      action,
+    );
+    const items = (menu.items![1] as SubmenuOptions).items!;
+    const move = items.find((i) => 'id' in i && i.id === 'format:moveUp') as MenuItemOptions;
+    const previous = items.find(
+      (i) => 'id' in i && i.id === 'view:previousFile',
+    ) as MenuItemOptions;
+    expect(move.accelerator).toBeUndefined();
+    expect(previous.accelerator).toBeUndefined();
+    move.action?.('format:moveUp');
+    expect(action).toHaveBeenCalledWith('format:moveUp');
+  });
 });
 it('uses Command and Option on Mac without stealing Control or the system Hide chord', async () => {
   vi.resetModules();
