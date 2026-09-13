@@ -132,7 +132,7 @@ Under **Settings → General → Check updates**, download and verify an availab
 - The per-file limit is 32MiB. Long reading views render on demand. Beyond 300,000 characters, live decorations are reduced; beyond one million, editor Markdown parsing pauses. Document size is not unlimited.
 - **Startup is not consistently under one second.** Cache state, WebKit, fonts, and document size affect it.
 - Your actual account, quota, proxy, and commercial provider need validation in your own environment. Protocol tests do not prove compatibility with every vendor.
-- [Build records](https://github.com/asoming/markwrite/actions) include frontend/Rust tests and Windows installation, file association, process recovery, and uninstall checks. Screenshots show the actual app in isolated local tests, not mockups.
+- [Build records](https://github.com/asoming/markwrite/actions) include frontend/Rust tests, Windows installation/association/recovery/uninstall checks, and both Mac architectures’ DMG signatures, relocated launch, cold/warm Finder opening, and native menus. Screenshots show the actual running app, not mockups.
 
 ## Run from source
 
@@ -149,10 +149,15 @@ Linux package: `npm run tauri -- build --bundles deb`.
 
 Windows package: `npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis`.
 
+macOS package (on a Mac with Xcode Command Line Tools): `npm run tauri -- build --bundles app,dmg`. This builds natively for the host CPU; CI uses separate Apple Silicon and Intel Macs.
+
+
 When [reporting an issue](https://github.com/asoming/markwrite/issues), include your system, app version, steps, and error message. Do not attach API keys or private documents.
 
 
 ## Native macOS installation
+
+![Native macOS menus and Finder file opening, captured on Apple Silicon CI with the Chinese interface](screenshots/macos-native.png)
 
 1. Download `aarch64.dmg` for Apple Silicon (M-series), or `x64.dmg` for Intel. macOS 14 or newer is required.
 2. Open the disk image and drag **Markwrite.app** into **Applications**, then launch the installed app.
@@ -163,4 +168,4 @@ When [reporting an issue](https://github.com/asoming/markwrite/issues), include 
 
 The application uses native Cocoa / WKWebView; no browser installation or Rosetta is needed. Git features require a local Git installation; reading, editing, and exports do not.
 
-Builds are **ad-hoc signed and not Apple Developer ID notarized**. Follow [Apple’s first-launch guidance](https://support.apple.com/en-us/102445) if macOS requires confirmation; do not disable Gatekeeper. Native builds, bundle signatures and Finder startup are checked in GitHub Actions. Chinese IME composition, trackpad gestures and physical multi-display behavior still need human Mac testing. Existing screenshots were captured on Linux; macOS menus and file dialogs differ.
+Builds are **ad-hoc signed and not Apple Developer ID notarized**. Follow [Apple’s first-launch guidance](https://support.apple.com/en-us/102445) if macOS requires confirmation; do not disable Gatekeeper. Native builds, bundle signatures and Finder startup are checked in GitHub Actions. Chinese IME composition, trackpad gestures and physical multi-display behavior still need human Mac testing. The image above was captured from the running app on macOS CI; other feature screenshots were captured on Linux. macOS uses native menus and file dialogs.

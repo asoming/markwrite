@@ -6,6 +6,15 @@
 
 ### [下载正式版 / Download for Linux, Windows & macOS](https://github.com/asoming/markwrite/releases/latest)
 
+| 系统 / System | 安装包 / Installer |
+| --- | --- |
+| macOS 14+ · Apple Silicon（M 系列） | [原生 ARM64 DMG](https://github.com/asoming/markwrite/releases/download/v1.2.0/Markwrite_1.2.0_aarch64.dmg) |
+| macOS 14+ · Intel | [原生 x64 DMG](https://github.com/asoming/markwrite/releases/download/v1.2.0/Markwrite_1.2.0_x64.dmg) |
+| Windows 10/11 · x64 | [安装程序 / Setup](https://github.com/asoming/markwrite/releases/download/v1.2.0/Markwrite_1.2.0_x64-setup.exe) |
+| Linux · x86_64 | [Debian / Ubuntu](https://github.com/asoming/markwrite/releases/download/v1.2.0/Markwrite_1.2.0_amd64.deb) · [便携包 / Portable](https://github.com/asoming/markwrite/releases/download/v1.2.0/Markwrite_1.2.0_linux_x86_64.tar.gz) |
+
+Mac 包为 ad-hoc 签名，未完成 Apple Developer ID 公证；首次打开说明见[中文指南](README.zh-CN.md#macos-原生安装与操作)。 / Mac builds are ad-hoc signed, not Developer ID notarized; see the [Mac installation guide](README.en.md#native-macos-installation).
+
 [中文功能介绍](README.zh-CN.md) · [English guide](README.en.md) · [发布记录 / Releases](https://github.com/asoming/markwrite/releases) · [反馈问题 / Issues](https://github.com/asoming/markwrite/issues)
 
 Markwrite（墨页）是一款本地 Markdown 阅读与编辑工具。直接打开磁盘文件，在同一个应用中阅读、排版、比较文字修改，并用 Git 管理版本。无需导入知识库或注册账号。

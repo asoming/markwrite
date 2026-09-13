@@ -132,7 +132,7 @@ PDF/DOCX 支持纸型、页边距、页眉页脚、页码、封面和目录。PD
 - 单文件上限 32MiB。长文阅读按需渲染；超过 30 万字符时减少常规即时装饰，超过 100 万字符时暂停编辑器 Markdown 语法解析。并非无限大小。
 - **尚未稳定达到 1 秒启动。** 实际耗时受系统缓存、WebKit、字体和文档大小影响。
 - API 的实际账号、额度、代理和商业服务兼容需在你的环境验证；功能测试不代表每家服务都已接入。
-- [构建记录](https://github.com/asoming/markwrite/actions)包含前端/Rust 测试和 Windows 安装、关联、进程恢复及卸载检查。截图来自本机隔离测试环境；不是概念图。
+- [构建记录](https://github.com/asoming/markwrite/actions)包含前端/Rust 测试、Windows 安装/关联/恢复/卸载检查，以及两种 Mac 架构的 DMG 签名、搬移后启动、Finder 冷热打开和系统菜单检查。截图来自实际运行环境；不是概念图。
 
 ## 从源码运行
 
@@ -149,10 +149,15 @@ Linux 打包：`npm run tauri -- build --bundles deb`。
 
 Windows 打包：`npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis`。
 
+macOS 打包（在 Mac 上，先安装 Xcode Command Line Tools）：`npm run tauri -- build --bundles app,dmg`。默认编译当前芯片的原生包；CI 分别在 Apple Silicon 与 Intel Mac 上构建。
+
+
 [反馈问题或建议](https://github.com/asoming/markwrite/issues)时请说明系统、版本、复现步骤和错误信息，勿附带 API 密钥或私人文档。
 
 
 ## macOS 原生安装与操作
+
+![macOS 原生系统菜单与文件打开：Apple Silicon CI 运行截图](screenshots/macos-native.png)
 
 1. 从发布页下载 Apple Silicon 的 `aarch64.dmg`（M 系列）或 Intel 的 `x64.dmg`。
 2. 打开 DMG，将 **Markwrite.app** 拖入 **Applications（应用程序）**，再从应用程序目录启动。最低 macOS 14。
@@ -163,4 +168,4 @@ Windows 打包：`npm run tauri -- build --config src-tauri/tauri.windows.conf.j
 
 应用原生使用 Cocoa / WKWebView，无需安装浏览器或 Rosetta。Git 功能仍需要本机 Git；阅读、编辑和导出不依赖 Git。
 
-当前构建采用 **ad-hoc 签名，尚无 Apple Developer ID 公证**。首次运行如被拦截，请按 [Apple 官方打开说明](https://support.apple.com/zh-cn/102445) 在系统「隐私与安全性」中确认来源后打开，无需关闭 Gatekeeper。构建、签名完整性和 Finder 启动以 GitHub Actions 验收结果为准；中文输入法组合、触控板手势和实体多显示器仍需 Mac 人工验收。功能截图目前来自 Linux，Mac 的系统菜单和文件选择窗口不同。
+当前构建采用 **ad-hoc 签名，尚无 Apple Developer ID 公证**。首次运行如被拦截，请按 [Apple 官方打开说明](https://support.apple.com/zh-cn/102445) 在系统「隐私与安全性」中确认来源后打开，无需关闭 Gatekeeper。构建、签名完整性和 Finder 启动以 GitHub Actions 验收结果为准；中文输入法组合、触控板手势和实体多显示器仍需 Mac 人工验收。上图来自 macOS CI 的实际运行；其余功能截图来自 Linux。Mac 使用系统原生菜单和文件选择窗口。
