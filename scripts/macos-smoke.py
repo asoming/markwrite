@@ -31,6 +31,8 @@ def main():
     profile = Path.home() / 'Library/Application Support' / f'app.markwrite.desktop.window.w{profile_id}'
     executable = str(app / 'Contents/MacOS/markwrite')
     owned_pids = []
+    child_profiles = []
+    child_records = []
     report = {'platform': args.arch, 'status': 'running',
               'dmgSha256': hashlib.sha256(Path(args.dmg).read_bytes()).hexdigest()}
     try:
@@ -100,22 +102,49 @@ def main():
         shot = subprocess.run(['screencapture','-x',str(output/'macos-desktop.png')],capture_output=True,text=True)
         report['desktopScreenshot'] = shot.returncode == 0
         if report.get('nativeFeatureMenusVerified'):
-            quit_script = f'''tell application "System Events"
-                tell first application process whose unix id is {owned_pids[0]}
-                    tell menu 1 of menu bar item "Markwrite" of menu bar 1
-                        if exists menu item "退出 Markwrite" then
-                            click menu item "退出 Markwrite"
-                        else
-                            click menu item "Quit Markwrite"
-                        end if
+            def click_menu(pid, heading, label):
+                script = f'''tell application "System Events"
+                    tell first application process whose unix id is {pid}
+                        set frontmost to true
+                        click menu item {json.dumps(label,ensure_ascii=False)} of menu 1 of menu bar item {json.dumps(heading,ensure_ascii=False)} of menu bar 1
                     end tell
-                end tell
-            end tell'''
-            subprocess.run(['osascript','-e',quit_script],check=True,capture_output=True,text=True,timeout=12)
+                end tell'''
+                subprocess.run(['osascript','-e',script],check=True,capture_output=True,text=True,timeout=12)
+            chinese = '文件' in report['nativeMenuTitles']
+            parent_pid = owned_pids[0]
+            record_directory = profile.parent/'app.markwrite.desktop/document-windows'
+            before_records = set(record_directory.glob('*.json'))
+            click_menu(parent_pid, '文件' if chinese else 'File',
+                       '当前文件在独立窗口打开' if chinese else 'Open current file in a new window')
+            def new_process():
+                children = list(set(process_ids()) - {parent_pid})
+                return children[0] if len(children)==1 else None
+            child_pid = wait_for(new_process,'Native menu did not create an independent process')
+            owned_pids.append(child_pid)
+            def child_loaded():
+                for record in set(record_directory.glob('*.json'))-before_records:
+                    try:
+                        identifier = json.loads(record.read_text())['id']
+                        if len(identifier)!=32 or any(c not in '0123456789abcdef' for c in identifier):continue
+                        child_profile = profile.parent/f'app.markwrite.desktop.window.w{identifier}'
+                        state = json.loads((child_profile/'session.json').read_text())
+                        if any(d.get('path') and Path(d['path']).samefile(second) and d.get('content')==second.read_text() for d in state.get('docs',[])):
+                            child_profiles.append(child_profile); child_records.append(record)
+                            return True
+                    except (OSError,ValueError,KeyError):pass
+                return False
+            wait_for(child_loaded,'Independent process did not load the original document')
+            report['nativeMenuCreatesIndependentWindow'] = True
+            quit_label = '退出 Markwrite' if chinese else 'Quit Markwrite'
+            click_menu(child_pid,'Markwrite',quit_label)
+            wait_for(lambda: child_pid not in process_ids(),'Native Quit did not end the child process',seconds=25)
+            assert parent_pid in process_ids(), 'Closing one window terminated the other process'
+            report['independentQuitKeepsOtherWindow'] = True
+            click_menu(parent_pid,'Markwrite',quit_label)
             wait_for(lambda: not process_ids(),'Native Quit did not end the clean application',seconds=25)
             report['nativeCleanQuit'] = True
         report['status'] = 'passed'
-        report['limits'] = 'CI launch and Finder integration only; interactive Chinese IME, gestures and physical displays need human Mac testing.'
+        report['limits'] = 'CI Finder, native menus and independent-process quit verified; interactive Chinese IME, gestures and physical displays need human Mac testing.'
     finally:
         for pid in owned_pids:
             try: os.kill(pid,15)
@@ -125,6 +154,8 @@ def main():
         (output/'result.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
         subprocess.run(['hdiutil','detach',str(mount)],capture_output=True)
         # Only the uniquely allocated smoke profile and temporary installation are removed.
+        for child_profile in child_profiles: shutil.rmtree(child_profile,ignore_errors=True)
+        for record in child_records: record.unlink(missing_ok=True)
         shutil.rmtree(profile,ignore_errors=True)
         shutil.rmtree(root,ignore_errors=True)
     print(json.dumps(report,ensure_ascii=False,indent=2))
