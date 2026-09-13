@@ -134,6 +134,11 @@ def main():
                     except (OSError,ValueError,KeyError):pass
                 return False
             wait_for(child_loaded,'Independent process did not load the original document')
+            def child_menu_ready():
+                script = f'tell application "System Events" to tell first application process whose unix id is {child_pid} to get name of every menu bar item of menu bar 1'
+                query = subprocess.run(['osascript','-e',script],capture_output=True,text=True,timeout=5)
+                return query.returncode==0 and ('段落' in query.stdout or 'Paragraph' in query.stdout)
+            wait_for(child_menu_ready,'Independent window native menus did not initialize')
             report['nativeMenuCreatesIndependentWindow'] = True
             quit_label = '退出 Markwrite' if chinese else 'Quit Markwrite'
             click_menu(child_pid,'Markwrite',quit_label)
@@ -143,6 +148,7 @@ def main():
             click_menu(parent_pid,'Markwrite',quit_label)
             wait_for(lambda: not process_ids(),'Native Quit did not end the clean application',seconds=25)
             report['nativeCleanQuit'] = True
+            assert all(p.read_bytes()==data for p,data in originals.items()), 'Window lifecycle changed an original file'
         report['status'] = 'passed'
         report['limits'] = 'CI Finder, native menus and independent-process quit verified; interactive Chinese IME, gestures and physical displays need human Mac testing.'
     finally:
