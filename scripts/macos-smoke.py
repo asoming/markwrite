@@ -115,7 +115,7 @@ def main():
             record_directory = profile.parent/'app.markwrite.desktop/document-windows'
             before_records = set(record_directory.glob('*.json'))
             click_menu(parent_pid, '文件' if chinese else 'File',
-                       '当前文件在独立窗口打开' if chinese else 'Open current file in a new window')
+                       '当前文件在独立窗口打开' if chinese else 'Open this file in an independent window')
             def new_process():
                 children = list(set(process_ids()) - {parent_pid})
                 return children[0] if len(children)==1 else None
