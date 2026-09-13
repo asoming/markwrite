@@ -6,7 +6,10 @@ mod credentials;
 mod document_windows;
 mod history;
 mod imports;
+#[cfg(target_os = "macos")]
+mod macos;
 mod native_settings;
+mod open_requests;
 mod portable_export;
 mod reference_changes;
 mod session;
@@ -658,7 +661,14 @@ async fn initial_documents(app: tauri::AppHandle) -> Result<Vec<DiskFile>, Strin
         let state = app.state::<AppState>();
         let mut result = vec![];
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
-        for p in document_windows::document_arguments(&std::env::args().collect::<Vec<_>>(), &cwd) {
+        let mut paths =
+            document_windows::document_arguments(&std::env::args().collect::<Vec<_>>(), &cwd);
+        paths.extend(app.state::<open_requests::OpenRequests>().take());
+        let mut seen = HashSet::new();
+        for p in paths {
+            if !seen.insert(p.clone()) {
+                continue;
+            }
             if p.is_file() && is_markdown(&p) {
                 let p = state.allow_file(&p)?;
                 state.persist(&app)?;
@@ -763,26 +773,34 @@ async fn save_export(
     Ok(true)
 }
 fn accept_documents(app: &tauri::AppHandle, paths: impl IntoIterator<Item = PathBuf>) {
-    let state = app.state::<AppState>();
-    let mut files = vec![];
-    for path in paths {
-        if path.is_file() && is_markdown(&path) {
-            match state.allow_file(&path).and_then(|p| storage::read(&p)) {
-                Ok(file) => files.push(file),
-                Err(error) => {
-                    let _ = app.emit("document-open-error", error);
-                }
-            }
-        }
-    }
-    if !files.is_empty() {
-        let _ = state.persist(app);
-        let _ = app.emit("open-documents", files);
-    }
+    app.state::<open_requests::OpenRequests>().push(paths);
+    let _ = app.emit("documents-pending", ());
     if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
         let _ = window.unminimize();
         let _ = window.set_focus();
     }
+}
+#[tauri::command]
+async fn drain_open_documents(app: tauri::AppHandle) -> Result<Vec<DiskFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let mut files = vec![];
+        for path in app.state::<open_requests::OpenRequests>().take() {
+            if path.is_file() && is_markdown(&path) {
+                match state.allow_file(&path).and_then(|p| storage::read(&p)) {
+                    Ok(file) => files.push(file),
+                    Err(error) => {
+                        let _ = app.emit("document-open-error", error);
+                    }
+                }
+            }
+        }
+        state.persist(&app)?;
+        Ok(files)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 fn main() {
     let mut context = tauri::generate_context!();
@@ -803,6 +821,7 @@ fn main() {
             }
         })
         .manage(AppState::default())
+        .manage(open_requests::OpenRequests::default())
         .manage(updates::UpdateState::default())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -819,6 +838,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             choose_files,
+            drain_open_documents,
             document_windows::new_document_window,
             document_windows::reopen_document_window,
             document_windows::list_document_windows,
@@ -895,8 +915,32 @@ fn main() {
             open_external,
             initial_documents
         ])
-        .run(context)
-        .expect("无法启动 Markwrite");
+        .build(context)
+        .expect("无法启动 Markwrite")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            match event {
+                tauri::RunEvent::Opened { urls } => {
+                    accept_documents(app, open_requests::file_urls(urls))
+                }
+                tauri::RunEvent::Reopen { .. } => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.unminimize();
+                        let _ = window.set_focus();
+                    }
+                }
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        api.prevent_exit();
+                        let _ = window.close();
+                    }
+                }
+                _ => {}
+            }
+            #[cfg(not(target_os = "macos"))]
+            let _ = (app, event);
+        });
 }
 
 #[cfg(test)]

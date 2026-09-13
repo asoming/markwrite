@@ -100,13 +100,17 @@ fn choose(releases: Vec<Release>, previews: bool) -> Option<Release> {
         .max_by_key(|r| version(&r.tag_name).unwrap())
 }
 fn installer(release: &Release, os: &str, arch: &str) -> Option<Asset> {
-    if arch != "x86_64" {
+    if arch != "x86_64" && !(os == "macos" && arch == "aarch64") {
         return None;
     }
     let v = version(&release.tag_name)?.to_string();
     let name = match os {
         "linux" => format!("Markwrite_{v}_amd64.deb"),
         "windows" => format!("Markwrite_{v}_x64-setup.exe"),
+        "macos" => format!(
+            "Markwrite_{v}_{}.dmg",
+            if arch == "aarch64" { "aarch64" } else { "x64" }
+        ),
         _ => return None,
     };
     release
@@ -517,7 +521,11 @@ pub async fn install_app_update(name: String, app: tauri::AppHandle) -> Result<S
                 Ok("system-updated".into())
             }
         }
-        #[cfg(not(any(target_os="linux",target_os="windows")))] { let _=path; Err("此平台暂不支持直接安装 / Direct installation is not supported on this platform".into()) }
+        #[cfg(target_os="macos")] {
+            open::that_detached(&path).map_err(|e| format!("无法打开安装镜像 / Cannot open disk image: {e}"))?;
+            Ok("macos-dmg-opened".into())
+        }
+        #[cfg(not(any(target_os="linux",target_os="windows",target_os="macos")))] { let _=path; Err("此平台暂不支持直接安装 / Direct installation is not supported on this platform".into()) }
     }).await.map_err(|_| "更新任务失败 / Update task failed".to_string())?
 }
 #[cfg(test)]
@@ -565,5 +573,38 @@ mod install_tests {
             b"original"
         );
         fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod mac_installer_tests {
+    use super::*;
+    #[test]
+    fn selects_native_mac_architecture_without_cross_installing() {
+        let release = Release {
+            id: 1,
+            tag_name: "v1.2.0".into(),
+            body: None,
+            draft: false,
+            prerelease: false,
+            assets: vec![
+                Asset {
+                    id: 2,
+                    name: "Markwrite_1.2.0_aarch64.dmg".into(),
+                    size: 10,
+                    digest: None,
+                },
+                Asset {
+                    id: 3,
+                    name: "Markwrite_1.2.0_x64.dmg".into(),
+                    size: 10,
+                    digest: None,
+                },
+            ],
+        };
+        assert_eq!(installer(&release, "macos", "aarch64").unwrap().id, 2);
+        assert_eq!(installer(&release, "macos", "x86_64").unwrap().id, 3);
+        assert!(installer(&release, "macos", "i686").is_none());
+        assert!(installer(&release, "windows", "aarch64").is_none());
     }
 }

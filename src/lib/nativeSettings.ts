@@ -6,7 +6,7 @@ export type ImportSource = {
   bytes: number[];
 };
 export type MarkdownDefaultStatus = {
-  platform: 'linux' | 'windows' | 'other';
+  platform: 'linux' | 'windows' | 'macos' | 'other';
   isDefault: boolean | null;
   handlers: { type: string; application: string }[];
   canRequest: boolean;

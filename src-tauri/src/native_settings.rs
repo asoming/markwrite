@@ -521,8 +521,34 @@ fn windows_status() -> DefaultStatus {
         .into(),
     }
 }
+#[cfg(target_os = "macos")]
+fn macos_status() -> DefaultStatus {
+    match crate::macos::handlers() {
+        Ok(handlers) => {
+            let is_default = handlers
+                .iter()
+                .all(|(_, app)| app == "app.markwrite.desktop");
+            DefaultStatus { platform:"macos".into(), is_default:Some(is_default),
+                handlers:handlers.into_iter().map(|(r#type,application)| MimeHandler{r#type,application}).collect(),
+                can_request:true, message: if is_default { "Markdown 已默认由 Markwrite 打开。 / Markwrite is the default Markdown application." } else { "仅更改 Markdown；若系统要求确认，可在 Finder → 显示简介 → 打开方式 → 全部更改中选择 Markwrite。 / Markdown only; use Finder → Get Info → Open with → Change All if confirmation is required." }.into() }
+        }
+        Err(message) => DefaultStatus {
+            platform: "macos".into(),
+            is_default: None,
+            handlers: vec![],
+            can_request: true,
+            message,
+        },
+    }
+}
 #[tauri::command]
 pub async fn default_markdown_status() -> Result<DefaultStatus, String> {
+    #[cfg(target_os = "macos")]
+    {
+        return tauri::async_runtime::spawn_blocking(macos_status)
+            .await
+            .map_err(|e| e.to_string());
+    }
     #[cfg(target_os = "linux")]
     {
         return tauri::async_runtime::spawn_blocking(linux_status)
@@ -535,7 +561,7 @@ pub async fn default_markdown_status() -> Result<DefaultStatus, String> {
             .await
             .map_err(|e| e.to_string());
     }
-    #[cfg(not(any(target_os = "linux", windows)))]
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
     {
         Ok(DefaultStatus {
             platform: "other".into(),
@@ -548,6 +574,16 @@ pub async fn default_markdown_status() -> Result<DefaultStatus, String> {
 }
 #[tauri::command]
 pub async fn request_markdown_default(app: tauri::AppHandle) -> Result<DefaultStatus, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app;
+        return tauri::async_runtime::spawn_blocking(|| {
+            crate::macos::set_default()?;
+            Ok(macos_status())
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    }
     #[cfg(target_os = "linux")]
     {
         let executable = std::env::current_exe().map_err(|e| e.to_string())?;
@@ -630,7 +666,7 @@ pub async fn request_markdown_default(app: tauri::AppHandle) -> Result<DefaultSt
             let mut status=windows_status();status.message="已打开 Windows 默认应用设置。请为 .md 和 .markdown 选择 Markwrite，返回后点击刷新状态。".into();Ok(status)
         }).await.map_err(|e|e.to_string())?;
     }
-    #[cfg(not(any(target_os = "linux", windows)))]
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
     {
         let _ = app;
         default_markdown_status().await

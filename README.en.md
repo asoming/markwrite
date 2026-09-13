@@ -1,6 +1,6 @@
 # Markwrite · English guide
 
-[Download for Linux / Windows](https://github.com/asoming/markwrite/releases/latest) · [Overview](README.md) · [中文介绍](README.zh-CN.md)
+[Download for Linux / Windows / macOS](https://github.com/asoming/markwrite/releases/latest) · [Overview](README.md) · [中文介绍](README.zh-CN.md)
 
 Markwrite brings Markdown reading, visual formatting, document comparison, and Git version control into one desktop application. Your documents remain ordinary `.md` files in their original folders and repositories.
 
@@ -56,7 +56,7 @@ Edits in either pane immediately update the other. Both share one document and s
 
 ![An edit preview returned by an isolated local example model](screenshots/ai-en.png)
 
-Select text in an editing pane and choose **Tools → AI writing assistant**. Connection settings are remembered. With **Remember API key** enabled, saving the connection or sending a request stores the key in the Linux system keyring or Windows Credential Manager. It remains available after restarting. You can delete a stored key separately.
+Select text in an editing pane and choose **Tools → AI writing assistant**. Connection settings are remembered. With **Remember API key** enabled, saving the connection or sending a request stores the key in the Linux system keyring or Windows Credential Manager or macOS Keychain. It remains available after restarting. You can delete a stored key separately.
 
 ### Connect a service
 
@@ -128,7 +128,7 @@ Under **Settings → General → Check updates**, download and verify an availab
 
 ## Limits and validation
 
-- Supported platforms are Linux/Windows x86_64. There is no mobile client, cloud synchronization, or real-time multiplayer editing.
+- Supported platforms are Linux/Windows x86_64 and macOS 14+ (Apple Silicon / Intel). There is no mobile client, cloud synchronization, or real-time multiplayer editing.
 - The per-file limit is 32MiB. Long reading views render on demand. Beyond 300,000 characters, live decorations are reduced; beyond one million, editor Markdown parsing pauses. Document size is not unlimited.
 - **Startup is not consistently under one second.** Cache state, WebKit, fonts, and document size affect it.
 - Your actual account, quota, proxy, and commercial provider need validation in your own environment. Protocol tests do not prove compatibility with every vendor.
@@ -150,3 +150,17 @@ Linux package: `npm run tauri -- build --bundles deb`.
 Windows package: `npm run tauri -- build --config src-tauri/tauri.windows.conf.json --bundles nsis`.
 
 When [reporting an issue](https://github.com/asoming/markwrite/issues), include your system, app version, steps, and error message. Do not attach API keys or private documents.
+
+
+## Native macOS installation
+
+1. Download `aarch64.dmg` for Apple Silicon (M-series), or `x64.dmg` for Intel. macOS 14 or newer is required.
+2. Open the disk image and drag **Markwrite.app** into **Applications**, then launch the installed app.
+3. Open Markdown from Finder with Markwrite, either from a cold start or while running. Paths, Unicode names, spaces, and relative image references remain intact.
+4. Set the default Markdown application under **Markwrite → Settings → Files**. If macOS requires confirmation, use **Finder → Get Info → Open with → Change All**. TXT associations are not modified.
+5. Commands use the macOS menu bar: `⌘S` saves, `⌘O` opens, `⌘,` opens settings, and `⌘⌥F` replaces text. `⌘H` remains the system Hide command. Quitting still prompts about unsaved edits.
+6. Update checks select the correct native CPU package and verify SHA-256. Resolve unsaved documents before opening the new DMG, then replace the old app in Applications.
+
+The application uses native Cocoa / WKWebView; no browser installation or Rosetta is needed. Git features require a local Git installation; reading, editing, and exports do not.
+
+Builds are **ad-hoc signed and not Apple Developer ID notarized**. Follow [Apple’s first-launch guidance](https://support.apple.com/en-us/102445) if macOS requires confirmation; do not disable Gatekeeper. Native builds, bundle signatures and Finder startup are checked in GitHub Actions. Chinese IME composition, trackpad gestures and physical multi-display behavior still need human Mac testing. Existing screenshots were captured on Linux; macOS menus and file dialogs differ.

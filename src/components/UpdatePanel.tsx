@@ -1,3 +1,4 @@
+import { isMac } from '../lib/os';
 import { useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { desktop, openExternal } from '../lib/platform';
@@ -202,8 +203,12 @@ export default function UpdatePanel({
         <div role="status">
           <p>
             {t(
-              '下载完成，SHA-256 校验通过。点击安装更新，处理未保存文档后开始安装。Linux 系统安装可能要求授权；便携版原位更新，重新打开后生效。',
-              'Download verified. Install update handles unsaved work first. Linux system installs may request authorization; portable installs update in place. Reopen to use the new version.',
+              isMac
+                ? '下载完成，SHA-256 校验通过。打开安装镜像前先处理未保存文档；随后将 Markwrite 拖入 Applications 替换旧版。'
+                : '下载完成，SHA-256 校验通过。点击安装更新，处理未保存文档后开始安装。Linux 系统安装可能要求授权；便携版原位更新，重新打开后生效。',
+              isMac
+                ? 'Download verified. Resolve unsaved documents before opening the disk image, then drag Markwrite into Applications to replace the previous version.'
+                : 'Download verified. Install update handles unsaved work first. Linux system installs may request authorization; portable installs update in place. Reopen to use the new version.',
             )}
           </p>
           <p className="preference-help" style={{ overflowWrap: 'anywhere' }}>
@@ -211,7 +216,7 @@ export default function UpdatePanel({
           </p>
           {onInstall && (
             <button className="preference-button primary" onClick={() => onInstall(download.name)}>
-              {t('安装更新', 'Install update')}
+              {isMac ? t('打开安装镜像', 'Open disk image') : t('安装更新', 'Install update')}
             </button>
           )}
           <button

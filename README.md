@@ -4,7 +4,7 @@
 
 **Your files, with changes you can see.**
 
-### [下载正式版 / Download for Linux & Windows](https://github.com/asoming/markwrite/releases/latest)
+### [下载正式版 / Download for Linux, Windows & macOS](https://github.com/asoming/markwrite/releases/latest)
 
 [中文功能介绍](README.zh-CN.md) · [English guide](README.en.md) · [发布记录 / Releases](https://github.com/asoming/markwrite/releases) · [反馈问题 / Issues](https://github.com/asoming/markwrite/issues)
 
@@ -36,10 +36,12 @@ Built around local review and version control for READMEs, technical plans, rese
 - **[中文介绍](README.zh-CN.md)**：功能截图、安装、Git、对照、AI 接入与常见问题。
 - **[English guide](README.en.md)**: screenshots, installation, Git, comparisons, AI setup, and limitations.
 
-**平台 / Platforms:** Linux x86_64（Debian/Ubuntu `.deb`、便携包 / portable archive）；Windows 10/11 x64（安装程序 / installer）。
+**平台 / Platforms:** Linux x86_64（Debian/Ubuntu `.deb`、便携包 / portable archive）；Windows 10/11 x64（安装程序 / installer）；macOS 14+（Apple Silicon / Intel 原生 `.dmg`）。
 
 **核心离线 / Offline core:** 本地阅读、编辑、Git 和附件处理不需要云账号。AI、远程图片、发布与更新检查仅在你主动使用时联网。 / Local reading, editing, Git, and attachments need no cloud account. AI, remote images, publishing, and update checks connect only when requested.
 
 **技术栈 / Stack:** Tauri 2 · React · TypeScript · Rust · CodeMirror 6.
 
-**源码版本 / Source version:** 1.1.1。已发布安装包以[最新发布页](https://github.com/asoming/markwrite/releases/latest)为准。 / See the latest release page for available installers.
+**源码版本 / Source version:** 1.2.0。已发布安装包以[最新发布页](https://github.com/asoming/markwrite/releases/latest)为准。 / See the latest release page for available installers.
+
+**macOS:** 使用 Cocoa 系统菜单、⌘ 快捷键、Finder 文件关联与 Keychain。Apple Silicon 与 Intel 分别提供原生安装包，无需 Rosetta。当前采用 ad-hoc 签名，未完成 Apple Developer ID 公证；首次打开可能需在系统隐私与安全性中确认。 / Native Cocoa menus, Command shortcuts, Finder associations, and Keychain. Separate native builds for Apple Silicon and Intel; no Rosetta required. Ad-hoc signed, not Developer ID notarized; macOS may require first-launch approval.

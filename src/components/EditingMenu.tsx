@@ -1,3 +1,6 @@
+import { isMac } from '../lib/os';
+import { isTauri } from '@tauri-apps/api/core';
+import { macMenuOptions, scheduleMacMenu } from '../lib/macMenu';
 import { displayShortcut, shortcutBindings, type ShortcutOverrides } from '../lib/shortcuts';
 import { t, useI18n } from '../lib/i18n';
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
@@ -237,7 +240,36 @@ export default function EditingMenu({
   theme: Theme;
   focus: boolean;
 }) {
-  useI18n();
+  const { language } = useI18n();
+  const [nativeInstalled, setNativeInstalled] = useState(false);
+  const actionRef = useRef(onAction);
+  actionRef.current = onAction;
+  const nativeShortcuts = JSON.stringify(shortcuts);
+  useEffect(() => {
+    if (!isMac || !isTauri()) return;
+    let canceled = false;
+    void scheduleMacMenu(async () => {
+      if (canceled) return;
+      const { Menu } = await import('@tauri-apps/api/menu');
+      const menu = await Menu.new(
+        macMenuOptions(menus, JSON.parse(nativeShortcuts), mode, theme, focus, (action) =>
+          actionRef.current(action),
+        ),
+      );
+      if (canceled) {
+        await menu.close();
+        return;
+      }
+      const previous = await menu.setAsAppMenu();
+      await previous?.close();
+      if (!canceled) setNativeInstalled(true);
+    }).catch((error) => {
+      console.error('macOS menu:', error);
+    });
+    return () => {
+      canceled = true;
+    };
+  }, [language, nativeShortcuts, mode, theme, focus]);
   const [open, setOpen] = useState<number | null>(null);
   const root = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -298,6 +330,7 @@ export default function EditingMenu({
     returnFocus.current?.focus();
     onAction(action);
   }
+  if (nativeInstalled) return null;
   return (
     <nav className="editing-menubar" ref={root} aria-label={t('文档菜单')}>
       <div role="menubar" aria-label={t('菜单栏')}>

@@ -3,7 +3,7 @@ name: Desktop builds
 on:
   push:
     branches: [main]
-    paths-ignore: ['docs/**', 'README.md']
+    paths-ignore: ['docs/**', 'README.md', 'README.zh-CN.md', 'README.en.md', 'screenshots/**']
   pull_request:
   workflow_dispatch:
 
@@ -29,6 +29,18 @@ jobs:
             artifact: markwrite-windows-x86_64
             paths: |
               src-tauri/target/release/bundle/nsis/*-setup.exe
+          - name: macOS Apple Silicon
+            os: macos-15
+            args: --target aarch64-apple-darwin --bundles app,dmg
+            artifact: markwrite-macos-aarch64
+            arch: arm64
+            paths: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+          - name: macOS Intel
+            os: macos-15-intel
+            args: --target x86_64-apple-darwin --bundles app,dmg
+            artifact: markwrite-macos-x64
+            arch: x86_64
+            paths: src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     steps:
@@ -144,6 +156,21 @@ jobs:
           if (-not (Test-Path $uninstaller)) { throw 'Uninstaller is missing' }
           $remove = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
           if ($remove.ExitCode -ne 0) { throw "NSIS removal failed: $($remove.ExitCode)" }
+      - name: Verify macOS installed bundle and Finder integration
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          dmg=( ${{ matrix.paths }} )
+          test "${#dmg[@]}" -eq 1
+          python3 scripts/macos-smoke.py --dmg "${dmg[0]}" --arch '${{ matrix.arch }}' --output "$RUNNER_TEMP/markwrite-macos-results"
+      - name: Keep macOS validation evidence
+        if: always() && runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}-evidence
+          path: ${{ runner.temp }}/markwrite-macos-results/
+          if-no-files-found: warn
+          retention-days: 30
       - name: Keep installer
         uses: actions/upload-artifact@v4
         with:

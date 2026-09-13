@@ -1,3 +1,4 @@
+import { platformText } from './os';
 import { useSyncExternalStore } from 'react';
 import english from './i18n.en';
 export type Language = 'zh-CN' | 'en';
@@ -15,7 +16,7 @@ export function setLanguage(next: Language) {
 }
 /** Keys are interface text only. Document content and paths belong in interpolation values. */
 export function t(key: string, fallback?: string, values?: readonly unknown[]): string {
-  const translated = language === 'en' ? (english[key] ?? fallback ?? key) : key;
+  const translated = platformText(language === 'en' ? (english[key] ?? fallback ?? key) : key);
   return values
     ? translated.replace(/\{(\d+)\}/g, (match, index: string) =>
         Number(index) < values.length ? String(values[Number(index)] ?? '') : match,

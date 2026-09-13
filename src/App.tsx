@@ -1,3 +1,4 @@
+import { platformText } from './lib/os';
 import OperationRecoveryPanel from './components/OperationRecoveryPanel';
 import { synchronizeScroll } from './lib/linkedScroll';
 import type { CompareHandle } from './components/ComparePane';
@@ -1264,7 +1265,16 @@ export default function App() {
     const unlisten: (() => void)[] = [];
     void import('@tauri-apps/api/event')
       .then(async ({ listen }) => {
+        const drain = () =>
+          invoke<DiskFile[]>('drain_open_documents')
+            .then((files) => {
+              files.forEach(addDisk);
+            })
+            .catch((e) => notify(errorText(e)));
         const handlers = await Promise.all([
+          listen('documents-pending', () => {
+            void drain();
+          }),
           listen<DiskFile[]>('open-documents', (event) => event.payload.forEach(addDisk)),
           listen<string>('document-open-error', (event) => notify(event.payload)),
           listen('workspace-changed', () => {
@@ -1278,7 +1288,10 @@ export default function App() {
           }),
         ]);
         if (disposed) handlers.forEach((fn) => fn());
-        else unlisten.push(...handlers);
+        else {
+          unlisten.push(...handlers);
+          await drain();
+        }
       })
       .catch((e) => notify(errorText(e)));
     if (root) void invoke('watch_folder', { path: root }).catch((e) => notify(errorText(e)));
@@ -2422,7 +2435,7 @@ export default function App() {
             <button onClick={() => setDialog('settings')}>
               <SettingsIcon size={16} />
               <span>{t('设置')}</span>
-              <kbd>Ctrl ,</kbd>
+              <kbd>{platformText('Ctrl ,')}</kbd>
             </button>
           </div>
           <div

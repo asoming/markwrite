@@ -1,3 +1,4 @@
+import { isMac, platformText } from './os';
 import type { EditingAction } from '../components/EditingMenu';
 export type ShortcutOverrides = Record<string, string>;
 type Binding = {
@@ -17,7 +18,7 @@ export const shortcutBindings: Binding[] = [
   { action: 'app:quickOpen', label: '快速打开', en: 'Quick open', key: 'Mod+P' },
   { action: 'app:commands', label: '命令面板', en: 'Command palette', key: 'Mod+K' },
   { action: 'app:find', label: '查找', en: 'Find', key: 'Mod+F' },
-  { action: 'app:replace', label: '替换', en: 'Replace', key: 'Mod+H' },
+  { action: 'app:replace', label: '替换', en: 'Replace', key: isMac ? 'Mod+Alt+F' : 'Mod+H' },
   { action: 'app:search', label: '文件夹搜索', en: 'Folder search', key: 'Mod+Shift+F' },
   { action: 'app:settings', label: '设置', en: 'Settings', key: 'Mod+,' },
   { action: 'view:sidebar', label: '显示或隐藏侧栏', en: 'Toggle sidebar', key: 'Mod+\\' },
@@ -119,16 +120,26 @@ export function shortcutKey(
   if (['Control', 'Meta', 'Alt', 'Shift', 'Dead', 'Process', 'Unidentified'].includes(event.key))
     return '';
   return [
-    event.ctrlKey || event.metaKey ? 'Mod' : '',
+    isMac
+      ? event.metaKey
+        ? 'Mod'
+        : event.ctrlKey
+          ? 'Ctrl'
+          : ''
+      : event.ctrlKey || event.metaKey
+        ? 'Mod'
+        : '',
     event.altKey ? 'Alt' : '',
     event.shiftKey ? 'Shift' : '',
-    event.shiftKey && /^Digit[0-9]$/.test(event.code || '')
+    (event.shiftKey || (isMac && event.altKey)) && /^Digit[0-9]$/.test(event.code || '')
       ? event.code!.slice(-1)
-      : event.shiftKey && shiftedKeys[event.key]
-        ? shiftedKeys[event.key]
-        : event.key.length === 1
-          ? event.key.toUpperCase()
-          : event.key,
+      : isMac && event.altKey && /^Key[A-Z]$/.test(event.code || '')
+        ? event.code!.slice(-1)
+        : event.shiftKey && shiftedKeys[event.key]
+          ? shiftedKeys[event.key]
+          : event.key.length === 1
+            ? event.key.toUpperCase()
+            : event.key,
   ]
     .filter(Boolean)
     .join('+');
@@ -183,5 +194,5 @@ export function resolveShortcut(
   return { action, blocked };
 }
 export function displayShortcut(key: string) {
-  return key.replace('Mod', 'Ctrl').replaceAll('+', ' ');
+  return platformText(key.replace('Mod', 'Ctrl').replaceAll('+', ' '));
 }

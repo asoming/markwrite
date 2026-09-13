@@ -1,0 +1,29 @@
+{
+  "bundle": {
+    "targets": [
+      "app",
+      "dmg"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "14.0",
+      "signingIdentity": "-",
+      "hardenedRuntime": true,
+      "infoPlist": "Info.macos.plist"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "md",
+          "markdown"
+        ],
+        "mimeType": "text/markdown",
+        "name": "Markdown document",
+        "role": "Editor",
+        "rank": "Alternate",
+        "contentTypes": [
+          "net.daringfireball.markdown"
+        ]
+      }
+    ]
+  }
+}
