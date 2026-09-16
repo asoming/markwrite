@@ -1,4 +1,6 @@
 const english: Record<string, string> = {
+  恢复未保存草稿: 'Recover unsaved drafts',
+  循环切换模式: 'Cycle modes',
   '文档与附件打包 ZIP…': 'Package document and attachments as ZIP…',
   新建独立窗口: 'New independent window',
   当前文件在独立窗口打开: 'Open this file in an independent window',

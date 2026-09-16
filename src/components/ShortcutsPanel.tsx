@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { t, useI18n } from '../lib/i18n';
 import {
   shortcutBindings,
@@ -7,8 +7,9 @@ import {
   displayShortcut,
   type ShortcutOverrides,
 } from '../lib/shortcuts';
+const emptyShortcuts: ShortcutOverrides = {};
 export default function ShortcutsPanel({
-  value = {},
+  value = emptyShortcuts,
   onChange,
 }: {
   value?: ShortcutOverrides;
@@ -16,14 +17,25 @@ export default function ShortcutsPanel({
 }) {
   const { language } = useI18n();
   const [draft, setDraft] = useState({ ...value });
+  const [recording, setRecording] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  useEffect(() => {
+    setDraft({ ...value });
+  }, [value]);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('markwrite-shortcut-recording', { detail: true }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('markwrite-shortcut-recording', { detail: false }));
+    };
+  }, []);
   const [filter, setFilter] = useState('');
   const issues = shortcutIssues(draft);
   return (
     <div className="shortcut-settings">
       <p>
         {t(
-          '点击按键框后按下组合键；Delete 清除，Escape 取消。修改后点击应用。',
-          'Focus a key field and press a chord; Delete clears and Escape cancels. Apply to save changes.',
+          '点击操作右侧的按钮，按下新组合键，再点击「应用快捷键」。Delete 清除，Escape 取消。',
+          'Click a shortcut button, press the new chord, then Apply shortcuts. Delete clears; Escape cancels.',
         )}
       </p>
       <input
@@ -38,7 +50,7 @@ export default function ShortcutsPanel({
             `${binding.label} ${binding.en}`.toLowerCase().includes(filter.toLowerCase()),
           )
           .map((binding) => (
-            <label key={binding.action}>
+            <div className="shortcut-setting-row" key={binding.action}>
               <span>
                 {language === 'en' ? binding.en : binding.label}
                 {binding.context && (
@@ -47,13 +59,20 @@ export default function ShortcutsPanel({
                   </small>
                 )}
               </span>
-              <input
-                readOnly
+              <button
+                type="button"
+                className="shortcut-capture"
+                aria-pressed={recording === binding.action}
+                onClick={() => {
+                  setRecording(binding.action);
+                  setSaved(false);
+                }}
+                onFocus={() => setRecording(binding.action)}
+                onBlur={() => setRecording(null)}
                 aria-label={language === 'en' ? binding.en : binding.label}
-                value={displayShortcut(draft[binding.action] ?? binding.key)}
-                placeholder={t('未设置', 'Unassigned')}
                 onKeyDown={(event) => {
-                  if (event.key === 'Tab') return;
+                  if (event.key === 'Tab' || event.nativeEvent.isComposing) return;
+                  setSaved(false);
                   event.preventDefault();
                   event.stopPropagation();
                   if (event.key === 'Escape') {
@@ -61,6 +80,7 @@ export default function ShortcutsPanel({
                       ...d,
                       [binding.action]: value[binding.action] ?? binding.key,
                     }));
+                    setRecording(null);
                     return;
                   }
                   if (event.key === 'Backspace' || event.key === 'Delete') {
@@ -68,16 +88,38 @@ export default function ShortcutsPanel({
                     return;
                   }
                   const key = shortcutKey(event.nativeEvent);
-                  if (key) setDraft((d) => ({ ...d, [binding.action]: key }));
+                  if (key) {
+                    setDraft((d) => ({ ...d, [binding.action]: key }));
+                    setRecording(null);
+                  }
                 }}
-              />
-            </label>
+              >
+                {recording === binding.action
+                  ? t('请按组合键…', 'Press shortcut…')
+                  : displayShortcut(draft[binding.action] ?? binding.key) ||
+                    t('未设置', 'Unassigned')}
+              </button>
+            </div>
           ))}
       </div>
       {issues.length > 0 && <p role="alert">{issues.join('\n')}</p>}
+      {saved && <p role="status">{t('快捷键已保存并生效', 'Shortcuts saved and active')}</p>}
       <div className="shortcut-settings-actions">
-        <button onClick={() => setDraft({})}>{t('恢复默认', 'Restore defaults')}</button>
-        <button disabled={issues.length > 0} onClick={() => onChange(draft)}>
+        <button
+          onClick={() => {
+            setDraft({});
+            setSaved(false);
+          }}
+        >
+          {t('恢复默认', 'Restore defaults')}
+        </button>
+        <button
+          disabled={issues.length > 0}
+          onClick={() => {
+            onChange(draft);
+            setSaved(true);
+          }}
+        >
           {t('应用快捷键', 'Apply shortcuts')}
         </button>
       </div>

@@ -51,6 +51,6 @@ Built around local review and version control for READMEs, technical plans, rese
 
 **技术栈 / Stack:** Tauri 2 · React · TypeScript · Rust · CodeMirror 6.
 
-**源码版本 / Source version:** 1.2.0。已发布安装包以[最新发布页](https://github.com/asoming/markwrite/releases/latest)为准。 / See the latest release page for available installers.
+**源码版本 / Source version:** 1.2.1。已发布安装包以[最新发布页](https://github.com/asoming/markwrite/releases/latest)为准。 / See the latest release page for available installers.
 
 **macOS:** 使用 Cocoa 系统菜单、⌘ 快捷键、Finder 文件关联与 Keychain。Apple Silicon 与 Intel 分别提供原生安装包，无需 Rosetta。当前采用 ad-hoc 签名，未完成 Apple Developer ID 公证；首次打开可能需在系统隐私与安全性中确认。 / Native Cocoa menus, Command shortcuts, Finder associations, and Keychain. Separate native builds for Apple Silicon and Intel; no Rosetta required. Ad-hoc signed, not Developer ID notarized; macOS may require first-launch approval.

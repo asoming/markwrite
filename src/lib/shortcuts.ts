@@ -14,6 +14,7 @@ export const shortcutBindings: Binding[] = [
   { action: 'app:open', label: '打开文档', en: 'Open document', key: 'Mod+O' },
   { action: 'app:save', label: '保存', en: 'Save', key: 'Mod+S' },
   { action: 'app:saveAs', label: '另存为', en: 'Save as', key: 'Mod+Shift+S' },
+  { action: 'app:quit', label: '退出应用', en: 'Quit application', key: 'Mod+Q' },
   { action: 'app:close', label: '关闭文档', en: 'Close document', key: 'Mod+W' },
   { action: 'app:quickOpen', label: '快速打开', en: 'Quick open', key: 'Mod+P' },
   { action: 'app:commands', label: '命令面板', en: 'Command palette', key: 'Mod+K' },
@@ -21,6 +22,10 @@ export const shortcutBindings: Binding[] = [
   { action: 'app:replace', label: '替换', en: 'Replace', key: isMac ? 'Mod+Alt+F' : 'Mod+H' },
   { action: 'app:search', label: '文件夹搜索', en: 'Folder search', key: 'Mod+Shift+F' },
   { action: 'app:settings', label: '设置', en: 'Settings', key: 'Mod+,' },
+  { action: 'view:live', label: '编辑模式', en: 'Editing mode', key: 'Mod+1' },
+  { action: 'view:source', label: '源码模式', en: 'Source mode', key: 'Mod+2' },
+  { action: 'view:read', label: '阅读模式', en: 'Reading mode', key: 'Mod+3' },
+  { action: 'view:cycle', label: '循环切换模式', en: 'Cycle modes', key: 'Mod+Shift+M' },
   { action: 'view:sidebar', label: '显示或隐藏侧栏', en: 'Toggle sidebar', key: 'Mod+\\' },
   { action: 'view:focus', label: '专注模式', en: 'Focus mode', key: 'F8' },
   {
@@ -145,7 +150,7 @@ export function shortcutKey(
     .join('+');
 }
 const keyPattern =
-  /^(?:(?:Mod\+)(?:Alt\+)?(?:Shift\+)?|Alt\+(?:Shift\+)?|Shift\+(?=F\d)|(?=F\d))(?:[A-Z0-9,.;/\\\[\]`=-]|Arrow(?:Up|Down|Left|Right)|F(?:[1-9]|1[0-2]))$/;
+  /^(?:(?:(?:Mod|Ctrl)\+)(?:Alt\+)?(?:Shift\+)?|Alt\+(?:Shift\+)?|Shift\+(?=F\d)|(?=F\d))(?:[A-Z0-9,.;/\\\[\]`=-]|Arrow(?:Up|Down|Left|Right)|F(?:[1-9]|1[0-2]))$/;
 export function shortcutIssues(overrides: ShortcutOverrides): string[] {
   const issues: string[] = [];
   for (const [action, key] of Object.entries(overrides)) {
@@ -174,7 +179,28 @@ export function validShortcuts(value: unknown): ShortcutOverrides {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   if (Object.values(value).some((v) => typeof v !== 'string')) return {};
   const result = value as ShortcutOverrides;
-  return shortcutIssues(result).length ? {} : { ...result };
+  const retained: ShortcutOverrides = {};
+  for (const [action, key] of Object.entries(result)) {
+    if (
+      shortcutBindings.some((binding) => binding.action === action) &&
+      (!key || keyPattern.test(key))
+    )
+      retained[action] = key;
+  }
+  // New default bindings must never invalidate an existing custom configuration.
+  for (const binding of shortcutBindings) {
+    if (binding.action in retained || !binding.key) continue;
+    if (
+      shortcutBindings.some(
+        (other) =>
+          other.action in retained &&
+          retained[other.action] === binding.key &&
+          (!other.context || !binding.context || other.context === binding.context),
+      )
+    )
+      retained[binding.action] = '';
+  }
+  return shortcutIssues(retained).length ? {} : retained;
 }
 export function resolveShortcut(
   event: KeyboardEvent,
@@ -194,5 +220,12 @@ export function resolveShortcut(
   return { action, blocked };
 }
 export function displayShortcut(key: string) {
-  return platformText(key.replace('Mod', 'Ctrl').replaceAll('+', ' '));
+  return isMac
+    ? key
+        .replace('Mod', '⌘')
+        .replace('Ctrl', '⌃')
+        .replace('Alt', '⌥')
+        .replace('Shift', '⇧')
+        .replaceAll('+', ' ')
+    : platformText(key.replace('Mod', 'Ctrl').replaceAll('+', ' '));
 }

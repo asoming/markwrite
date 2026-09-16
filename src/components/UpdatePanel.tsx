@@ -85,8 +85,8 @@ export default function UpdatePanel({
       <h3>{t('应用更新', 'Application updates')}</h3>
       <p className="preference-help">
         {t(
-          '检查 GitHub 上的新版本，下载并校验安装包，再按提示安装。',
-          'Check GitHub for a newer version, verify the download, and follow the installation steps.',
+          '从公开 GitHub 发布页检查新版本，无需令牌。下载并校验安装包，再按提示安装。',
+          'Check public GitHub releases without a token, verify the download, and follow the installation steps.',
         )}
       </p>
       {!desktop && (
@@ -107,11 +107,11 @@ export default function UpdatePanel({
         {t('包含预览版本', 'Include preview releases')}
       </label>
       <details>
-        <summary>{t('私有仓库访问', 'Private repository access')}</summary>
+        <summary>{t('高级：可选 GitHub 令牌', 'Advanced: optional GitHub token')}</summary>
         <p className="preference-help">
           {t(
-            '仅需要此仓库 Contents 读取权限。令牌只发给 api.github.com，不保存，关闭设置后清除。',
-            'Only Contents read access to this repository is needed. The token is sent only to api.github.com, is never saved, and is cleared when Settings closes.',
+            '公开版本无需令牌，通常留空即可。如需提高 API 请求额度，可填写最小权限令牌。令牌只发给 api.github.com，不保存，关闭设置后清除。',
+            'Leave this empty for public releases. An optional token with minimal permissions can increase API limits. It is sent only to api.github.com, never saved, and cleared when Settings closes.',
           )}
         </p>
         <input

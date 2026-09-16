@@ -6,6 +6,7 @@ use std::{fs, io::Write, time::Duration};
 use tauri::{Emitter, Manager};
 const API: &str = "https://api.github.com/repos/asoming/markwrite";
 const PAGE: &str = "https://github.com/asoming/markwrite/releases";
+const MANIFEST: &str = "https://github.com/asoming/markwrite/releases/latest/download/update.json";
 #[derive(Default)]
 pub struct UpdateState(std::sync::Mutex<std::collections::HashMap<String, (String, u64)>>);
 
@@ -73,10 +74,118 @@ fn request(
     Ok(request)
 }
 fn status(response: &Response) -> Result<(), String> {
-    match response.status().as_u16() {
+    let code = response.status().as_u16();
+    let limited = response
+        .headers()
+        .get("x-ratelimit-remaining")
+        .is_some_and(|v| v == "0")
+        || response.headers().contains_key("retry-after");
+    match code {
         200..=299 => Ok(()),
-        401 | 403 | 404 => Err("无法访问发布仓库。私有仓库需要 Contents 只读令牌；也可在浏览器登录 GitHub 后下载。 / Release access unavailable. Use a read-only token for a private repository, or download in your signed-in browser.".into()),
-        code => Err(format!("更新请求失败 / Update request failed: HTTP {code}")),
+        429 | 403 if limited || code == 429 => Err(format!(
+            "GitHub 请求限流（HTTP {code}），请稍后重试；公开仓库无需令牌。 / GitHub rate limit; retry later. Public releases do not require a token."
+        )),
+        401 => Err("GitHub 令牌无效或已过期（HTTP 401）；请清空可选令牌后重试。 / Invalid or expired GitHub token; clear the optional token and retry.".into()),
+        403 => Err("GitHub 拒绝请求（HTTP 403），可能是访问限制或限流，并不表示仓库私有。 / GitHub denied this request; access restrictions or rate limits do not imply a private repository.".into()),
+        404 => Err("未找到发布或资源（HTTP 404），请到发布页确认；这不表示仓库一定私有。 / Release or asset not found; check the releases page. This does not imply a private repository.".into()),
+        _ => Err(format!("更新请求失败 / Update request failed: HTTP {code}")),
+    }
+}
+
+// Public releases remain discoverable when the REST API is unavailable or rate limited.
+// The manifest is uploaded as a release asset; never follow URLs supplied by its JSON.
+async fn public_response(client: &Client, start: &str, metadata: bool) -> Result<Response, String> {
+    let mut url = reqwest::Url::parse(start).map_err(|e| e.to_string())?;
+    for _ in 0..5 {
+        if !download_host(&url) {
+            return Err("Untrusted release download host".into());
+        }
+        let mut request = client.get(url.clone());
+        if metadata {
+            request = request.timeout(Duration::from_secs(20));
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|e| format!("无法连接 GitHub / Cannot connect to GitHub: {e}"))?;
+        if !response.status().is_redirection() {
+            status(&response)?;
+            return Ok(response);
+        }
+        let location = response
+            .headers()
+            .get(header::LOCATION)
+            .and_then(|h| h.to_str().ok())
+            .ok_or("Invalid release redirect")?;
+        url = url.join(location).map_err(|e| e.to_string())?;
+    }
+    Err("Too many release redirects".into())
+}
+async fn api_metadata(client: &Client, url: &str, token: Option<&str>) -> Result<Vec<u8>, String> {
+    let response = request(client, url, token, false)?
+        .timeout(Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(|e| format!("无法连接 GitHub API / Cannot connect to GitHub API: {e}"))?;
+    // An optional stale credential must not make this public repository inaccessible.
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED && token.is_some() {
+        let response = request(client, url, None, false)?
+            .timeout(Duration::from_secs(20))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        return bytes(response, 4 * 1024 * 1024).await;
+    }
+    bytes(response, 4 * 1024 * 1024).await
+}
+fn parse_manifest(bytes: &[u8]) -> Result<Release, String> {
+    let release: Release =
+        serde_json::from_slice(bytes).map_err(|_| "Invalid public update manifest")?;
+    if release.id == 0
+        || release.draft
+        || release.prerelease
+        || version(&release.tag_name).is_none()
+        || release.tag_name != format!("v{}", version(&release.tag_name).unwrap())
+    {
+        return Err("Invalid public update manifest".into());
+    }
+    Ok(release)
+}
+async fn public_release(client: &Client) -> Result<Release, String> {
+    parse_manifest(
+        &bytes(
+            public_response(client, MANIFEST, true).await?,
+            4 * 1024 * 1024,
+        )
+        .await?,
+    )
+}
+async fn release_asset(
+    client: &Client,
+    release: &Release,
+    asset: &Asset,
+    token: Option<&str>,
+) -> Result<Response, String> {
+    match asset_response(client, asset.id, token).await {
+        Ok(response) => Ok(response),
+        Err(api_error) => {
+            let tag = &release.tag_name;
+            if tag != &format!("v{}", version(tag).ok_or("Invalid release version")?)
+                || asset.name.contains(['/', '\\'])
+                || asset.name.contains("..")
+            {
+                return Err("Invalid release asset name".into());
+            }
+            public_response(
+                client,
+                &format!("{PAGE}/download/{tag}/{}", asset.name),
+                false,
+            )
+            .await
+            .map_err(|e| {
+                format!("{api_error}\n公开下载也不可用 / Public download also unavailable: {e}")
+            })
+        }
     }
 }
 async fn bytes(mut response: Response, limit: usize) -> Result<Vec<u8>, String> {
@@ -122,17 +231,27 @@ fn installer(release: &Release, os: &str, arch: &str) -> Option<Asset> {
 #[tauri::command]
 pub async fn check_app_update(token: Option<String>, previews: bool) -> Result<UpdateInfo, String> {
     let client = client()?;
-    let response = request(
+    let releases = match api_metadata(
         &client,
         &format!("{API}/releases?per_page=100"),
         token.as_deref(),
-        false,
-    )?
-    .send()
+    )
     .await
-    .map_err(|e| e.to_string())?;
-    let releases: Vec<Release> = serde_json::from_slice(&bytes(response, 4 * 1024 * 1024).await?)
-        .map_err(|_| "发布数据无效 / Invalid release metadata")?;
+    {
+        Ok(data) => serde_json::from_slice::<Vec<Release>>(&data)
+            .map_err(|_| "发布数据无效 / Invalid release metadata")?,
+        Err(error) => {
+            // A stable-only fallback must not report that no newer preview exists.
+            if previews {
+                return Err(error);
+            }
+            vec![public_release(&client).await.map_err(|e| {
+                format!(
+                    "{error}\n公开更新通道也不可用 / Public update channel also unavailable: {e}"
+                )
+            })?]
+        }
+    };
     let current = env!("CARGO_PKG_VERSION").to_owned();
     let selected = choose(releases, previews);
     if let Some(release) = selected {
@@ -232,17 +351,27 @@ pub async fn download_app_update(
     app: tauri::AppHandle,
 ) -> Result<Downloaded, String> {
     let client = client()?;
-    let response = request(
+    let release = match api_metadata(
         &client,
         &format!("{API}/releases/{release_id}"),
         token.as_deref(),
-        false,
-    )?
-    .send()
+    )
     .await
-    .map_err(|e| e.to_string())?;
-    let release: Release = serde_json::from_slice(&bytes(response, 4 * 1024 * 1024).await?)
-        .map_err(|_| "发布数据无效 / Invalid release metadata")?;
+    {
+        Ok(data) => serde_json::from_slice::<Release>(&data)
+            .map_err(|_| "发布数据无效 / Invalid release metadata")?,
+        Err(error) => {
+            let release = public_release(&client)
+                .await
+                .map_err(|e| format!("{error}\n{e}"))?;
+            if release.id != release_id {
+                return Err(
+                    "版本已变化，请重新检查更新 / Release changed; check for updates again".into(),
+                );
+            }
+            release
+        }
+    };
     if release.draft || version(&release.tag_name) <= version(env!("CARGO_PKG_VERSION")) {
         return Err("这个发布不是新版本 / This release is not newer".into());
     }
@@ -256,7 +385,7 @@ pub async fn download_app_update(
         .ok_or("发布缺少校验文件 / Checksum file missing")?;
     let text = String::from_utf8(
         bytes(
-            asset_response(&client, sums.id, token.as_deref()).await?,
+            release_asset(&client, &release, sums, token.as_deref()).await?,
             65536,
         )
         .await?,
@@ -290,7 +419,7 @@ pub async fn download_app_update(
         .open(&temp)
         .map_err(|e| e.to_string())?;
     let result = async {
-        let mut response = asset_response(&client, asset.id, token.as_deref()).await?;
+        let mut response = release_asset(&client, &release, &asset, token.as_deref()).await?;
         let mut total = 0u64;
         let mut hash = Sha256::new();
         let mut last_percent = 0;
@@ -606,5 +735,60 @@ mod mac_installer_tests {
         assert_eq!(installer(&release, "macos", "x86_64").unwrap().id, 3);
         assert!(installer(&release, "macos", "i686").is_none());
         assert!(installer(&release, "windows", "aarch64").is_none());
+    }
+}
+
+#[cfg(test)]
+mod public_update_tests {
+    use super::*;
+    #[test]
+    fn distinguishes_rate_limits_credentials_and_missing_assets() {
+        for (code, header, expected) in [
+            (403, Some("0"), "rate limit"),
+            (429, None, "rate limit"),
+            (401, None, "expired"),
+            (404, None, "not found"),
+            (403, None, "denied"),
+        ] {
+            let response = http_response(code, header);
+            let error = status(&response).unwrap_err();
+            assert!(error.contains(expected), "{error}");
+            assert!(!error.contains("Use a read-only token for a private repository"));
+        }
+    }
+    fn http_response(code: u16, remaining: Option<&str>) -> reqwest::Response {
+        // Response's public conversion uses http::Response, re-exported by tauri::http.
+        let mut builder = tauri::http::Response::builder().status(code);
+        if let Some(value) = remaining {
+            builder = builder.header("x-ratelimit-remaining", value);
+        }
+        builder.body("").unwrap().into()
+    }
+    #[test]
+    fn public_manifest_rejects_drafts_previews_and_path_like_tags() {
+        let mut value = serde_json::json!({"id": 1, "tag_name": "v1.2.1", "draft": false, "prerelease": false, "assets": []});
+        assert!(parse_manifest(&serde_json::to_vec(&value).unwrap()).is_ok());
+        for tag in ["../v1.2.1", "1.2.1", "v1.2.1/asset"] {
+            value["tag_name"] = tag.into();
+            assert!(parse_manifest(&serde_json::to_vec(&value).unwrap()).is_err());
+        }
+        value["tag_name"] = "v1.2.1".into();
+        value["draft"] = true.into();
+        assert!(parse_manifest(&serde_json::to_vec(&value).unwrap()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod live_update_test {
+    use super::*;
+    #[test]
+    #[ignore = "Explicit GitHub network smoke test"]
+    fn anonymous_public_manifest_and_api_are_usable() {
+        tauri::async_runtime::block_on(async {
+            let public = public_release(&client().unwrap()).await.unwrap();
+            assert!(installer(&public, "linux", "x86_64").is_some());
+            let info = check_app_update(None, false).await.unwrap();
+            assert!(info.latest.is_some());
+        });
     }
 }

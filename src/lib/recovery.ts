@@ -10,25 +10,64 @@ let discarded: { snapshot: Document[]; docs: Document[]; active: string } | unde
 let serialized:
   { docs: Document[]; active: string; settings: Settings; root?: string; json: string } | undefined;
 const PREFS = 'markwrite.preferences.v1';
-export type Session = { docs: Document[]; active: string; settings: Settings; root?: string };
+export type Session = {
+  docs: Document[];
+  active: string;
+  settings: Settings;
+  root?: string;
+  pendingDocs?: Document[];
+};
+let pendingDocs: Document[] = [];
+export const pendingDrafts = () => pendingDocs;
+export function forgetPendingDraft(id: string) {
+  pendingDocs = pendingDocs.filter((doc) => doc.id !== id);
+  serialized = undefined;
+}
+/** Keep unsaved work separately; a new launch never restores old tabs or folders. */
+export function archiveSession(previous: Session | null) {
+  pendingDocs = [
+    ...new Map(
+      [...(previous?.pendingDocs || []), ...(previous?.docs || [])]
+        .filter(
+          (doc) => doc.content !== doc.saved || doc.status === 'conflict' || doc.status === 'error',
+        )
+        .map((doc) => [doc.id, doc]),
+    ).values(),
+  ];
+  serialized = undefined;
+}
 let deferred = false;
 let openError = '';
 export const initialOpenError = () => openError;
 let deferredRead: Promise<Session | null> | undefined;
 export const recoveryPending = () => deferred;
 export async function prepareSession() {
-  if (!isTauri()) return;
+  deferredRead = undefined;
+  if (!isTauri()) {
+    const previous = parseSession(localStorage.getItem(KEY));
+    archiveSession(previous);
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        docs: [],
+        active: '',
+        settings: previous?.settings || defaultSettings,
+        pendingDocs,
+      }),
+    );
+    return;
+  }
   const [initial, context] = await Promise.all([
     invoke<DiskFile[]>('initial_documents').catch((error) => {
       openError = String(error);
       return [];
     }),
-    invoke<{ settings?: Settings }>('window_context'),
+    invoke<{ settings?: Settings; restore?: boolean }>('window_context'),
   ]);
   if (initial.length) {
     let preferences: Partial<Settings> = context.settings || {};
     try {
-      preferences = context.settings || JSON.parse(localStorage.getItem(PREFS) || '{}');
+      preferences = JSON.parse(localStorage.getItem(PREFS) || 'null') || context.settings || {};
     } catch {
       /* old preferences recovered after first paint */
     }
@@ -47,16 +86,25 @@ export async function prepareSession() {
     });
     deferred = true;
   } else {
-    nativeSession = (await invoke<string | null>('load_session')) || localStorage.getItem(KEY);
-    if (!nativeSession && context.settings)
-      nativeSession = JSON.stringify({
-        docs: [],
-        active: '',
-        settings: { ...defaultSettings, ...context.settings },
-      });
+    const previous = parseSession(
+      (await invoke<string | null>('load_session')) || localStorage.getItem(KEY),
+    );
+    if (context.restore && previous) {
+      // Only the explicit Restore independent window command requests old tabs.
+      pendingDocs = previous.pendingDocs || [];
+      nativeSession = JSON.stringify(previous);
+      return;
+    }
+    archiveSession(previous);
+    nativeSession = JSON.stringify({
+      docs: [],
+      active: '',
+      pendingDocs,
+      settings: previous?.settings || context.settings || defaultSettings,
+    });
   }
 }
-/** Read old buffers after the requested file has painted. Until merged, writes stay blocked. */
+/** Read the recovery archive after first paint. Until archived, writes stay blocked. */
 export function loadDeferredSession(): Promise<Session | null> {
   if (!deferred) return Promise.resolve(null);
   return (deferredRead ||= invoke<string | null>('load_session')
@@ -146,6 +194,11 @@ export function parseSession(json: string | null): Session | null {
           ? value.settings.defaultMode
           : defaultSettings.defaultMode,
       },
+      pendingDocs: Array.isArray(value.pendingDocs)
+        ? value.pendingDocs.filter(
+            (d: Document) => typeof d?.content === 'string' && typeof d?.id === 'string',
+          )
+        : [],
       docs: value.docs.map((d: Document) => ({
         ...d,
         status:
@@ -176,7 +229,9 @@ export function writeSession(docs: Document[], active: string, settings: Setting
     serialized.active === active &&
     serialized.settings === settings &&
     serialized.root === root;
-  const json = unchanged ? serialized!.json : JSON.stringify({ docs, active, settings, root });
+  const json = unchanged
+    ? serialized!.json
+    : JSON.stringify({ docs, active, settings, root, pendingDocs });
   if (isTauri()) nativeSession = json;
   else localStorage.setItem(KEY, json);
   serialized = { docs, active, settings, root, json };

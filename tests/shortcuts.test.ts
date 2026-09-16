@@ -38,3 +38,6 @@ it('normalizes shifted digits and punctuation when recording and invoking chords
     ),
   ).toBe('Mod+Shift+/');
 });
+it('keeps previous custom chords when new mode defaults collide', () => {
+  expect(validShortcuts({ 'app:save': 'Mod+1' })).toEqual({ 'app:save': 'Mod+1', 'view:live': '' });
+});

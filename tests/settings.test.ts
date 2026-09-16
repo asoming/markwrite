@@ -463,7 +463,7 @@ describe('settings panel interactions', () => {
 it('shows a single keyboard-binding editor in the shortcuts category', () => {
   renderPanel();
   click(button('快捷键'));
-  expect(host.querySelectorAll('input[aria-label="专注模式"]')).toHaveLength(1);
+  expect(host.querySelectorAll('button[aria-label="专注模式"]')).toHaveLength(1);
   expect(
     [...host.querySelectorAll('button')].filter((item) => item.textContent === '应用快捷键'),
   ).toHaveLength(1);

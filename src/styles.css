@@ -1753,7 +1753,7 @@ input::placeholder {
   overflow: auto;
   margin: 12px 0;
 }
-.shortcut-settings-list label {
+.shortcut-setting-row {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -1765,7 +1765,7 @@ input::placeholder {
   margin-left: 8px;
   color: var(--muted);
 }
-.shortcut-settings-list input {
+.shortcut-capture {
   width: 155px;
   background: var(--code);
   color: var(--ink);
@@ -2028,4 +2028,16 @@ input::placeholder {
 /* macOS uses the system menu bar; an empty header must not reserve a blank strip. */
 .compact-header:empty {
   display: none;
+}
+
+.shortcut-capture[aria-pressed='true'],
+.shortcut-capture:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.shortcut-settings-actions {
+  position: sticky;
+  bottom: 0;
+  padding: 10px 0;
+  background: var(--paper);
 }

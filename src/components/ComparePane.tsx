@@ -99,6 +99,9 @@ export default forwardRef<CompareHandle, Props>(function ComparePane(props, ref)
         case 'app:replace':
           edit((view) => openSearchPanel(view));
           return true;
+        case 'view:cycle':
+          props.onMode(props.mode === 'read' ? 'live' : props.mode === 'live' ? 'source' : 'read');
+          return true;
         case 'view:live':
           props.onMode('live');
           return true;

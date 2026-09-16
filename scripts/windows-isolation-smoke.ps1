@@ -24,7 +24,12 @@ $cases = @()
 function Start-Isolated($case, $restore = $false) {
   $launchArguments = '--markwrite-window {0} -- "{1}"' -f $case.Id, $case.Path
   if ($restore) { $launchArguments = '--markwrite-window {0} --' -f $case.Id }
-  $process = Start-Process -FilePath $Executable -ArgumentList $launchArguments -PassThru
+  # Model the explicit Restore independent window command, not an ordinary launch.
+  $previousRestore = $env:MARKWRITE_RESTORE_SESSION
+  try {
+    if ($restore) { $env:MARKWRITE_RESTORE_SESSION = '1' } else { Remove-Item Env:MARKWRITE_RESTORE_SESSION -ErrorAction SilentlyContinue }
+    $process = Start-Process -FilePath $Executable -ArgumentList $launchArguments -PassThru
+  } finally { $env:MARKWRITE_RESTORE_SESSION = $previousRestore }
   $launched.Add($process)
   return $process
 }

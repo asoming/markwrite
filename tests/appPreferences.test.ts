@@ -213,3 +213,49 @@ describe('application preferences and document import', () => {
     );
   });
 });
+
+it('switches all three modes with shortcuts and records a custom binding in real settings', async () => {
+  await keyboard('1');
+  expect(currentMode()).toBe('live');
+  await keyboard('2');
+  expect(currentMode()).toBe('source');
+  await keyboard('3');
+  expect(currentMode()).toBe('read');
+  await keyboard(',');
+  await click(
+    [...host.querySelectorAll<HTMLElement>('[role=tab]')].find((e) =>
+      e.textContent?.includes('快捷键'),
+    )!,
+  );
+  const capture = host.querySelector<HTMLButtonElement>(
+    '.shortcut-capture[aria-label="编辑模式"]',
+  )!;
+  expect(capture).toBeTruthy();
+  await click(capture);
+  await act(async () =>
+    capture.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'F6', bubbles: true, cancelable: true }),
+    ),
+  );
+  expect(capture.textContent).toBe('F6');
+  await click(
+    [...host.querySelectorAll<HTMLButtonElement>('button')].find(
+      (e) => e.textContent === '应用快捷键',
+    )!,
+  );
+  expect(host.textContent).toContain('快捷键已保存并生效');
+  expect(snapshot().settings.shortcuts?.['view:live']).toBe('F6');
+  const close =
+    host.querySelector<HTMLButtonElement>('.settings-close') ||
+    host.querySelector<HTMLButtonElement>('button[aria-label="关闭设置"]');
+  expect(close).toBeTruthy();
+  await click(close!);
+  await keyboard('1');
+  expect(currentMode()).toBe('read');
+  await act(async () =>
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'F6', bubbles: true, cancelable: true }),
+    ),
+  );
+  expect(currentMode()).toBe('live');
+});

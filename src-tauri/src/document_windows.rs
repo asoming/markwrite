@@ -37,6 +37,7 @@ pub struct WindowContext {
     pub id: Option<String>,
     pub pid: u32,
     pub isolated: bool,
+    pub restore: bool,
     pub settings: Option<Value>,
 }
 fn valid_id(id: &str) -> bool {
@@ -219,6 +220,10 @@ fn allocate(
 }
 fn spawn(record: &WindowRecord, open_original: bool) -> Result<WindowStarted, String> {
     let mut command = Command::new(std::env::current_exe().map_err(|e| e.to_string())?);
+    command.env_remove("MARKWRITE_RESTORE_SESSION");
+    if !open_original {
+        command.env("MARKWRITE_RESTORE_SESSION", "1");
+    }
     command.arg(FLAG).arg(&record.id).arg("--");
     if let Some(path) = record
         .path
@@ -332,6 +337,7 @@ pub async fn window_context(app: tauri::AppHandle) -> Result<WindowContext, Stri
         None
     };
     Ok(WindowContext {
+        restore: id.is_some() && std::env::var("MARKWRITE_RESTORE_SESSION").as_deref() == Ok("1"),
         isolated: id.is_some(),
         id,
         pid: std::process::id(),

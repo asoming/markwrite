@@ -105,3 +105,19 @@ it('uses Command and Option on Mac without stealing Control or the system Hide c
     ),
   ).toBe('Mod+Alt+1');
 });
+it('temporarily removes app accelerators while recording shortcuts', () => {
+  const menu = macMenuOptions(
+    [{ label: '文件', items: [{ label: '保存', action: 'app:save' }] }],
+    {},
+    'read',
+    'github',
+    false,
+    vi.fn(),
+    true,
+  );
+  const file = menu.items![1] as SubmenuOptions;
+  expect((file.items![0] as MenuItemOptions).accelerator).toBeUndefined();
+  const app = menu.items![0] as SubmenuOptions;
+  const settings = app.items!.find((i) => 'id' in i && i.id === 'app:settings') as MenuItemOptions;
+  expect(settings.accelerator).toBeUndefined();
+});

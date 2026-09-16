@@ -169,3 +169,10 @@ When [reporting an issue](https://github.com/asoming/markwrite/issues), include 
 The application uses native Cocoa / WKWebView; no browser installation or Rosetta is needed. Git features require a local Git installation; reading, editing, and exports do not.
 
 Builds are **ad-hoc signed and not Apple Developer ID notarized**. Follow [Apple’s first-launch guidance](https://support.apple.com/en-us/102445) if macOS requires confirmation; do not disable Gatekeeper. Native builds, bundle signatures and Finder startup are checked in GitHub Actions. Chinese IME composition, trackpad gestures and physical multi-display behavior still need human Mac testing. The image above was captured from the running app on macOS CI; other feature screenshots were captured on Linux. macOS uses native menus and file dialogs.
+
+## 1.2.1: startup and shortcuts
+
+- `Ctrl+1` editing, `Ctrl+2` source, `Ctrl+3` reading; `Ctrl+Shift+M` cycles modes. Use `⌘` on Mac. In split views, shortcuts target the focused pane.
+- **Settings → Shortcuts**: click the action’s shortcut button, press a chord, and choose **Apply shortcuts**. Includes clearing, defaults, collision checks and persistence across launches. Operating-system shortcuts may take precedence.
+- Ordinary launches do not reopen previous documents or folders. A cold file launch opens only the requested file; subsequent opens during the running session add tabs. Unsaved drafts remain available under **File → Recover unsaved drafts**. The explicit **Restore independent windows** command still restores the selected window.
+- Stable update checks need no token and fall back to the public release’s `update.json` when the GitHub API is unavailable. Downloads still verify size and SHA-256. Rate limits, invalid credentials and missing assets have distinct messages; preview checks require API access.

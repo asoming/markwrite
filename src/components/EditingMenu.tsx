@@ -46,6 +46,7 @@ export type EditingAction =
   | 'app:redo'
   | 'app:settings'
   | 'app:shortcuts'
+  | 'app:recover'
   | 'app:about'
   | 'app:extensions'
   | 'app:ai'
@@ -58,6 +59,7 @@ export type EditingAction =
   | 'insert:math'
   | 'insert:mermaid'
   | 'insert:code'
+  | 'view:cycle'
   | 'view:live'
   | 'view:source'
   | 'view:read'
@@ -84,6 +86,7 @@ const menus: { label: string; items: Item[] }[] = [
   {
     label: '文件',
     items: [
+      { label: '恢复未保存草稿', action: 'app:recover' },
       { label: '新建文档', action: 'app:new', shortcut: 'Ctrl N' },
       { label: '新建独立窗口', action: 'app:newWindow', shortcut: 'Ctrl Shift N' },
       { label: '当前文件在独立窗口打开', action: 'app:openWindow' },
@@ -173,6 +176,7 @@ const menus: { label: string; items: Item[] }[] = [
       { label: '即时渲染编辑', action: 'view:live' },
       { label: 'Markdown 源码', action: 'view:source' },
       { label: '阅读模式', action: 'view:read' },
+      { label: '循环切换模式', action: 'view:cycle' },
       'separator',
       { label: '后退', action: 'view:back', shortcut: 'Alt ←' },
       { label: '前进', action: 'view:forward', shortcut: 'Alt →' },
@@ -244,6 +248,12 @@ export default function EditingMenu({
   const [nativeInstalled, setNativeInstalled] = useState(false);
   const actionRef = useRef(onAction);
   actionRef.current = onAction;
+  const [recording, setRecording] = useState(false);
+  useEffect(() => {
+    const update = (event: Event) => setRecording((event as CustomEvent<boolean>).detail);
+    window.addEventListener('markwrite-shortcut-recording', update);
+    return () => window.removeEventListener('markwrite-shortcut-recording', update);
+  }, []);
   const nativeShortcuts = JSON.stringify(shortcuts);
   useEffect(() => {
     if (!isMac || !isTauri()) return;
@@ -252,8 +262,14 @@ export default function EditingMenu({
       if (canceled) return;
       const { Menu } = await import('@tauri-apps/api/menu');
       const menu = await Menu.new(
-        macMenuOptions(menus, JSON.parse(nativeShortcuts), mode, theme, focus, (action) =>
-          actionRef.current(action),
+        macMenuOptions(
+          menus,
+          JSON.parse(nativeShortcuts),
+          mode,
+          theme,
+          focus,
+          (action) => actionRef.current(action),
+          recording,
         ),
       );
       if (canceled) {
@@ -269,7 +285,7 @@ export default function EditingMenu({
     return () => {
       canceled = true;
     };
-  }, [language, nativeShortcuts, mode, theme, focus]);
+  }, [language, nativeShortcuts, mode, theme, focus, recording]);
   const [open, setOpen] = useState<number | null>(null);
   const root = useRef<HTMLElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);

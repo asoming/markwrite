@@ -96,6 +96,9 @@ import {
   finishRecovery,
   mergeRecoveredDocuments,
   initialOpenError,
+  archiveSession,
+  pendingDrafts,
+  forgetPendingDraft,
 } from './lib/recovery';
 import {
   createWindowCloseHandler,
@@ -266,6 +269,7 @@ export default function App() {
     };
   });
   useI18n();
+  const [pending, setPending] = useState(pendingDrafts);
   const [sessionReady, setSessionReady] = useState(!recoveryPending());
   const [recoveryError, setRecoveryError] = useState('');
   const [openingError, setOpeningError] = useState(initialOpenError);
@@ -373,6 +377,7 @@ export default function App() {
     | 'commands'
     | 'quickopen'
     | 'shortcuts'
+    | 'recovery'
     | 'conflict'
     | 'close'
     | 'about'
@@ -1240,7 +1245,8 @@ export default function App() {
         const previous = await loadDeferredSession();
         if (canceled) return;
         if (previous) {
-          updateDocs((items) => mergeRecoveredDocuments(items, previous.docs));
+          archiveSession(previous);
+          setPending(pendingDrafts());
           // An upgrade may not yet have a compact preference snapshot.
           if (!localStorage.getItem('markwrite.preferences.v1')) setSettings(previous.settings);
         }
@@ -2122,6 +2128,9 @@ export default function App() {
       case 'app:settings':
         setDialog('settings');
         break;
+      case 'app:recover':
+        setDialog('recovery');
+        break;
       case 'app:shortcuts':
         setDialog('shortcuts');
         break;
@@ -2178,6 +2187,9 @@ export default function App() {
       case 'app:search':
         setSidebar(true);
         setSideTab('search');
+        break;
+      case 'view:cycle':
+        setMode(mode === 'read' ? 'live' : mode === 'live' ? 'source' : 'read');
         break;
       case 'view:live':
         setMode('live');
@@ -2505,6 +2517,14 @@ export default function App() {
               {t('选择编码打开…', 'Open with encoding…')}
             </button>
             <button onClick={() => setOpeningError('')}>{t('关闭', 'Close')}</button>
+          </div>
+        )}
+        {pending.length > 0 && (
+          <div className="document-alert" role="status">
+            <span>{t('有未保存草稿可手动恢复', 'Unsaved drafts are available to recover')}</span>
+            <button onClick={() => setDialog('recovery')}>
+              {t('查看草稿', 'Review drafts')} ({pending.length})
+            </button>
           </div>
         )}
         {recoveryError && (
@@ -3330,6 +3350,39 @@ export default function App() {
             }}
           />
         </Suspense>
+      )}
+      {dialog === 'recovery' && (
+        <Modal
+          title={t('恢复未保存草稿', 'Recover unsaved drafts')}
+          onClose={() => setDialog(null)}
+        >
+          <p>
+            {t(
+              '只在你选择后打开，原文件不会被自动修改。',
+              'Drafts open only when selected. Original files are not changed automatically.',
+            )}
+          </p>
+          {!pending.length && <p>{t('没有待恢复草稿', 'No pending drafts')}</p>}
+          <div className="shortcut-settings-list">
+            {pending.map((doc) => (
+              <div className="document-alert" key={doc.id}>
+                <span title={doc.path}>{doc.name}</span>
+                <button
+                  onClick={() => {
+                    // Transfer ownership to the current session before removing the archive entry.
+                    updateDocs((items) => mergeRecoveredDocuments(items, [doc]));
+                    forgetPendingDraft(doc.id);
+                    setPending(pendingDrafts());
+                    selectDocument(doc.id);
+                    setDialog(null);
+                  }}
+                >
+                  {t('恢复', 'Recover')}
+                </button>
+              </div>
+            ))}
+          </div>
+        </Modal>
       )}
       {dialog === 'shortcuts' && (
         <Modal

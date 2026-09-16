@@ -14,6 +14,7 @@ export function macMenuOptions(
   theme: Theme,
   focus: boolean,
   onAction: (action: EditingAction) => void,
+  recording = false,
 ): MenuOptions {
   const action = (command: EditingAction) => () => {
     const field = document.activeElement?.matches('input,textarea');
@@ -25,7 +26,7 @@ export function macMenuOptions(
     id: command,
     text,
     action: action(command),
-    accelerator: key ? key.replace('Mod', 'CmdOrCtrl') : undefined,
+    accelerator: key && !recording ? key.replace('Mod', 'CmdOrCtrl') : undefined,
   });
   const separator = { item: 'Separator' as const };
   const groups: SubmenuOptions[] = sections.map((section) => ({
@@ -73,7 +74,7 @@ export function macMenuOptions(
           { item: 'HideOthers', text: t('隐藏其他', 'Hide Others') },
           { item: 'ShowAll', text: t('显示全部', 'Show All') },
           separator,
-          item('app:quit', t('退出 Markwrite', 'Quit Markwrite'), 'Mod+Q'),
+          item('app:quit', t('退出 Markwrite', 'Quit Markwrite'), shortcuts['app:quit'] ?? 'Mod+Q'),
         ],
       },
       ...groups,

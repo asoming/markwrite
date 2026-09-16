@@ -1,6 +1,6 @@
 [package]
 name = "markwrite"
-version = "1.2.0"
+version = "1.2.1"
 description = "A local-first Markdown editor"
 authors = ["Markwrite"]
 edition = "2021"
