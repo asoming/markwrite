@@ -176,3 +176,5 @@ Builds are **ad-hoc signed and not Apple Developer ID notarized**. Follow [Apple
 - **Settings → Shortcuts**: click the action’s shortcut button, press a chord, and choose **Apply shortcuts**. Includes clearing, defaults, collision checks and persistence across launches. Operating-system shortcuts may take precedence.
 - Ordinary launches do not reopen previous documents or folders. A cold file launch opens only the requested file; subsequent opens during the running session add tabs. Unsaved drafts remain available under **File → Recover unsaved drafts**. The explicit **Restore independent windows** command still restores the selected window.
 - Stable update checks need no token and fall back to the public release’s `update.json` when the GitHub API is unavailable. Downloads still verify size and SHA-256. Rate limits, invalid credentials and missing assets have distinct messages; preview checks require API access.
+
+![Recording and saving custom shortcuts (Chinese interface)](screenshots/custom-shortcuts.png)
