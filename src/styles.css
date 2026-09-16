@@ -2041,3 +2041,13 @@ input::placeholder {
   padding: 10px 0;
   background: var(--paper);
 }
+
+.shortcut-settings-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+.shortcut-settings-actions > [role='status'] {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 12px;
+}

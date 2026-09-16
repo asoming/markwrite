@@ -85,6 +85,7 @@ export default function ShortcutsPanel({
                   }
                   if (event.key === 'Backspace' || event.key === 'Delete') {
                     setDraft((d) => ({ ...d, [binding.action]: '' }));
+                    setRecording(null);
                     return;
                   }
                   const key = shortcutKey(event.nativeEvent);
@@ -103,8 +104,10 @@ export default function ShortcutsPanel({
           ))}
       </div>
       {issues.length > 0 && <p role="alert">{issues.join('\n')}</p>}
-      {saved && <p role="status">{t('快捷键已保存并生效', 'Shortcuts saved and active')}</p>}
       <div className="shortcut-settings-actions">
+        <span role="status">
+          {saved ? t('快捷键已保存并生效', 'Shortcuts saved and active') : ''}
+        </span>
         <button
           onClick={() => {
             setDraft({});
