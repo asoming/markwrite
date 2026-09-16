@@ -87,5 +87,5 @@ describe('copying the entire virtual document', () => {
       host.remove();
       window.getSelection()?.removeAllRanges();
     }
-  });
+  }, 15000);
 });

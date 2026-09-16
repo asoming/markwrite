@@ -119,6 +119,11 @@ beforeEach(async () => {
       switch (command) {
         case 'initial_documents':
           return [];
+        case 'document_stamp': {
+          const file = files.get((args as { path: string }).path);
+          if (!file) throw new Error('Missing fixture document');
+          return file.version;
+        }
         case 'workspace_documents':
           return [...files.values()].filter((file) =>
             file.path.startsWith((args as { path: string }).path + '/'),
