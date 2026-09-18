@@ -15,13 +15,21 @@
 
 Mac 包为 ad-hoc 签名，未完成 Apple Developer ID 公证；首次打开说明见[中文指南](README.zh-CN.md#macos-原生安装与操作)。 / Mac builds are ad-hoc signed, not Developer ID notarized; see the [Mac installation guide](README.en.md#native-macos-installation).
 
-[中文功能介绍](README.zh-CN.md) · [English guide](README.en.md) · [发布记录 / Releases](https://github.com/asoming/markwrite/releases) · [反馈问题 / Issues](https://github.com/asoming/markwrite/issues)
+[中文功能介绍](README.zh-CN.md) · [English guide](README.en.md) · [发布记录 / Releases](https://github.com/asoming/markwrite/releases) · [反馈问题 / Issues](https://github.com/asoming/markwrite/issues/new/choose) · [MIT](LICENSE)
 
 Markwrite（墨页）是一款本地 Markdown 阅读与编辑工具。直接打开磁盘文件，在同一个应用中阅读、排版、比较文字修改，并用 Git 管理版本。无需导入知识库或注册账号。
 
 Markwrite is a local Markdown reader and editor. Open files where they live, write and format text, compare revisions, and review Git changes in one application. No vault or account required.
 
-![Markwrite：阅读与原生文件树 / Reading with the original file tree](screenshots/overview-zh-CN.png)
+## 31 秒看操作 / A 31-second tour
+
+[![真实操作演示：原文件打开、同文分栏、文字差异与 Git 提交 / Real desktop demo: open files, split views, text differences, and Git commits](screenshots/workflow-demo.gif)](https://github.com/asoming/markwrite/releases/download/v1.2.1/Markwrite-quick-tour.mp4)
+
+**打开原文件 → 同文源码与阅读 → 双文逐字对照 → Git 审阅并提交。**
+
+**Open a file → view source and reading side by side → compare text changes → review and commit with Git.**
+
+[观看或下载 MP4 / Watch or download MP4](https://github.com/asoming/markwrite/releases/download/v1.2.1/Markwrite-quick-tour.mp4) · Linux 桌面实录，配中英字幕，无声；界面可能随版本调整。 / Recorded on Linux with Chinese and English captions, no audio; appearance may vary by version.
 
 ## 为技术文档整合的能力 / Built for technical documents
 
@@ -52,5 +60,13 @@ Built around local review and version control for READMEs, technical plans, rese
 **技术栈 / Stack:** Tauri 2 · React · TypeScript · Rust · CodeMirror 6.
 
 **源码版本 / Source version:** 1.2.1。已发布安装包以[最新发布页](https://github.com/asoming/markwrite/releases/latest)为准。 / See the latest release page for available installers.
+
+## 参与和授权 / Contributing and license
+
+遇到问题或有使用建议？使用[问题与功能建议表单](https://github.com/asoming/markwrite/issues/new/choose)。代码、翻译和文档贡献请看[贡献指南](CONTRIBUTING.md)。
+
+Use the [bug and feature request forms](https://github.com/asoming/markwrite/issues/new/choose) to share feedback. See [Contributing](CONTRIBUTING.md) for development, checks, and pull requests.
+
+Markwrite 原创代码采用 [MIT 许可证](LICENSE)。第三方依赖、主题和字体保留各自许可证；见[主题说明](public/themes/NOTICE.txt)与[字体说明](public/fonts/NOTICE.txt)。 / Original Markwrite code is MIT-licensed. Third-party dependencies, themes, and fonts retain their respective licenses; see the [theme](public/themes/NOTICE.txt) and [font](public/fonts/NOTICE.txt) notices.
 
 **macOS:** 使用 Cocoa 系统菜单、⌘ 快捷键、Finder 文件关联与 Keychain。Apple Silicon 与 Intel 分别提供原生安装包，无需 Rosetta。当前采用 ad-hoc 签名，未完成 Apple Developer ID 公证；首次打开可能需在系统隐私与安全性中确认。 / Native Cocoa menus, Command shortcuts, Finder associations, and Keychain. Separate native builds for Apple Silicon and Intel; no Rosetta required. Ad-hoc signed, not Developer ID notarized; macOS may require first-launch approval.

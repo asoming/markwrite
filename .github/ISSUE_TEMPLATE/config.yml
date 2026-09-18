@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: "下载最新版本 / Download the latest release"
+    url: https://github.com/asoming/markwrite/releases/latest
+    about: "Linux、Windows 和 macOS 安装包 / Installers for Linux, Windows, and macOS"
+  - name: "中文使用介绍 / Chinese guide"
+    url: https://github.com/asoming/markwrite/blob/main/README.zh-CN.md
+    about: "功能、操作说明与已知限制 / Features, usage, and known limitations"
+  - name: "English guide / 英文使用介绍"
+    url: https://github.com/asoming/markwrite/blob/main/README.en.md
+    about: "Features, usage, and known limitations / 功能、操作说明与已知限制"

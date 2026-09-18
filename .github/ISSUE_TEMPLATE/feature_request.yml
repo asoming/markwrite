@@ -1,0 +1,25 @@
+name: "功能建议 / Feature request"
+description: "介绍你的使用场景和期望改进 / Share a use case and proposed improvement"
+body:
+  - type: markdown
+    attributes:
+      value: "请先搜索已有建议。具体使用场景有助于讨论。 / Search existing requests first. A concrete use case helps the discussion."
+  - type: textarea
+    id: problem
+    attributes:
+      label: "使用场景与问题 / Use case and problem"
+      description: "你正在完成什么任务？目前哪里不方便？ / What are you trying to do, and what gets in the way?"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: "期望的改进 / Proposed improvement"
+      description: "说明你希望如何操作或得到什么结果。 / Describe the desired interaction or result."
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: "补充说明（可选） / Additional context (optional)"
+      description: "可说明现有替代方法、相关平台，或附无私人信息的截图。 / Include workarounds, relevant platforms, or screenshots without private information."

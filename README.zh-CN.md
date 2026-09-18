@@ -4,6 +4,8 @@
 
 Markwrite 把 Markdown 阅读、可视化排版、双文档审阅和 Git 版本管理放到同一个窗口里。文件仍是普通 `.md`，保留原来的文件夹、项目和 Git 目录结构。
 
+[31 秒操作演示](README.md#31-秒看操作--a-31-second-tour) · [反馈问题或建议](https://github.com/asoming/markwrite/issues/new/choose) · [参与贡献](CONTRIBUTING.md) · [MIT 许可证](LICENSE)
+
 ## 先看效果
 
 ![阅读界面与文件树](screenshots/overview-zh-CN.png)

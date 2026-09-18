@@ -1,0 +1,40 @@
+name: "问题反馈 / Bug report"
+description: "报告可复现的问题 / Report a reproducible problem"
+body:
+  - type: markdown
+    attributes:
+      value: "请先搜索已有 Issues。请勿上传 API Key、令牌或私人文档。 / Search existing issues first. Do not upload API keys, tokens, or private documents."
+  - type: input
+    id: version
+    attributes:
+      label: "Markwrite 版本 / Version"
+      placeholder: "例如 / e.g. 1.2.1"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: "系统与安装方式 / OS and installation"
+      description: "包括系统版本、CPU 架构和安装包类型。 / Include OS version, CPU architecture, and package type."
+      placeholder: "例如 / e.g. Ubuntu 24.04 x86_64, .deb; macOS 15 arm64, .dmg"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "复现步骤 / Steps to reproduce"
+      description: "说明操作步骤，可附不含私人信息的最小 Markdown 示例。 / Describe the steps; a minimal Markdown sample without private information is helpful."
+      placeholder: "1. 打开… / Open…\n2. 点击… / Click…\n3. 出现… / Observe…"
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: "预期与实际结果 / Expected and actual behavior"
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: "截图或日志（可选） / Screenshots or logs (optional)"
+      description: "粘贴前删除密钥、令牌、私人文档内容和个人信息。 / Remove secrets, tokens, private document content, and personal information before sharing."

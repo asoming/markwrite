@@ -4,6 +4,8 @@
 
 Markwrite brings Markdown reading, visual formatting, document comparison, and Git version control into one desktop application. Your documents remain ordinary `.md` files in their original folders and repositories.
 
+[31-second demo](README.md#31-秒看操作--a-31-second-tour) · [Report a bug or request a feature](https://github.com/asoming/markwrite/issues/new/choose) · [Contributing](CONTRIBUTING.md) · [MIT License](LICENSE)
+
 ## A first look
 
 ![Reading with the original folder tree](screenshots/overview-en.png)
